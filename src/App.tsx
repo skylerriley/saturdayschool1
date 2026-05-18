@@ -66,7 +66,7 @@ const CSS = `
   .brand { display: flex; flex-direction: column; }
   .brand-name { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; color: var(--gold-400); letter-spacing: 0.02em; line-height: 1.1; }
   .brand-tagline { font-family: 'Barlow Condensed', sans-serif; font-size: 11px; color: var(--green-300); letter-spacing: 0.12em; text-transform: uppercase; }
-  .header-badge { background: var(--gold-500); color: var(--green-900); font-family: 'Barlow Condensed', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 20px; cursor: pointer; border: none; }
+  .header-badge { background: var(--gold-500); color: var(--green-900); font-family: 'Barlow Condensed', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 20px; cursor: pointer; border: none; text-transform: uppercase; }
 
   .nav-tabs { display: flex; overflow-x: auto; scrollbar-width: none; border-top: 1px solid rgba(255,255,255,0.08); }
   .nav-tabs::-webkit-scrollbar { display: none; }
@@ -151,9 +151,9 @@ const CSS = `
   .pairing-player:last-child { border-bottom: none; }
   .pairing-hcp { font-family: 'Barlow Condensed', sans-serif; font-size: 13px; color: var(--green-600); font-weight: 600; }
 
-  .rsvp-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); gap: 8px; }
+  .rsvp-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 50px; border-bottom: 1px solid var(--border); gap: 8px; }
   .rsvp-row:last-child { border-bottom: none; }
-  .rsvp-name { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; }
+  .rsvp-name { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; text-align: left; }
   .rsvp-actions { display: flex; gap: 5px; flex-shrink: 0; }
   .rsvp-btn { padding: 5px 10px; border-radius: 20px; font-family: 'Barlow Condensed', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; border: 1.5px solid; cursor: pointer; transition: all 0.15s; background: transparent; }
   .rsvp-btn.yes { border-color: var(--green-500); color: var(--green-700); }
@@ -465,7 +465,7 @@ export default function App() {
         { id: "leaderboard", label: "Leaderboard" },
         { id: "rsvp", label: "Sign Up" },
         { id: "score", label: "Scoring" },
-        { id: "admin", label: "⚙ Admin" },
+        { id: "admin", label: "⚙ ADMIN" },
         { id: "analytics", label: "Analytics" },
       ]
     : [
@@ -579,7 +579,7 @@ function LeaderboardTab({ golfers, courses, events, leaderboard, signups }: any)
       <div className="section-sub">2026 Season · Saturday School</div>
 
       <div className="tab-sub">
-        {[{id:"current",label:"Event"},{id:"season",label:"Season Avg"},{id:"top15",label:"Top 15 Avg"},{id:"finance",label:"Payouts"}].map(t=>(
+        {[{id:"season",label:"Season Avg"},{id:"top15",label:"Top 15 Avg"},{id:"current",label:"Weekly"},{id:"finance",label:"Payouts"}].map(t=>(
           <button key={t.id} className={`tab-sub-btn${subTab===t.id?" active":""}`} onClick={()=>setSubTab(t.id)}>{t.label}</button>
         ))}
       </div>
@@ -1123,7 +1123,7 @@ function AdminTab({ golfers, setGolfers, courses, events, setEvents, signups, se
 
   return (
     <div>
-      <div className="section-title">Admin</div>
+      <div className="section-title">ADMIN</div>
       <div className="section-sub">League management tools</div>
       <div className="tab-sub">
         {[
