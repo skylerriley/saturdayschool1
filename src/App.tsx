@@ -654,7 +654,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
           {top15Avg.length>0&&(
             <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
               <div className="lb-header">
-                <div className="lb-header-cell">#</div>
+                <div className="lb-header-cell">POS</div>
                 <div className="lb-header-cell">Golfer</div>
                 <div className="lb-header-cell right">Avg</div>
                 <div className="lb-header-cell right">Rnds</div>
@@ -704,7 +704,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
               )}
               <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
                 <div className="lb-header" style={{gridTemplateColumns:"36px 1fr 64px 56px"}}>
-                  <div className="lb-header-cell">#</div>
+                  <div className="lb-header-cell">POS</div>
                   <div className="lb-header-cell">Golfer</div>
                   <div className="lb-header-cell right">Pts</div>
                   <div className="lb-header-cell right">Holes</div>
