@@ -47,7 +47,7 @@ const CSS = `
   /* ── HEADER ── */
   .app-header{background:var(--green-900);position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,0.3);width:100%;}
   .header-top{display:flex;align-items:center;justify-content:space-between;padding:12px 18px 8px;}
-  .brand-name{font-family:'DM Serif Display',serif;font-size:22px;font-weight:400;color:var(--gold-400);letter-spacing:0.01em;line-height:1.1;}
+  .brand-name{font-size:22px;font-weight:700;color:var(--gold-400);letter-spacing:0.01em;line-height:1.1;}
   .brand-tagline{font-size:11px;color:var(--green-300);letter-spacing:0.12em;text-transform:uppercase;font-weight:500;}
   .header-badge{background:var(--gold-500);color:var(--green-900);font-size:12px;font-weight:700;letter-spacing:0.06em;padding:5px 12px;border-radius:20px;cursor:pointer;border:none;text-transform:uppercase;}
 
@@ -106,7 +106,7 @@ const CSS = `
     border-radius:var(--radius-md) var(--radius-md) 0 0;
     margin-bottom:0;
   }
-  .lb-header-cell{font-size:11px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:var(--gold-300);}
+  .lb-header-cell{font-size:11px;text-align: left;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:var(--gold-300);}
   .lb-header-cell.right{text-align:right;}
 
   .lb-row{
@@ -131,7 +131,7 @@ const CSS = `
   .lb-rank-cell.r3{color:var(--earth-600);}
 
   .lb-name-cell{min-width:0;}
-  .lb-name-main{font-size:17px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .lb-name-main{font-size:17px;text-align: left;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .lb-name-sub{font-size:13px;color:var(--text-muted);margin-top:1px;}
 
   .lb-score-cell{text-align:right;}
@@ -233,7 +233,7 @@ const CSS = `
 
   .tab-sub{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;}
   .tab-sub::-webkit-scrollbar{display:none;}
-  .tab-sub-btn{flex-shrink:0;padding:8px 16px;border-radius:20px;font-size:14px;font-weight:600;letter-spacing:0.03em;border:1.5px solid var(--border-md);background:transparent;color:var(--text-muted);cursor:pointer;transition:all 0.15s;}
+  .tab-sub-btn{flex-shrink:0;padding:8px 16px;border-radius:20px;font-size:13px;text-transform: uppercase; font-weight:600;letter-spacing:0.03em;border:1.5px solid var(--border-md);background:transparent;color:var(--text-muted);cursor:pointer;transition:all 0.15s;}
   .tab-sub-btn.active{background:var(--green-800);border-color:var(--green-800);color:white;}
 
   .empty-state{text-align:center;padding:40px 20px;color:var(--text-muted);}
@@ -550,17 +550,15 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
           <div className={`lb-rank-cell ${rankClass}`}>{rank}</div>
           <div className="lb-name-cell">
             <div className="lb-name-main">{g?`${g.first_name} ${g.last_name}`:"Unknown"}</div>
-            <div className="lb-name-sub">
-              {mode==="weekly"?`HCP ${g?.current_handicap_index?.toFixed(1)} · ${weeklyEntry?.entry_type==="Hole-by-Hole"?"H×H":"Total"}`:`HCP ${g?.current_handicap_index?.toFixed(1)}`}
-            </div>
+            
           </div>
           <div className="lb-score-cell">
             <div className="lb-score-big">{mode==="season"?(row.avg as number).toFixed(1):mode==="weekly"?(row as any).total_stableford_points:""}</div>
-            <div className="lb-score-label">{mode==="season"?"avg":"pts"}</div>
+            
           </div>
           <div className="lb-thru-cell">
             <div className="lb-thru-big">{mode==="weekly"?(hbhScores.length>0?hbhScores.length:"—"):row.rounds}</div>
-            <div className="lb-thru-label">{mode==="weekly"?"holes":"rounds"}</div>
+            
           </div>
         </div>
         {isExpanded&&(
@@ -638,7 +636,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
           {seasonAvg.length>0&&(
             <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
               <div className="lb-header">
-                <div className="lb-header-cell">#</div>
+                <div className="lb-header-cell">POS</div>
                 <div className="lb-header-cell">Golfer</div>
                 <div className="lb-header-cell right">Avg</div>
                 <div className="lb-header-cell right">Rnds</div>
