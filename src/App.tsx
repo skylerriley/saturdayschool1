@@ -715,25 +715,25 @@ const CSS = `
 // SEED DATA
 // ============================================================
 const INITIAL_GOLFERS = [
-  { golfer_id: 1, first_name: "Pieter", last_name: "van der Berg", email_address: "pieter@example.com", current_handicap_index: 12.4, is_guest: false, status: "Active" },
-  { golfer_id: 2, first_name: "Brendan", last_name: "Joubert", email_address: "brendan@example.com", current_handicap_index: 8.2, is_guest: false, status: "Active" },
-  { golfer_id: 3, first_name: "Thabo", last_name: "Nkosi", email_address: "thabo@example.com", current_handicap_index: 18.6, is_guest: false, status: "Active" },
-  { golfer_id: 4, first_name: "Liam", last_name: "Botha", email_address: "liam@example.com", current_handicap_index: 5.1, is_guest: false, status: "Active" },
-  { golfer_id: 5, first_name: "Riaan", last_name: "Pretorius", email_address: "riaan@example.com", current_handicap_index: 21.0, is_guest: false, status: "Active" },
-  { golfer_id: 6, first_name: "Marco", last_name: "De Villiers", email_address: "marco@example.com", current_handicap_index: 14.8, is_guest: false, status: "Active" },
-  { golfer_id: 7, first_name: "Shane", last_name: "Mitchell", email_address: "shane@example.com", current_handicap_index: 3.7, is_guest: false, status: "Active" },
-  { golfer_id: 8, first_name: "Deon", last_name: "Steyn", email_address: "deon@example.com", current_handicap_index: 16.2, is_guest: false, status: "Active" },
-  { golfer_id: 9, first_name: "Kyle", last_name: "Adams", email_address: "kyle@example.com", current_handicap_index: 9.9, is_guest: false, status: "Active" },
-  { golfer_id: 10, first_name: "Francois", last_name: "Esterhuizen", email_address: "francois@example.com", current_handicap_index: 11.5, is_guest: false, status: "Active" },
-  { golfer_id: 11, first_name: "Morne", last_name: "Kotze", email_address: "morne@example.com", current_handicap_index: 7.3, is_guest: false, status: "Active" },
-  { golfer_id: 12, first_name: "André", last_name: "Potgieter", email_address: "andre@example.com", current_handicap_index: 19.1, is_guest: false, status: "Active" },
+  { golfer_id: 1, first_name: "Mark", last_name: "Stein", email_address: "pieter@example.com", current_handicap_index: 12.4, is_guest: false, status: "Active" },
+  { golfer_id: 2, first_name: "Trevor", last_name: "Gnesin", email_address: "brendan@example.com", current_handicap_index: 23, is_guest: false, status: "Active" },
+  { golfer_id: 3, first_name: "Stuart", last_name: "Solkow", email_address: "thabo@example.com", current_handicap_index: 12, is_guest: false, status: "Active" },
+  { golfer_id: 4, first_name: "Trevor", last_name: "Colley", email_address: "liam@example.com", current_handicap_index: 14.3, is_guest: false, status: "Active" },
+  { golfer_id: 5, first_name: "Tony", last_name: "Del Duca", email_address: "riaan@example.com", current_handicap_index: 8.0, is_guest: false, status: "Active" },
+  { golfer_id: 6, first_name: "Dave", last_name: "Metz", email_address: "marco@example.com", current_handicap_index: 14.8, is_guest: false, status: "Active" },
+  { golfer_id: 7, first_name: "Skyler", last_name: "Riley", email_address: "shane@example.com", current_handicap_index: 9.3, is_guest: false, status: "Active" },
+  { golfer_id: 8, first_name: "Don", last_name: "Blaustein", email_address: "deon@example.com", current_handicap_index: 16.2, is_guest: false, status: "Active" },
+  { golfer_id: 9, first_name: "Joe", last_name: "Fishman", email_address: "kyle@example.com", current_handicap_index: 19, is_guest: false, status: "Active" },
+  { golfer_id: 10, first_name: "Jake", last_name: "Ritter", email_address: "francois@example.com", current_handicap_index: 1, is_guest: false, status: "Active" },
+  { golfer_id: 11, first_name: "Pete", last_name: "Grande", email_address: "morne@example.com", current_handicap_index: 12, is_guest: false, status: "Active" },
+  { golfer_id: 12, first_name: "Errol", last_name: "Kaplan", email_address: "andre@example.com", current_handicap_index: 19.1, is_guest: false, status: "Active" },
   { golfer_id: 99, first_name: "Guest", last_name: "Player", email_address: "", current_handicap_index: 18.0, is_guest: true, status: "Active" },
 ];
 
 const INITIAL_COURSES = [
   {
     course_id: 1,
-    course_name: "Randpark Golf Club",
+    course_name: "Strawberry Farms Golf Club",
     tee_box_name: "Blue",
     tee_slope: 126,
     tee_rating: 72.3,
@@ -742,7 +742,7 @@ const INITIAL_COURSES = [
   },
   {
     course_id: 2,
-    course_name: "Houghton Golf Club",
+    course_name: "Strawberry Farms Golf Club",
     tee_box_name: "White",
     tee_slope: 119,
     tee_rating: 70.1,
@@ -751,7 +751,7 @@ const INITIAL_COURSES = [
   },
   {
     course_id: 3,
-    course_name: "Royal Johannesburg East",
+    course_name: "Oak Creek Golf Club",
     tee_box_name: "Yellow",
     tee_slope: 133,
     tee_rating: 73.8,
@@ -763,21 +763,21 @@ const INITIAL_COURSES = [
 const INITIAL_EVENTS = [
   {
     event_id: 1,
-    date: "2025-05-10",
+    date: "2026-05-16",
     course_id: 1,
     tee_times: ["08:00","08:10","08:20","08:30"],
     status: "Completed",
   },
   {
     event_id: 2,
-    date: "2025-05-17",
-    course_id: 2,
+    date: "2025-05-23",
+    course_id: 1,
     tee_times: ["08:00","08:10","08:20"],
     status: "Pairings Set",
   },
   {
     event_id: 3,
-    date: "2025-05-24",
+    date: "2025-05-30",
     course_id: 3,
     tee_times: ["08:00","08:10","08:20"],
     status: "Upcoming",
@@ -951,14 +951,13 @@ export default function App() {
   const tabs = adminMode
     ? [
         { id: "leaderboard", label: "Leaderboard" },
-        { id: "rsvp", label: "RSVP" },
+        { id: "rsvp", label: "Sign Up" },
         { id: "score", label: "Score Entry" },
         { id: "admin", label: "⚙ Admin" },
-        { id: "analytics", label: "Analytics" },
       ]
     : [
         { id: "leaderboard", label: "Leaderboard" },
-        { id: "rsvp", label: "RSVP" },
+        { id: "rsvp", label: "Sign Up" },
         { id: "score", label: "Score Entry" },
         { id: "analytics", label: "Analytics" },
       ];
@@ -1107,7 +1106,7 @@ function LeaderboardTab({ golfers, courses, events, leaderboard, signups }) {
       <div className="section-sub">2025 Season · Saturday School</div>
 
       <div className="tab-sub">
-        {[{ id: "current", label: "Event" }, { id: "season", label: "Season Avg" }, { id: "top15", label: "Top 15 Avg" }, { id: "finance", label: "Payouts" }].map(t => (
+        {[{ id: "current", label: "Weekly" }, { id: "season", label: "Season Avg" }, { id: "top15", label: "Top 15 Avg" }, { id: "finance", label: "Payouts" }].map(t => (
           <button key={t.id} className={`tab-sub-btn${subTab === t.id ? " active" : ""}`} onClick={() => setSubTab(t.id)}>{t.label}</button>
         ))}
       </div>
@@ -1130,7 +1129,7 @@ function LeaderboardTab({ golfers, courses, events, leaderboard, signups }) {
                   <div className="stat-label">Players</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-value" style={{ color: "var(--gold-600)" }}>R{totalPot}</div>
+                  <div className="stat-value" style={{ color: "var(--gold-600)" }}>${totalPot}</div>
                   <div className="stat-label">Stableford Pot</div>
                 </div>
               </div>
@@ -1154,8 +1153,8 @@ function LeaderboardTab({ golfers, courses, events, leaderboard, signups }) {
                       <div className="lb-name">{golferName(golfers, entry.golfer_id)}</div>
                       <div className="lb-hcp">HCP {g?.current_handicap_index?.toFixed(1)} · {entry.entry_type === "Hole-by-Hole" ? "H×H" : "Total"}</div>
                     </div>
-                    {entry.weekly_payout_won > 0 && <span className="pill pill-gold" style={{ marginRight: 8 }}>R{entry.weekly_payout_won}</span>}
-                    {entry.skins_payout_won > 0 && <span className="pill pill-green" style={{ marginRight: 8 }}>Skin R{entry.skins_payout_won}</span>}
+                    {entry.weekly_payout_won > 0 && <span className="pill pill-gold" style={{ marginRight: 8 }}>${entry.weekly_payout_won}</span>}
+                    {entry.skins_payout_won > 0 && <span className="pill pill-green" style={{ marginRight: 8 }}>Skin ${entry.skins_payout_won}</span>}
                     <div>
                       <div className="lb-score">{entry.total_stableford_points}</div>
                       <div className="lb-pts-label">pts</div>
@@ -1242,7 +1241,7 @@ function FinanceView({ golfers, leaderboard, events, courses }) {
     <div>
       <div className="charity-hero">
         <div className="charity-label">Lifetime Charity Pot</div>
-        <div className="charity-amount">R{lifetimeCharity}</div>
+        <div className="charity-amount">${lifetimeCharity}</div>
         <div className="charity-label" style={{ marginTop: 4 }}>{allCharityPaid} charity entries recorded</div>
       </div>
 
@@ -1259,19 +1258,19 @@ function FinanceView({ golfers, leaderboard, events, courses }) {
         <>
           <div className="stat-grid">
             <div className="stat-card">
-              <div className="stat-value">R{totalPot}</div>
+              <div className="stat-value">${totalPot}</div>
               <div className="stat-label">Stableford Pot</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">R{skinsPot}</div>
+              <div className="stat-value">${skinsPot}</div>
               <div className="stat-label">Skins Pot</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">R{charityPot}</div>
+              <div className="stat-value">${charityPot}</div>
               <div className="stat-label">Charity</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">R{totalPot + skinsPot + charityPot}</div>
+              <div className="stat-value">${totalPot + skinsPot + charityPot}</div>
               <div className="stat-label">Total Collected</div>
             </div>
           </div>
@@ -1292,9 +1291,9 @@ function FinanceView({ golfers, leaderboard, events, courses }) {
                 .map(e => (
                   <tr key={e.summary_id}>
                     <td>{golferName(golfers, e.golfer_id)}</td>
-                    <td style={{ textAlign: "right" }} className="money">R{e.weekly_payout_won.toFixed(0)}</td>
-                    <td style={{ textAlign: "right" }} className="money">R{e.skins_payout_won.toFixed(0)}</td>
-                    <td style={{ textAlign: "right" }} className="money">R{(e.weekly_payout_won + e.skins_payout_won).toFixed(0)}</td>
+                    <td style={{ textAlign: "right" }} className="money">${e.weekly_payout_won.toFixed(0)}</td>
+                    <td style={{ textAlign: "right" }} className="money">${e.skins_payout_won.toFixed(0)}</td>
+                    <td style={{ textAlign: "right" }} className="money">${(e.weekly_payout_won + e.skins_payout_won).toFixed(0)}</td>
                   </tr>
                 ))}
             </tbody>
@@ -1345,13 +1344,13 @@ function RSVPTab({ golfers, events, signups, setSignups, showSuccess }) {
 
   return (
     <div>
-      <div className="section-title">RSVP Board</div>
+      <div className="section-title">Sign Up Board</div>
       <div className="section-sub">{formatDate(upcoming.date)}</div>
 
       <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <div>
-            <div style={{ fontWeight: 600, fontSize: 15 }}>{upcoming.course_id === 1 ? "Randpark GC" : upcoming.course_id === 2 ? "Houghton GC" : "Royal JHB East"}</div>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>{upcoming.course_id === 1 ? "Strawberry Farms GC" : upcoming.course_id === 2 ? "Houghton GC" : "Royal JHB East"}</div>
             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{upcoming.tee_times[0]} first tee</div>
           </div>
           <div style={{ textAlign: "right" }}>
