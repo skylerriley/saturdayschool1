@@ -204,7 +204,7 @@ const CSS = `
   /* ── RSVP ── */
   .rsvp-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border);gap:8px;}
   .rsvp-row:last-child{border-bottom:none;}
-  .rsvp-name{font-size:16px;font-weight:500;flex:1;min-width:0;}
+  .rsvp-name{font-size:16px;font-weight:500;flex:1;min-width:0;text-align:left;}
   .rsvp-actions{display:flex;gap:5px;flex-shrink:0;}
   .rsvp-btn{padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1.5px solid;cursor:pointer;transition:all 0.15s;background:transparent;}
   .rsvp-btn.yes{border-color:var(--green-500);color:var(--green-700);}
