@@ -416,7 +416,7 @@ function teeBoxesForCourse(courses:any[],name:string){return courses.filter(c=>c
 // ============================================================
 export default function App(){
   const [golfers,setGolfers]=useState(INITIAL_GOLFERS);
-  const [courses]=useState(INITIAL_COURSES);
+  const [courses,setCourses]=useState(INITIAL_COURSES);
   const [events,setEvents]=useState(INITIAL_EVENTS);
   const [signups,setSignups]=useState(INITIAL_SIGNUPS);
   const [leaderboard,setLeaderboard]=useState(INITIAL_LEADERBOARD);
@@ -449,9 +449,9 @@ export default function App(){
         <main className="main-content">
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} showSuccess={showSuccess}/>}
-          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} events={events} signups={signups} setSignups={setSignups} showSuccess={showSuccess} adminMode={adminMode}/>}
+          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignups} showSuccess={showSuccess} adminMode={adminMode}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} leaderboard={leaderboard} setLeaderboard={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScores} setEvents={setEvents} showSuccess={showSuccess}/>}
-          {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfers} courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} leaderboard={leaderboard} charityDonations={charityDonations} setCharityDonations={setCharityDonations} showSuccess={showSuccess}/>}
+          {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfers} courses={courses} setCourses={setCourses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} leaderboard={leaderboard} setLeaderboard={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScores} charityDonations={charityDonations} setCharityDonations={setCharityDonations} showSuccess={showSuccess}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard}/>}
         </main>
       </div>
@@ -803,7 +803,7 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
 // ============================================================
 // SIGN-UP TAB  (#3a show all tee times, #3b two sub-tabs)
 // ============================================================
-function RSVPTab({golfers,events,signups,setSignups,showSuccess,adminMode}:any){
+function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMode}:any){
   const upcomingEvents=[...events].filter((e:any)=>e.status!=="Completed").sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
   const [selEventId,setSelEventId]=useState<number>(upcomingEvents[0]?.event_id||0);
   const [subTab,setSubTab]=useState("rsvp");
@@ -817,9 +817,11 @@ function RSVPTab({golfers,events,signups,setSignups,showSuccess,adminMode}:any){
   const noCount=eventSignups.filter((s:any)=>s.attending==="No").length;
   const unconfCount=eventSignups.filter((s:any)=>s.attending==="Unconfirmed").length;
 
-  const updateAttending=(signup_id:number,val:string,gid:number)=>{
-    setSignups((p:any)=>p.map((s:any)=>s.signup_id===signup_id?{...s,attending:val}:s));
-    showSuccess(`RSVP updated for ${golferName(golfers,gid)}`);
+  // 2b) Toggle: clicking the already-active button resets to Unconfirmed
+  const updateAttending=(signup_id:number,val:string,gid:number,current:string)=>{
+    const next=current===val?"Unconfirmed":val;
+    setSignups((p:any)=>p.map((s:any)=>s.signup_id===signup_id?{...s,attending:next}:s));
+    showSuccess(next==="Unconfirmed"?`RSVP cleared for ${golferName(golfers,gid)}`:`RSVP updated for ${golferName(golfers,gid)}`);
   };
 
   const addGuest=()=>{
@@ -908,8 +910,8 @@ function RSVPTab({golfers,events,signups,setSignups,showSuccess,adminMode}:any){
                     {myGuests.length>0&&<span style={{fontSize:12,color:"var(--gold-700)",marginLeft:6}}>+{myGuests.length} guest{myGuests.length>1?"s":""}</span>}
                   </div>
                   <div className="rsvp-actions">
-                    <button className={`rsvp-btn yes${signup.attending==="Yes"?" active":""}`} onClick={()=>updateAttending(signup.signup_id,"Yes",g.golfer_id)}>In</button>
-                    <button className={`rsvp-btn no${signup.attending==="No"?" active":""}`} onClick={()=>updateAttending(signup.signup_id,"No",g.golfer_id)}>Out</button>
+                    <button className={`rsvp-btn yes${signup.attending==="Yes"?" active":""}`} onClick={()=>updateAttending(signup.signup_id,"Yes",g.golfer_id,signup.attending)}>In</button>
+                    <button className={`rsvp-btn no${signup.attending==="No"?" active":""}`} onClick={()=>updateAttending(signup.signup_id,"No",g.golfer_id,signup.attending)}>Out</button>
                   </div>
                 </div>
                 {myGuests.map((gs:any)=>{
@@ -918,8 +920,8 @@ function RSVPTab({golfers,events,signups,setSignups,showSuccess,adminMode}:any){
                     <div key={gs.signup_id} className="rsvp-row" style={{paddingLeft:20,background:"var(--gold-50)"}}>
                       <div className="rsvp-name" style={{fontSize:15,color:"var(--gold-800)"}}>↳ {gg?`${gg.first_name} ${gg.last_name}`:"Guest"} <span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px"}}>guest</span></div>
                       <div className="rsvp-actions">
-                        <button className={`rsvp-btn yes${gs.attending==="Yes"?" active":""}`} onClick={()=>updateAttending(gs.signup_id,"Yes",gs.golfer_id)}>In</button>
-                        <button className={`rsvp-btn no${gs.attending==="No"?" active":""}`} onClick={()=>updateAttending(gs.signup_id,"No",gs.golfer_id)}>Out</button>
+                        <button className={`rsvp-btn yes${gs.attending==="Yes"?" active":""}`} onClick={()=>updateAttending(gs.signup_id,"Yes",gs.golfer_id,gs.attending)}>In</button>
+                        <button className={`rsvp-btn no${gs.attending==="No"?" active":""}`} onClick={()=>updateAttending(gs.signup_id,"No",gs.golfer_id,gs.attending)}>Out</button>
                       </div>
                     </div>
                   );
@@ -965,14 +967,13 @@ function RSVPTab({golfers,events,signups,setSignups,showSuccess,adminMode}:any){
                 <div className="pairing-body">
                   {group.players.map((su:any)=>{
                     const g=golfers.find((x:any)=>x.golfer_id===su.golfer_id);
-                    const tee=su.tee_box_course_id?courses?.find((c:any)=>c.course_id===su.tee_box_course_id):null;
                     return(
                       <div key={su.signup_id} className="pairing-player">
                         <div>
                           <span style={{fontWeight:500}}>{g?`${g.first_name} ${g.last_name}`:"Guest"}</span>
                           {su.is_guest_entry&&<span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px",marginLeft:6,color:"var(--gold-800)"}}>guest</span>}
                         </div>
-                        <span className="pairing-hcp">{tee?`${tee.tee_box_name} tee`:"—"}</span>
+                        <span className="pairing-hcp" style={{color:"var(--text-muted)",fontSize:13}}>HCP {g?.current_handicap_index?.toFixed(1)??""}</span>
                       </div>
                     );
                   })}
@@ -1049,8 +1050,6 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
     if(count>0){showSuccess(`${count} score${count>1?"s":""} submitted`);setScorers([emptyScorer()]);}
   };
 
-  const ptsClass=(pts:number|null)=>{if(pts===null||pts===undefined)return"";if(pts>=4)return"pts-eagle";if(pts===3)return"pts-birdie";if(pts===2)return"pts-par";if(pts===1)return"pts-bogey";return"pts-zero";};
-
   const canSubmit=scorers.some(s=>s.golferId&&s.courseId&&(mode==="total"?!!s.totalPts:s.grossScores.some((v:string)=>!!v)));
 
   return(
@@ -1076,7 +1075,7 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
         <div className="skins-warning"><span>⚠</span><span>This event already has hole-by-hole entries. Submitting total-only scores will prevent skins from being calculated.</span></div>
       )}
 
-      {/* Scorer cards – up to 4 */}
+      {/* Scorer setup cards */}
       {selEvent&&scorers.map((scorer,idx)=>{
         const g=golfers.find((x:any)=>x.golfer_id===parseInt(scorer.golferId));
         const course=courses.find((c:any)=>c.course_id===parseInt(scorer.courseId));
@@ -1091,63 +1090,105 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
               <span className="scorer-num">Golfer {idx+1}</span>
               {idx>0&&<button className="btn btn-sm btn-danger" onClick={()=>removeScorer(idx)}>Remove</button>}
             </div>
-            <div className="form-group">
-              <label className="form-label">Golfer</label>
-              <select className="form-select" value={scorer.golferId} onChange={e=>updateScorer(idx,"golferId",e.target.value)}>
-                <option value="">Select golfer…</option>
-                {golfers.filter((g:any)=>g.status==="Active").map((g:any)=><option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}{g.is_guest?" (Guest)":""}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Tee Box</label>
-              <select className="form-select" value={scorer.courseId} onChange={e=>updateScorer(idx,"courseId",e.target.value)}>
-                <option value="">Select tee…</option>
-                {availableTees.map((t:any)=><option key={t.course_id} value={t.course_id}>{t.tee_box_name} — Slope {t.tee_slope} / Rating {t.tee_rating}</option>)}
-              </select>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label className="form-label">Golfer</label>
+                <select className="form-select" value={scorer.golferId} onChange={e=>updateScorer(idx,"golferId",e.target.value)}>
+                  <option value="">Select…</option>
+                  {golfers.filter((g:any)=>g.status==="Active").map((g:any)=><option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}{g.is_guest?" (G)":""}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label className="form-label">Tee Box</label>
+                <select className="form-select" value={scorer.courseId} onChange={e=>updateScorer(idx,"courseId",e.target.value)}>
+                  <option value="">Select…</option>
+                  {availableTees.map((t:any)=><option key={t.course_id} value={t.course_id}>{t.tee_box_name}</option>)}
+                </select>
+              </div>
             </div>
             {g&&course&&(
-              <div style={{display:"flex",gap:10,marginBottom:12,padding:"8px 10px",background:"var(--green-50)",borderRadius:"var(--radius-md)"}}>
-                <div style={{flex:1}}><div style={{fontSize:12,color:"var(--text-muted)",textTransform:"uppercase",fontWeight:600,letterSpacing:"0.06em"}}>Playing HCP</div><div style={{fontSize:22,fontWeight:700,color:"var(--green-700)"}}>{phcp}</div></div>
-                {alreadyIn&&<div style={{fontSize:12,color:"var(--gold-700)",alignSelf:"center"}}>⚠ Will overwrite existing</div>}
+              <div style={{marginTop:8,fontSize:13,display:"flex",gap:12,alignItems:"center"}}>
+                <span style={{color:"var(--text-muted)"}}>Playing HCP:</span>
+                <span style={{fontWeight:700,fontSize:17,color:"var(--green-700)"}}>{phcp}</span>
+                {alreadyIn&&<span style={{color:"var(--gold-700)",fontSize:12}}>⚠ Will overwrite</span>}
               </div>
             )}
             {mode==="total"&&(
-              <div className="form-group" style={{marginBottom:0}}>
+              <div className="form-group" style={{marginBottom:0,marginTop:10}}>
                 <label className="form-label">Stableford Points</label>
                 <input className="form-input" type="number" min="0" max="72" placeholder="e.g. 36" value={scorer.totalPts} onChange={e=>updateScorer(idx,"totalPts",e.target.value)}/>
-              </div>
-            )}
-            {mode==="hole"&&g&&course&&(
-              <div className="score-grid">
-                <table className="score-table">
-                  <thead><tr><th>Hole</th><th>Par</th><th>SI</th><th>Gross</th><th>Net</th><th>Pts</th></tr></thead>
-                  <tbody>
-                    {Array.from({length:18},(_,i)=>{
-                      const h=holeCalcs[i]||{};
-                      return(
-                        <tr key={i}>
-                          <td style={{fontWeight:600}}>{i+1}</td>
-                          <td>{course.hole_pars[i]}</td>
-                          <td style={{color:"var(--text-muted)"}}>{course.hole_stroke_indices[i]}</td>
-                          <td className="score-input-cell"><input type="number" min="1" max="15" value={scorer.grossScores[i]} onChange={e=>updateGross(idx,i,e.target.value)}/></td>
-                          <td>{h.net??""}</td>
-                          <td className={ptsClass(h.points)} style={{fontWeight:h.points!=null?700:400}}>{h.points!==null&&h.points!==undefined?h.points:""}</td>
-                        </tr>
-                      );
-                    })}
-                    <tr style={{background:"var(--green-50)"}}>
-                      <td colSpan={3} style={{fontWeight:700,textAlign:"left",paddingLeft:8,fontSize:13,textTransform:"uppercase",letterSpacing:"0.06em"}}>Total</td>
-                      <td>{scorer.grossScores.reduce((s:number,v:string)=>s+(v?parseInt(v):0),0)||""}</td>
-                      <td></td>
-                      <td style={{fontSize:18,fontWeight:700,color:"var(--green-700)"}}>{calcTotal||""}</td>
-                    </tr>
-                  </tbody>
-                </table>
               </div>
             )}
           </div>
         );
       })}
+
+      {/* 3: Unified stacked H×H table — one row per hole, one column per golfer */}
+      {mode==="hole"&&selEvent&&scorers.some(s=>s.golferId&&s.courseId)&&(()=>{
+        const activeScorersFull=scorers
+          .map((s,origIdx)=>({...s,origIdx}))
+          .filter(s=>s.golferId&&s.courseId)
+          .map(s=>{
+            const g=golfers.find((x:any)=>x.golfer_id===parseInt(s.golferId));
+            const course=courses.find((c:any)=>c.course_id===parseInt(s.courseId));
+            const phcp=g&&course?calcPlayingHandicap(g.current_handicap_index,course.tee_slope,course.tee_rating,course.par):0;
+            const holeCalcs=g&&course?calcHoleScores(s.grossScores,phcp,course):[];
+            return{...s,g,course,phcp,holeCalcs};
+          });
+        if(!activeScorersFull.length)return null;
+        const refCourse=activeScorersFull[0].course;
+        const ptsClass=(pts:number|null)=>{if(pts===null||pts===undefined)return"";if(pts>=4)return"pts-eagle";if(pts===3)return"pts-birdie";if(pts===2)return"pts-par";if(pts===1)return"pts-bogey";return"pts-zero";};
+        return(
+          <div style={{marginTop:8}}>
+            <div className="card-title" style={{marginBottom:8}}>Score Sheet</div>
+            <div className="score-grid">
+              <table className="score-table" style={{minWidth:`${120+activeScorersFull.length*68}px`}}>
+                <thead>
+                  <tr>
+                    <th style={{width:36}}>Hole</th>
+                    <th style={{width:32}}>Par</th>
+                    {activeScorersFull.map((s,i)=>(
+                      <th key={i} style={{minWidth:64}}>
+                        {s.g?.first_name||`P${i+1}`}
+                        <div style={{fontSize:10,fontWeight:400,opacity:0.8}}>{s.course?.tee_box_name} · {s.phcp}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({length:18},(_,holeIdx)=>(
+                    <tr key={holeIdx}>
+                      <td style={{fontWeight:600}}>{holeIdx+1}</td>
+                      <td>{refCourse?.hole_pars[holeIdx]}</td>
+                      {activeScorersFull.map((s,si)=>{
+                        const h=s.holeCalcs[holeIdx]||{};
+                        const pts=h.points;
+                        return(
+                          <td key={si} className={`score-input-cell ${ptsClass(pts)}`} style={{padding:"3px 2px"}}>
+                            <input
+                              type="number" min="1" max="15"
+                              value={s.grossScores[holeIdx]}
+                              onChange={e=>updateGross(s.origIdx,holeIdx,e.target.value)}
+                              style={{width:44}}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  <tr style={{background:"var(--green-50)"}}>
+                    <td colSpan={2} style={{fontWeight:700,textAlign:"left",paddingLeft:6,fontSize:13,textTransform:"uppercase"}}>Total</td>
+                    {activeScorersFull.map((s,si)=>{
+                      const total=s.holeCalcs.reduce((sum:number,h:any)=>sum+(h.points??0),0);
+                      return<td key={si} style={{textAlign:"center",fontWeight:700,fontSize:16,color:"var(--green-700)"}}>{total||""}</td>;
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {selEvent&&scorers.length<4&&(
         <button className="btn btn-outline btn-full" style={{marginBottom:12}} onClick={addScorer}>+ Add Another Golfer ({scorers.length}/4)</button>
@@ -1163,8 +1204,7 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
 // ============================================================
 // ADMIN TAB
 // ============================================================
-function AdminTab({golfers,setGolfers,courses,events,setEvents,signups,setSignups,leaderboard,charityDonations,setCharityDonations,showSuccess}:any){
-  // 3a) Order: events, pairings, handicaps, course hcps, scores, payouts, courses, roster
+function AdminTab({golfers,setGolfers,courses,setCourses,events,setEvents,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,charityDonations,setCharityDonations,showSuccess}:any){
   const [subTab,setSubTab]=useState("events");
   return(
     <div>
@@ -1188,10 +1228,288 @@ function AdminTab({golfers,setGolfers,courses,events,setEvents,signups,setSignup
       {subTab==="pairings"&&<PairingDashboard golfers={golfers} courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} showSuccess={showSuccess}/>}
       {subTab==="hcp"&&<HandicapManager golfers={golfers} setGolfers={setGolfers} showSuccess={showSuccess}/>}
       {subTab==="coursehcp"&&<CourseHcpSheet golfers={golfers} courses={courses} showSuccess={showSuccess}/>}
-      {subTab==="scores"&&<div className="empty-state"><div className="empty-text">Score Correction</div><div className="empty-sub">Coming soon</div></div>}
+      {subTab==="scores"&&<ScoreCorrection golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} setLeaderboard={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScores} showSuccess={showSuccess}/>}
       {subTab==="payouts"&&<FinanceView golfers={golfers} leaderboard={leaderboard} events={[...events].filter((e:any)=>e.status==="Completed").sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime())} charityDonations={charityDonations} setCharityDonations={setCharityDonations} showSuccess={showSuccess}/>}
-      {subTab==="courses"&&<div className="empty-state"><div className="empty-text">Course Manager</div><div className="empty-sub">Coming soon</div></div>}
-      {subTab==="roster"&&<div className="empty-state"><div className="empty-text">Golfer Roster</div><div className="empty-sub">Coming soon</div></div>}
+      {subTab==="courses"&&<CourseManager courses={courses} setCourses={setCourses} showSuccess={showSuccess}/>}
+      {subTab==="roster"&&<GolferRoster golfers={golfers} setGolfers={setGolfers} showSuccess={showSuccess}/>}
+    </div>
+  );
+}
+
+// ── 3a) GOLFER ROSTER ────────────────────────────────────────
+function GolferRoster({golfers,setGolfers,showSuccess}:any){
+  const blank={first_name:"",last_name:"",email_address:"",current_handicap_index:"18",season_fee_paid:false};
+  const [form,setForm]=useState<any>(blank);
+  const [editId,setEditId]=useState<number|null>(null);
+
+  const members=golfers.filter((g:any)=>!g.is_guest);
+
+  const save=()=>{
+    if(!form.first_name.trim()||!form.last_name.trim())return;
+    if(editId!==null){
+      setGolfers((p:any)=>p.map((g:any)=>g.golfer_id===editId?{...g,...form,current_handicap_index:parseFloat(form.current_handicap_index)||18}:g));
+      showSuccess(`${form.first_name} ${form.last_name} updated`);
+    }else{
+      const newId=Math.max(...golfers.map((g:any)=>g.golfer_id),0)+1;
+      setGolfers((p:any)=>[...p,{golfer_id:newId,first_name:form.first_name.trim(),last_name:form.last_name.trim(),email_address:form.email_address.trim(),current_handicap_index:parseFloat(form.current_handicap_index)||18,is_guest:false,status:"Active",season_fee_paid:form.season_fee_paid}]);
+      showSuccess(`${form.first_name} ${form.last_name} added`);
+    }
+    setForm(blank); setEditId(null);
+  };
+
+  const startEdit=(g:any)=>{
+    setEditId(g.golfer_id);
+    setForm({first_name:g.first_name,last_name:g.last_name,email_address:g.email_address||"",current_handicap_index:String(g.current_handicap_index),season_fee_paid:!!g.season_fee_paid});
+  };
+
+  const toggleStatus=(id:number,cur:string)=>{
+    setGolfers((p:any)=>p.map((g:any)=>g.golfer_id===id?{...g,status:cur==="Active"?"Inactive":"Active"}:g));
+  };
+  const toggleFee=(id:number)=>{
+    setGolfers((p:any)=>p.map((g:any)=>g.golfer_id===id?{...g,season_fee_paid:!g.season_fee_paid}:g));
+    showSuccess("Fee status updated");
+  };
+
+  return(
+    <div>
+      <div className="card-title" style={{marginBottom:12}}>{editId?"Edit Golfer":"Add New Golfer"}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+        <div className="form-group" style={{marginBottom:0}}><label className="form-label">First Name</label><input className="form-input" value={form.first_name} onChange={e=>setForm((p:any)=>({...p,first_name:e.target.value}))}/></div>
+        <div className="form-group" style={{marginBottom:0}}><label className="form-label">Last Name</label><input className="form-input" value={form.last_name} onChange={e=>setForm((p:any)=>({...p,last_name:e.target.value}))}/></div>
+      </div>
+      <div className="form-group"><label className="form-label">Email</label><input className="form-input" type="email" value={form.email_address} onChange={e=>setForm((p:any)=>({...p,email_address:e.target.value}))}/></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+        <div className="form-group" style={{marginBottom:0}}><label className="form-label">HCP Index</label><input className="form-input" type="number" step="0.1" min="0" max="54" value={form.current_handicap_index} onChange={e=>setForm((p:any)=>({...p,current_handicap_index:e.target.value}))}/></div>
+        <div style={{display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+          <label className="form-label">Season Fee ($300)</label>
+          <button className={`btn btn-sm${form.season_fee_paid?" btn-primary":" btn-outline"}`} style={{width:"100%"}} onClick={()=>setForm((p:any)=>({...p,season_fee_paid:!p.season_fee_paid}))}>{form.season_fee_paid?"✓ Paid":"Unpaid"}</button>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        <button className="btn btn-primary" style={{flex:1}} onClick={save} disabled={!form.first_name.trim()||!form.last_name.trim()}>{editId?"Save Changes":"Add Golfer"}</button>
+        {editId&&<button className="btn btn-outline" onClick={()=>{setEditId(null);setForm(blank);}}>Cancel</button>}
+      </div>
+
+      <div className="card-title" style={{marginBottom:8}}>Members</div>
+      {members.map((g:any)=>(
+        <div key={g.golfer_id} style={{display:"flex",alignItems:"center",gap:6,padding:"9px 0",borderBottom:"1px solid var(--border)"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:15}}>{g.first_name} {g.last_name}{g.status==="Inactive"&&<span className="pill pill-red" style={{fontSize:10,marginLeft:6}}>Inactive</span>}</div>
+            <div style={{fontSize:12,color:"var(--text-muted)"}}>HCP {g.current_handicap_index?.toFixed(1)} · {g.email_address||"no email"}</div>
+          </div>
+          <button title="Toggle $300 fee" onClick={()=>toggleFee(g.golfer_id)} className={`btn btn-sm${g.season_fee_paid?" btn-primary":" btn-outline"}`}>{g.season_fee_paid?"$✓":"$?"}</button>
+          <button className="btn btn-sm btn-outline" onClick={()=>startEdit(g)}>Edit</button>
+          <button className={`btn btn-sm${g.status==="Active"?" btn-danger":" btn-primary"}`} onClick={()=>toggleStatus(g.golfer_id,g.status)}>{g.status==="Active"?"Deactivate":"Activate"}</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── 3b) COURSE MANAGER ───────────────────────────────────────
+function CourseManager({courses,setCourses,showSuccess}:any){
+  const blank:any={course_id:0,course_name:"",tee_box_name:"",tee_slope:113,tee_rating:72.0,par:72};
+  const [editing,setEditing]=useState<any|null>(null);
+  const [form,setForm]=useState<any>(blank);
+  const [parStr,setParStr]=useState("4,4,3,5,4,4,3,5,4,4,3,5,4,4,3,5,4,4");
+  const [siStr,setSiStr]=useState("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18");
+  const courseNames=[...new Set(courses.map((c:any)=>c.course_name))] as string[];
+
+  const startNew=()=>{setEditing("new");setForm(blank);setParStr("4,4,3,5,4,4,3,5,4,4,3,5,4,4,3,5,4,4");setSiStr("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18");};
+  const startEdit=(c:any)=>{setEditing(c.course_id);setForm({...c});setParStr(c.hole_pars.join(","));setSiStr(c.hole_stroke_indices.join(","));};
+
+  const save=()=>{
+    const pars=parStr.split(",").map(v=>parseInt(v.trim())).filter(v=>!isNaN(v));
+    const sis=siStr.split(",").map(v=>parseInt(v.trim())).filter(v=>!isNaN(v));
+    if(pars.length!==18||sis.length!==18){showSuccess("⚠ Must have exactly 18 values for par and stroke index");return;}
+    const entry={...form,tee_slope:parseInt(form.tee_slope)||113,tee_rating:parseFloat(form.tee_rating)||72.0,par:parseInt(form.par)||72,hole_pars:pars,hole_stroke_indices:sis};
+    if(editing==="new"){
+      const newId=Math.max(...courses.map((c:any)=>c.course_id),0)+1;
+      setCourses((p:any)=>[...p,{...entry,course_id:newId}]);
+      showSuccess(`${entry.tee_box_name} tee added to ${entry.course_name}`);
+    }else{
+      setCourses((p:any)=>p.map((c:any)=>c.course_id===editing?{...entry,course_id:editing}:c));
+      showSuccess(`${entry.course_name} (${entry.tee_box_name}) updated`);
+    }
+    setEditing(null);
+  };
+
+  return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div className="card-title">Course & Tee Manager</div>
+        <button className="btn btn-primary btn-sm" onClick={startNew}>+ Add Tee</button>
+      </div>
+
+      {editing&&(
+        <div className="card" style={{marginBottom:14}}>
+          <div className="card-title" style={{marginBottom:10}}>{editing==="new"?"New Tee Box":"Edit Tee Box"}</div>
+          <div className="form-group">
+            <label className="form-label">Course Name</label>
+            <input className="form-input" list="cname-list" value={form.course_name} onChange={e=>setForm((p:any)=>({...p,course_name:e.target.value}))} placeholder="e.g. Strawberry Farms GC"/>
+            <datalist id="cname-list">{courseNames.map(n=><option key={n} value={n}/>)}</datalist>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div className="form-group" style={{marginBottom:0}}><label className="form-label">Tee Name</label><input className="form-input" value={form.tee_box_name} onChange={e=>setForm((p:any)=>({...p,tee_box_name:e.target.value}))}/></div>
+            <div className="form-group" style={{marginBottom:0}}><label className="form-label">Par</label><input className="form-input" type="number" value={form.par} onChange={e=>setForm((p:any)=>({...p,par:e.target.value}))}/></div>
+            <div className="form-group" style={{marginBottom:0}}><label className="form-label">Slope</label><input className="form-input" type="number" value={form.tee_slope} onChange={e=>setForm((p:any)=>({...p,tee_slope:e.target.value}))}/></div>
+            <div className="form-group" style={{marginBottom:0}}><label className="form-label">Rating</label><input className="form-input" type="number" step="0.1" value={form.tee_rating} onChange={e=>setForm((p:any)=>({...p,tee_rating:e.target.value}))}/></div>
+          </div>
+          <div className="form-group" style={{marginTop:8}}><label className="form-label">Hole Pars (18, comma-separated)</label><input className="form-input" value={parStr} onChange={e=>setParStr(e.target.value)} placeholder="4,4,3,5,…"/></div>
+          <div className="form-group"><label className="form-label">Stroke Indices (18, comma-separated)</label><input className="form-input" value={siStr} onChange={e=>setSiStr(e.target.value)} placeholder="1,2,3,…"/></div>
+          <div style={{display:"flex",gap:8}}>
+            <button className="btn btn-primary" style={{flex:1}} onClick={save}>Save</button>
+            <button className="btn btn-outline" onClick={()=>setEditing(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {courseNames.map(name=>(
+        <div key={name} className="card" style={{padding:"12px 14px"}}>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>{name}</div>
+          {courses.filter((c:any)=>c.course_name===name).map((c:any)=>(
+            <div key={c.course_id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid var(--border)"}}>
+              <div style={{flex:1}}>
+                <span style={{fontWeight:600}}>{c.tee_box_name}</span>
+                <span style={{fontSize:13,color:"var(--text-muted)",marginLeft:8}}>Sl {c.tee_slope} · Rt {c.tee_rating} · Par {c.par}</span>
+              </div>
+              <button className="btn btn-sm btn-outline" onClick={()=>startEdit(c)}>Edit</button>
+              <button className="btn btn-sm btn-danger" onClick={()=>{setCourses((p:any)=>p.filter((x:any)=>x.course_id!==c.course_id));showSuccess("Tee removed");}}>Del</button>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── 3c) SCORE CORRECTION ─────────────────────────────────────
+function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,holeScores,setHoleScores,showSuccess}:any){
+  const [selEventId,setSelEventId]=useState("");
+  const [selGolferId,setSelGolferId]=useState("");
+  const [corrType,setCorrType]=useState("total");
+  const [corrPts,setCorrPts]=useState("");
+  const [corrCourseId,setCorrCourseId]=useState("");
+  const [corrGross,setCorrGross]=useState<string[]>(Array(18).fill(""));
+
+  const allEvents=[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+  const selEvent=events.find((e:any)=>e.event_id===parseInt(selEventId));
+  const entry=leaderboard.find((r:any)=>r.event_id===parseInt(selEventId)&&r.golfer_id===parseInt(selGolferId));
+  const existingHbh=entry?.entry_type==="Hole-by-Hole"?holeScores.filter((hs:any)=>hs.summary_id===entry.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number):[];
+  const availTees=selEvent?courses.filter((c:any)=>c.course_name===selEvent.course_name):[];
+  const corrCourse=courses.find((c:any)=>c.course_id===parseInt(corrCourseId));
+  const corrGolfer=golfers.find((g:any)=>g.golfer_id===parseInt(selGolferId));
+  const corrPhcp=corrGolfer&&corrCourse?calcPlayingHandicap(corrGolfer.current_handicap_index,corrCourse.tee_slope,corrCourse.tee_rating,corrCourse.par):null;
+  const holeCalcs=corrCourse&&corrType==="hole"&&corrPhcp!=null?calcHoleScores(corrGross,corrPhcp,corrCourse):[];
+  const calcTotal=holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
+
+  useEffect(()=>{
+    if(!entry)return;
+    setCorrType(entry.entry_type==="Hole-by-Hole"?"hole":"total");
+    setCorrPts(String(entry.total_stableford_points));
+    if(existingHbh.length>0){
+      const arr=Array(18).fill("");
+      existingHbh.forEach((hs:any)=>{arr[hs.hole_number-1]=String(hs.gross_score);});
+      setCorrGross(arr);
+    }else{setCorrGross(Array(18).fill(""));}
+  },[selEventId,selGolferId]);
+
+  const saveCorrection=()=>{
+    if(!entry)return;
+    const pts=corrType==="hole"?calcTotal:parseInt(corrPts);
+    if(!pts)return;
+    const updated={...entry,total_stableford_points:pts,entry_type:corrType==="hole"?"Hole-by-Hole":"Total Only",skins_paid:corrType==="hole"};
+    setLeaderboard((p:any)=>p.map((r:any)=>r.summary_id===entry.summary_id?updated:r));
+    if(corrType==="hole"&&corrCourse&&corrPhcp!=null){
+      setHoleScores((p:any)=>{
+        const without=p.filter((hs:any)=>hs.summary_id!==entry.summary_id);
+        const newScores=corrGross.map((v:string,i:number)=>{
+          if(!v)return null;
+          const net=calcHoleNetScore(parseInt(v),corrPhcp,corrCourse.hole_stroke_indices[i]);
+          return{score_id:Date.now()+i,summary_id:entry.summary_id,hole_number:i+1,gross_score:parseInt(v),net_score:net,stableford_points:calcStablefordPoints(net,corrCourse.hole_pars[i])};
+        }).filter(Boolean);
+        return[...without,...newScores];
+      });
+    }
+    showSuccess(`Score corrected: ${golferName(golfers,parseInt(selGolferId))} → ${pts} pts`);
+  };
+
+  const deleteEntry=()=>{
+    if(!entry)return;
+    setLeaderboard((p:any)=>p.filter((r:any)=>r.summary_id!==entry.summary_id));
+    setHoleScores((p:any)=>p.filter((hs:any)=>hs.summary_id!==entry.summary_id));
+    setSelGolferId(""); showSuccess("Score entry deleted");
+  };
+
+  const ptsClass=(pts:number|null)=>{if(pts===null||pts===undefined)return"";if(pts>=4)return"pts-eagle";if(pts===3)return"pts-birdie";if(pts===2)return"pts-par";if(pts===1)return"pts-bogey";return"pts-zero";};
+
+  return(
+    <div>
+      <div className="card-title" style={{marginBottom:8}}>Score Correction</div>
+      <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:14}}>Select an event and golfer to view and correct their score.</p>
+      <div className="form-group"><label className="form-label">Event</label>
+        <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setSelGolferId("");}}>
+          <option value="">Select event…</option>
+          {allEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
+        </select>
+      </div>
+      {selEventId&&(
+        <div className="form-group"><label className="form-label">Golfer</label>
+          <select className="form-select" value={selGolferId} onChange={e=>setSelGolferId(e.target.value)}>
+            <option value="">Select golfer…</option>
+            {leaderboard.filter((r:any)=>r.event_id===parseInt(selEventId)).map((r:any)=>{
+              const g=golfers.find((x:any)=>x.golfer_id===r.golfer_id);
+              return<option key={r.golfer_id} value={r.golfer_id}>{g?`${g.first_name} ${g.last_name}`:"Unknown"} — {r.total_stableford_points} pts ({r.entry_type})</option>;
+            })}
+          </select>
+        </div>
+      )}
+      {entry&&(
+        <>
+          <div className="card" style={{padding:"10px 14px",marginBottom:12}}>
+            <div className="info-row"><span className="info-key">Current Score</span><span className="info-val" style={{fontWeight:700,fontSize:18,color:"var(--green-700)"}}>{entry.total_stableford_points} pts</span></div>
+            <div className="info-row"><span className="info-key">Entry Type</span><span className="info-val">{entry.entry_type}</span></div>
+          </div>
+          <div className="toggle-group" style={{marginBottom:12}}>
+            <button className={`toggle-btn${corrType==="total"?" active":""}`} onClick={()=>setCorrType("total")}>Total Only</button>
+            <button className={`toggle-btn${corrType==="hole"?" active":""}`} onClick={()=>setCorrType("hole")}>Hole by Hole</button>
+          </div>
+          {corrType==="hole"&&(
+            <div className="form-group"><label className="form-label">Tee Box (for recalc)</label>
+              <select className="form-select" value={corrCourseId} onChange={e=>setCorrCourseId(e.target.value)}>
+                <option value="">Select tee…</option>
+                {availTees.map((t:any)=><option key={t.course_id} value={t.course_id}>{t.tee_box_name} — Slope {t.tee_slope}</option>)}
+              </select>
+            </div>
+          )}
+          {corrType==="total"?(
+            <div className="form-group"><label className="form-label">Corrected Points</label><input className="form-input" type="number" min="0" max="72" value={corrPts} onChange={e=>setCorrPts(e.target.value)}/></div>
+          ):(corrCourse&&(
+            <div className="score-grid" style={{marginBottom:12}}>
+              <table className="score-table">
+                <thead><tr><th>Hole</th><th>Par</th><th>SI</th><th>Gross</th><th>Pts</th></tr></thead>
+                <tbody>
+                  {Array.from({length:18},(_,i)=>{
+                    const h=holeCalcs[i]||{};
+                    return(<tr key={i}>
+                      <td style={{fontWeight:600}}>{i+1}</td>
+                      <td>{corrCourse.hole_pars[i]}</td>
+                      <td style={{color:"var(--text-muted)"}}>{corrCourse.hole_stroke_indices[i]}</td>
+                      <td className="score-input-cell"><input type="number" min="1" max="15" value={corrGross[i]} onChange={e=>{const v=[...corrGross];v[i]=e.target.value;setCorrGross(v);}}/></td>
+                      <td className={ptsClass(h.points)} style={{fontWeight:h.points!=null?700:400}}>{h.points!=null?h.points:""}</td>
+                    </tr>);
+                  })}
+                  <tr style={{background:"var(--green-50)"}}><td colSpan={3} style={{fontWeight:700,textAlign:"left",paddingLeft:8,fontSize:13}}>Total Pts</td><td/><td style={{fontWeight:700,fontSize:16,color:"var(--green-700)"}}>{calcTotal||""}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          ))}
+          <div style={{display:"flex",gap:8,marginTop:8}}>
+            <button className="btn btn-primary" style={{flex:1}} onClick={saveCorrection}>Save Correction</button>
+            <button className="btn btn-danger" onClick={deleteEntry}>Delete</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1250,29 +1568,67 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
   const [courseName,setCourseName]=useState("");
   const [teeTimes,setTeeTimes]=useState("08:00\n08:10\n08:20\n08:30");
   const [season,setSeason]=useState(new Date().getFullYear());
+  const [editId,setEditId]=useState<number|null>(null);
   const courseNames=uniqueCourseNames(courses);
-  const handleCreate=()=>{
-    if(!date||!courseName)return;
-    const newId=Math.max(...events.map((e:any)=>e.event_id),0)+1;
-    const tts=teeTimes.split("\n").map(t=>t.trim()).filter(Boolean);
-    setEvents((p:any)=>[...p,{event_id:newId,season,date,course_name:courseName,tee_times:tts,status:"Upcoming"}]);
-    const activeGs=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active");
-    setSignups((p:any)=>[...p,...activeGs.map((g:any,i:number)=>({signup_id:Date.now()+i,event_id:newId,golfer_id:g.golfer_id,attending:"Unconfirmed",assigned_tee_time:null,tee_box_course_id:null,playing_handicap:null,is_guest_entry:false,sponsor_golfer_id:null}))]);
-    showSuccess(`Event created: ${formatDate(date)}`);
-    setDate(""); setCourseName(""); setTeeTimes("08:00\n08:10\n08:20\n08:30");
+
+  const resetForm=()=>{setDate("");setCourseName("");setTeeTimes("08:00\n08:10\n08:20\n08:30");setSeason(new Date().getFullYear());setEditId(null);};
+
+  const startEdit=(ev:any)=>{
+    setEditId(ev.event_id); setDate(ev.date); setCourseName(ev.course_name);
+    setTeeTimes(ev.tee_times.join("\n")); setSeason(ev.season);
   };
+
+  const handleSave=()=>{
+    if(!date||!courseName)return;
+    const tts=teeTimes.split("\n").map((t:string)=>t.trim()).filter(Boolean);
+    if(editId!==null){
+      setEvents((p:any)=>p.map((e:any)=>e.event_id===editId?{...e,date,course_name:courseName,tee_times:tts,season}:e));
+      showSuccess(`Event updated: ${formatDate(date)}`);
+    }else{
+      const newId=Math.max(...events.map((e:any)=>e.event_id),0)+1;
+      setEvents((p:any)=>[...p,{event_id:newId,season,date,course_name:courseName,tee_times:tts,status:"Upcoming"}]);
+      const activeGs=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active");
+      setSignups((p:any)=>[...p,...activeGs.map((g:any,i:number)=>({signup_id:Date.now()+i,event_id:newId,golfer_id:g.golfer_id,attending:"Unconfirmed",assigned_tee_time:null,tee_box_course_id:null,playing_handicap:null,is_guest_entry:false,sponsor_golfer_id:null}))]);
+      showSuccess(`Event created: ${formatDate(date)}`);
+    }
+    resetForm();
+  };
+
+  const deleteEvent=(evId:number,evDate:string)=>{
+    if(!window.confirm(`Delete event on ${formatDate(evDate)}? This cannot be undone.`))return;
+    setEvents((p:any)=>p.filter((e:any)=>e.event_id!==evId));
+    setSignups((p:any)=>p.filter((s:any)=>s.event_id!==evId));
+    showSuccess("Event deleted");
+  };
+
   const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
+  const sortedEvents=[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+
   return(
     <div>
-      <div className="card-title" style={{marginBottom:12}}>Create New Event</div>
+      <div className="card-title" style={{marginBottom:12}}>{editId?"Edit Event":"Create New Event"}</div>
       <div className="form-group"><label className="form-label">Season (Year)</label><input className="form-input" type="number" min="2020" max="2040" value={season} onChange={e=>setSeason(parseInt(e.target.value))}/></div>
       <div className="form-group"><label className="form-label">Date</label><input className="form-input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
       <div className="form-group"><label className="form-label">Golf Course</label><select className="form-select" value={courseName} onChange={e=>setCourseName(e.target.value)}><option value="">Select course…</option>{courseNames.map(n=><option key={n} value={n}>{n}</option>)}</select></div>
-      <div className="form-group"><label className="form-label">Tee Times (one per line)</label><textarea className="form-input" rows={5} value={teeTimes} onChange={e=>setTeeTimes(e.target.value)} style={{resize:"vertical"}}/></div>
-      <button className="btn btn-primary btn-full" onClick={handleCreate}>Create Event</button>
+      <div className="form-group"><label className="form-label">Tee Times (one per line)</label><textarea className="form-input" rows={4} value={teeTimes} onChange={e=>setTeeTimes(e.target.value)} style={{resize:"vertical"}}/></div>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <button className="btn btn-primary" style={{flex:1}} onClick={handleSave} disabled={!date||!courseName}>{editId?"Save Changes":"Create Event"}</button>
+        {editId&&<button className="btn btn-outline" onClick={resetForm}>Cancel</button>}
+      </div>
       <hr className="divider"/>
       <div className="card-title" style={{marginBottom:8}}>Invitation Email</div>
-      <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School – Upcoming Round&body=Hi all, join us for our next Saturday round. Please RSVP on the app!`} className="btn btn-outline btn-full" style={{textDecoration:"none",display:"flex"}}>✉ Send Invitation</a>
+      <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School – Upcoming Round&body=Hi all, join us for our next Saturday round. Please RSVP on the app!`} className="btn btn-outline btn-full" style={{textDecoration:"none",display:"flex",marginBottom:20}}>✉ Send Invitation</a>
+      <div className="card-title" style={{marginBottom:8}}>All Events</div>
+      {sortedEvents.map((ev:any)=>(
+        <div key={ev.event_id} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 0",borderBottom:"1px solid var(--border)"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:15}}>{formatDate(ev.date)}</div>
+            <div style={{fontSize:13,color:"var(--text-muted)"}}>{ev.course_name} · <span className={`pill ${ev.status==="Completed"?"pill-green":ev.status==="Upcoming"?"pill-gold":"pill-blue"}`} style={{fontSize:10}}>{ev.status}</span></div>
+          </div>
+          <button className="btn btn-sm btn-outline" onClick={()=>startEdit(ev)}>Edit</button>
+          <button className="btn btn-sm btn-danger" onClick={()=>deleteEvent(ev.event_id,ev.date)}>Del</button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1281,24 +1637,54 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
   const [selEventId,setSelEventId]=useState(events.find((e:any)=>e.status!=="Completed")?.event_id||"");
   const [pairings,setPairings]=useState<any[]|null>(null);
   const [confirmed,setConfirmed]=useState(false);
+  // 3e) Drag/move state: track which player is being moved
+  const [moving,setMoving]=useState<{gid:number,fromGroup:number}|null>(null);
+
   const selEvent=events.find((e:any)=>e.event_id===parseInt(selEventId));
   const eventSignups=selEvent?signups.filter((s:any)=>s.event_id===selEvent.event_id&&s.attending==="Yes"):[];
-  const runPairings=()=>{const a=eventSignups.map((s:any)=>({golfer_id:s.golfer_id,sponsor_golfer_id:s.sponsor_golfer_id}));setPairings(runPairingEngine(a,selEvent.tee_times));setConfirmed(false);};
+
+  // Load existing confirmed pairings into local state for editing
+  useEffect(()=>{
+    if(!selEvent||selEvent.status!=="Pairings Set")return;
+    const grouped:Record<string,number[]>={};
+    eventSignups.forEach((s:any)=>{
+      if(!s.assigned_tee_time)return;
+      (grouped[s.assigned_tee_time]=grouped[s.assigned_tee_time]||[]).push(s.golfer_id);
+    });
+    const loaded=Object.entries(grouped).map(([teeTime,players])=>({teeTime,players}));
+    if(loaded.length>0){setPairings(loaded);setConfirmed(true);}
+  },[selEventId]);
+
+  const runPairings=()=>{
+    const a=eventSignups.map((s:any)=>({golfer_id:s.golfer_id,sponsor_golfer_id:s.sponsor_golfer_id}));
+    setPairings(runPairingEngine(a,selEvent.tee_times));
+    setConfirmed(false);setMoving(null);
+  };
+
+  // 3e) Move a player to a different group
+  const movePlayer=(gid:number,fromGroup:number,toGroup:number)=>{
+    if(!pairings)return;
+    setPairings(prev=>{
+      const next=prev!.map(g=>({...g,players:[...g.players]}));
+      next[fromGroup].players=next[fromGroup].players.filter((id:number)=>id!==gid);
+      next[toGroup].players=[...next[toGroup].players,gid];
+      return next;
+    });
+    setMoving(null);
+  };
+
   const confirmPairings=()=>{
     if(!pairings||!selEvent)return;
     const teeMap:Record<number,string>={};
     pairings.forEach(g=>g.players.forEach((gid:number)=>{teeMap[gid]=g.teeTime;}));
     setSignups((p:any)=>p.map((s:any)=>{
       if(s.event_id!==selEvent.event_id||!teeMap[s.golfer_id])return s;
-      const g=golfers.find((x:any)=>x.golfer_id===s.golfer_id);
-      const cid=s.tee_box_course_id||courses.filter((c:any)=>c.course_name===selEvent.course_name)[0]?.course_id;
-      const tee=courses.find((c:any)=>c.course_id===cid);
-      const ph=g&&tee?calcPlayingHandicap(g.current_handicap_index,tee.tee_slope,tee.tee_rating,tee.par):null;
-      return{...s,assigned_tee_time:teeMap[s.golfer_id],playing_handicap:ph};
+      return{...s,assigned_tee_time:teeMap[s.golfer_id]};
     }));
     setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Pairings Set"}:e));
-    setConfirmed(true); showSuccess("Pairings confirmed");
+    setConfirmed(true);setMoving(null);showSuccess("Pairings confirmed");
   };
+
   const buildBody=()=>{
     if(!pairings||!selEvent)return"";
     let b=`Saturday School – Pairings\n${formatDate(selEvent.date)} @ ${selEvent.course_name}\n\n`;
@@ -1306,39 +1692,71 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
       b+=`Group ${i+1} – Tee: ${g.teeTime}\n`;
       g.players.forEach((gid:number)=>{
         const gl=golfers.find((x:any)=>x.golfer_id===gid);
-        const su=signups.find((s:any)=>s.event_id===selEvent.event_id&&s.golfer_id===gid);
-        const tee=courses.find((c:any)=>c.course_id===su?.tee_box_course_id);
-        const ph=gl&&tee?calcPlayingHandicap(gl.current_handicap_index,tee.tee_slope,tee.tee_rating,tee.par):"—";
-        b+=`  • ${gl?.first_name} ${gl?.last_name}${gl?.is_guest?" (Guest)":""} — HCP ${ph}\n`;
+        b+=`  • ${gl?.first_name} ${gl?.last_name}${gl?.is_guest?" (Guest)":""}\n`;
       });b+="\n";
     });
     return b;
   };
+
   const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
+
   return(
     <div>
       <div className="card-title" style={{marginBottom:12}}>Pairing Engine</div>
-      <div className="form-group"><label className="form-label">Event</label><select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setPairings(null);setConfirmed(false);}}><option value="">Select event…</option>{events.filter((e:any)=>e.status!=="Completed").map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}</select></div>
-      {selEvent&&<div className="card" style={{padding:"10px 14px",marginBottom:12}}><div className="info-row"><span className="info-key">Confirmed players</span><span className="info-val" style={{color:"var(--green-700)",fontWeight:700}}>{eventSignups.length}</span></div><div className="info-row"><span className="info-key">Tee times</span><span className="info-val">{selEvent.tee_times.join(" · ")}</span></div><div className="info-row"><span className="info-key">Groups</span><span className="info-val">{eventSignups.length>0?Math.ceil(eventSignups.length/4):"—"}</span></div></div>}
-      <button className="btn btn-gold btn-full" onClick={runPairings} disabled={!selEvent||eventSignups.length<2}>🎲 Generate Pairings</button>
+      <div className="form-group"><label className="form-label">Event</label>
+        <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setPairings(null);setConfirmed(false);setMoving(null);}}>
+          <option value="">Select event…</option>
+          {events.filter((e:any)=>e.status!=="Completed").map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
+        </select>
+      </div>
+      {selEvent&&<div className="card" style={{padding:"10px 14px",marginBottom:12}}>
+        <div className="info-row"><span className="info-key">Confirmed players</span><span className="info-val" style={{color:"var(--green-700)",fontWeight:700}}>{eventSignups.length}</span></div>
+        <div className="info-row"><span className="info-key">Tee times</span><span className="info-val">{selEvent.tee_times.join(" · ")}</span></div>
+        <div className="info-row"><span className="info-key">Status</span><span className="pill pill-gold">{selEvent.status}</span></div>
+      </div>}
+      <button className="btn btn-gold btn-full" onClick={runPairings} disabled={!selEvent||eventSignups.length<2}>🎲 {confirmed?"Re-generate Pairings":"Generate Pairings"}</button>
+
       {pairings&&(
         <div style={{marginTop:14}}>
+          {/* 3e) Adjustment hint */}
+          <div style={{fontSize:13,color:"var(--text-muted)",marginBottom:8}}>
+            {moving
+              ?<span style={{color:"var(--gold-700)",fontWeight:600}}>Tap a group to move {golferName(golfers,moving.gid).split(" ")[0]} there · <button style={{background:"none",border:"none",color:"var(--red-600)",cursor:"pointer",fontSize:13,fontWeight:600}} onClick={()=>setMoving(null)}>Cancel</button></span>
+              :"Tap a player name to move them to another group"}
+          </div>
+
           {pairings.map((group:any,i:number)=>(
-            <div key={i} className="pairing-card">
-              <div className="pairing-header"><span className="pairing-time">⏱ {group.teeTime}</span><span className="pairing-group">Group {i+1} · {group.players.length}</span></div>
+            <div key={i} className="pairing-card" style={moving&&moving.fromGroup!==i?{borderColor:"var(--green-400)",cursor:"pointer"}:{}}>
+              <div
+                className="pairing-header"
+                onClick={()=>{if(moving&&moving.fromGroup!==i)movePlayer(moving.gid,moving.fromGroup,i);}}
+                style={{cursor:moving&&moving.fromGroup!==i?"pointer":"default"}}
+              >
+                <span className="pairing-time">⏱ {group.teeTime}</span>
+                <span className="pairing-group">Group {i+1} · {group.players.length} players{moving&&moving.fromGroup!==i?" — tap to move here":""}</span>
+              </div>
               <div className="pairing-body">
                 {group.players.map((gid:number)=>{
                   const g=golfers.find((x:any)=>x.golfer_id===gid);
-                  const su=signups.find((s:any)=>s.event_id===selEvent?.event_id&&s.golfer_id===gid);
-                  const tee=courses.find((c:any)=>c.course_id===su?.tee_box_course_id);
-                  const ph=g&&tee?calcPlayingHandicap(g.current_handicap_index,tee.tee_slope,tee.tee_rating,tee.par):"—";
-                  return(<div key={gid} className="pairing-player"><div>{g?.first_name} {g?.last_name}{g?.is_guest&&<span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px",marginLeft:5,color:"var(--gold-800)"}}>guest</span>}{su?.sponsor_golfer_id&&<span style={{fontSize:11,color:"var(--text-muted)",marginLeft:4}}>w/{golferName(golfers,su.sponsor_golfer_id).split(" ")[0]}</span>}</div><span className="pairing-hcp">HCP {ph}{tee?` (${tee.tee_box_name})`:""}</span></div>);
+                  const isMoving=moving?.gid===gid;
+                  return(
+                    <div key={gid} className="pairing-player"
+                      style={{background:isMoving?"var(--gold-50)":undefined,cursor:"pointer"}}
+                      onClick={()=>{if(!moving)setMoving({gid,fromGroup:i});}}
+                    >
+                      <div>
+                        <span style={{fontWeight:500,color:isMoving?"var(--gold-700)":undefined}}>{g?.first_name} {g?.last_name}{isMoving?" ✋":""}</span>
+                        {g?.is_guest&&<span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px",marginLeft:5,color:"var(--gold-800)"}}>guest</span>}
+                      </div>
+                      <span style={{fontSize:13,color:"var(--text-muted)"}}>HCP {g?.current_handicap_index?.toFixed(1)}</span>
+                    </div>
+                  );
                 })}
               </div>
             </div>
           ))}
           <div style={{display:"flex",gap:8,marginTop:10}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={confirmPairings} disabled={confirmed}>{confirmed?"✓ Confirmed":"Confirm"}</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={confirmPairings}>{confirmed?"✓ Update Pairings":"Confirm Pairings"}</button>
             <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School Pairings – ${formatDate(selEvent?.date)}&body=${encodeURIComponent(buildBody())}`} className="btn btn-outline" style={{flex:1,textDecoration:"none"}}>✉ Email</a>
           </div>
         </div>
