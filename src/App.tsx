@@ -204,7 +204,7 @@ const CSS = `
   /* ── RSVP ── */
   .rsvp-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border);gap:8px;}
   .rsvp-row:last-child{border-bottom:none;}
-  .rsvp-name{font-size:16px;font-weight:500;flex:1;min-width:0;text-align:left;}
+  .rsvp-name{font-size:16px;font-weight:500;flex:1;min-width:0;}
   .rsvp-actions{display:flex;gap:5px;flex-shrink:0;}
   .rsvp-btn{padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1.5px solid;cursor:pointer;transition:all 0.15s;background:transparent;}
   .rsvp-btn.yes{border-color:var(--green-500);color:var(--green-700);}
@@ -378,13 +378,18 @@ const EXTRA_ROUNDS_BY_GOLFER:Record<number,{pts:number,season:number}[]> = {
 // BUSINESS LOGIC
 // ============================================================
 function calcPlayingHandicap(hcp:number,slope:number,rating:number,par:number){return Math.round(hcp*(slope/113)+(rating-par));}
-function calcHoleNetScore(gross:number,phcp:number,si:number){const b=Math.floor(phcp/18),e=phcp%18;return gross-b-(si<=e?1:0);}
+function calcHoleNetScore(gross:number,phcp:number,si:number){
+  if(!gross||isNaN(gross)||!phcp&&phcp!==0)return gross;
+  const b=Math.floor(phcp/18),e=phcp%18;
+  return gross-b-(si<=e?1:0);
+}
 function calcStablefordPoints(net:number,par:number){const d=net-par;if(d<=-2)return 4;if(d===-1)return 3;if(d===0)return 2;if(d===1)return 1;return 0;}
 function calcHoleScores(grossScores:any[],phcp:number,course:any){
   return grossScores.map((g,i)=>{
-    const gross=g?parseInt(String(g)):null;
-    if(!gross)return{gross:null,net:null,points:null};
+    const gross=g&&String(g).trim()!=""?parseInt(String(g)):null;
+    if(!gross||isNaN(gross))return{gross:null,net:null,points:null};
     const net=calcHoleNetScore(gross,phcp,course.hole_stroke_indices[i]);
+    if(isNaN(net))return{gross,net:null,points:null};
     return{gross,net,points:calcStablefordPoints(net,course.hole_pars[i])};
   });
 }
@@ -443,10 +448,10 @@ export default function App(){
         </header>
         <main className="main-content">
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
-          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} charityDonations={charityDonations} setCharityDonations={setCharityDonations} showSuccess={showSuccess}/>}
+          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} showSuccess={showSuccess}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} events={events} signups={signups} setSignups={setSignups} showSuccess={showSuccess} adminMode={adminMode}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} leaderboard={leaderboard} setLeaderboard={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScores} setEvents={setEvents} showSuccess={showSuccess}/>}
-          {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfers} courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} leaderboard={leaderboard} showSuccess={showSuccess}/>}
+          {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfers} courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} leaderboard={leaderboard} charityDonations={charityDonations} setCharityDonations={setCharityDonations} showSuccess={showSuccess}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard}/>}
         </main>
       </div>
@@ -457,10 +462,10 @@ export default function App(){
 // ============================================================
 // HELPERS – season data builder
 // ============================================================
-function buildSeasonRounds(golfers:any[],leaderboard:any[],season:number|"all"){
+function buildSeasonRounds(golfers:any[],leaderboard:any[],season:number){
   const byG:Record<number,number[]>={};
   leaderboard.forEach((r:any)=>{
-    if(season!=="all"&&r.season!==season)return;
+    if(r.season!==season)return;
     const g=golfers.find((x:any)=>x.golfer_id===r.golfer_id);
     if(!g||g.is_guest)return;
     (byG[r.golfer_id]=byG[r.golfer_id]||[]).push(r.total_stableford_points);
@@ -469,38 +474,39 @@ function buildSeasonRounds(golfers:any[],leaderboard:any[],season:number|"all"){
     const id=parseInt(gid);
     const g=golfers.find((x:any)=>x.golfer_id===id);
     if(!g||g.is_guest)return;
-    rounds.forEach(r=>{if(season==="all"||r.season===season)(byG[id]=byG[id]||[]).push(r.pts);});
+    (rounds as any[]).forEach((r:any)=>{if(r.season===season)(byG[id]=byG[id]||[]).push(r.pts);});
   });
   return byG;
 }
 
-function golferStats(golfers:any[],leaderboard:any[],gid:number,season:number|"all"){
-  const entries=leaderboard.filter((r:any)=>r.golfer_id===gid&&(season==="all"||r.season===season));
-  const extra=(EXTRA_ROUNDS_BY_GOLFER[gid]||[]).filter(r=>season==="all"||r.season===season).map(r=>r.pts);
+function golferStats(golfers:any[],leaderboard:any[],gid:number,season:number){
+  const entries=leaderboard.filter((r:any)=>r.golfer_id===gid&&r.season===season);
+  const extra=(EXTRA_ROUNDS_BY_GOLFER[gid]||[]).filter((r:any)=>r.season===season).map((r:any)=>r.pts);
   const allPts=[...entries.map((r:any)=>r.total_stableford_points),...extra];
   const wins=entries.filter((r:any)=>r.weekly_payout_won>0&&r.weekly_payout_won===Math.max(...leaderboard.filter((x:any)=>x.event_id===r.event_id).map((x:any)=>x.weekly_payout_won))).length;
   const seconds=entries.filter((r:any)=>{
     const evEntries=[...leaderboard.filter((x:any)=>x.event_id===r.event_id)].sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
     return evEntries[1]?.golfer_id===gid;
   }).length;
-  const totalEarnings=entries.reduce((s:number,r:any)=>s+r.weekly_payout_won+r.skins_payout_won,0);
-  return{rounds:allPts.length,avg:allPts.length?allPts.reduce((a,b)=>a+b,0)/allPts.length:0,best:allPts.length?Math.max(...allPts):0,worst:allPts.length?Math.min(...allPts):0,wins,seconds,totalEarnings};
+  const stablefordWon=entries.reduce((s:number,r:any)=>s+r.weekly_payout_won,0);
+  const netEarnings=stablefordWon-(allPts.length*20);
+  return{rounds:allPts.length,avg:allPts.length?allPts.reduce((a,b)=>a+b,0)/allPts.length:0,best:allPts.length?Math.max(...allPts):0,worst:allPts.length?Math.min(...allPts):0,wins,seconds,netEarnings};
 }
 
 // ============================================================
 // LEADERBOARD TAB
 // ============================================================
-function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,charityDonations,setCharityDonations,showSuccess}:any){
+function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,showSuccess}:any){
   const [subTab,setSubTab]=useState("season");
   const [selEventId,setSelEventId]=useState<number|null>(null);
   const [expandedId,setExpandedId]=useState<number|null>(null);
 
-  // Season selector
-  const allSeasons=[...new Set([...events.map((e:any)=>e.season),...leaderboard.map((r:any)=>r.season)])].sort((a,b)=>b-a);
-  const [selSeason,setSelSeason]=useState<number|"all">(allSeasons[0]||2026);
+  // 1) Season selector — dropdown only, no "all time"
+  const allSeasons=[...new Set([...events.map((e:any)=>e.season),...leaderboard.map((r:any)=>r.season)])].sort((a:any,b:any)=>b-a) as number[];
+  const [selSeason,setSelSeason]=useState<number>(allSeasons[0]||2026);
 
   const completedEvents=[...events].filter((e:any)=>e.status==="Completed").sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
-  const seasonEvents=selSeason==="all"?completedEvents:completedEvents.filter((e:any)=>e.season===selSeason);
+  const seasonEvents=completedEvents.filter((e:any)=>e.season===selSeason);
   const displayEvent=selEventId?completedEvents.find((e:any)=>e.event_id===selEventId):seasonEvents[0];
 
   const eventEntries=displayEvent
@@ -515,50 +521,53 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
   // Check if skins are calculable for this event (all H×H)
   const skinsEligible=eventEntries.length>0&&eventEntries.every((e:any)=>e.entry_type==="Hole-by-Hole");
 
-  // Season avg
+  // 1a) Show ALL golfers — flag <15 rounds as unqualified
   const byG=buildSeasonRounds(golfers,leaderboard,selSeason);
-  const seasonAvg=Object.entries(byG).filter(([,r])=>r.length>=15)
-    .map(([gid,r])=>({golfer_id:parseInt(gid),avg:r.reduce((a,b)=>a+b,0)/r.length,rounds:r.length}))
+  const seasonAvg=Object.entries(byG)
+    .map(([gid,r])=>({golfer_id:parseInt(gid),avg:r.reduce((a,b)=>a+b,0)/r.length,rounds:r.length,qualified:r.length>=15}))
     .sort((a,b)=>b.avg-a.avg);
 
-  const top15Avg=Object.entries(byG).filter(([,r])=>r.length>=15)
-    .map(([gid,r])=>{const top=[...r].sort((a,b)=>b-a).slice(0,15);return{golfer_id:parseInt(gid),avg:top.reduce((a,b)=>a+b,0)/top.length,rounds:r.length};})
+  const top15Avg=Object.entries(byG)
+    .map(([gid,r])=>{const top=[...r].sort((a,b)=>b-a).slice(0,15);return{golfer_id:parseInt(gid),avg:top.reduce((a,b)=>a+b,0)/top.length,rounds:r.length,qualified:r.length>=15};})
     .sort((a,b)=>b.avg-a.avg);
 
+  // 3) Remove Payouts from leaderboard — now in Admin
   const tabs=[{id:"season",label:"Season Avg"},{id:"top15",label:"Top 15 Avg"},{id:"weekly",label:"Weekly"}];
-  if(adminMode)tabs.push({id:"finance",label:"Payouts"});
 
   // Render ESPN-style leaderboard row
-  const renderLbRow=(row:{golfer_id:number,avg?:number,rounds?:number,pts?:number,weekly_payout_won?:number,skins_payout_won?:number,entry_type?:string,summary_id?:number},rank:number,mode:"season"|"weekly")=>{
+  const renderLbRow=(row:any,rank:number,mode:"season"|"weekly")=>{
     const gid=row.golfer_id;
     const g=golfers.find((x:any)=>x.golfer_id===gid);
     const isExpanded=expandedId===gid;
     const stats=golferStats(golfers,leaderboard,gid,selSeason);
     const rankClass=rank===1?"r1":rank===2?"r2":rank===3?"r3":"";
 
-    // Hole-by-hole scores for weekly detail
     const weeklyEntry=mode==="weekly"?leaderboard.find((r:any)=>r.event_id===displayEvent?.event_id&&r.golfer_id===gid):null;
     const hbhScores=weeklyEntry?.entry_type==="Hole-by-Hole"
       ?holeScores.filter((hs:any)=>hs.summary_id===weeklyEntry.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number)
       :[];
     const signup=displayEvent?signups.find((s:any)=>s.event_id===displayEvent.event_id&&s.golfer_id===gid):null;
     const teePlayed=signup?.tee_box_course_id?courses.find((c:any)=>c.course_id===signup.tee_box_course_id):null;
+    const weeklyEarned=weeklyEntry?(weeklyEntry.weekly_payout_won+weeklyEntry.skins_payout_won):0;
 
     return(
       <div key={gid}>
         <div className={`lb-row${isExpanded?" expanded":""}`} onClick={()=>setExpandedId(isExpanded?null:gid)}>
           <div className={`lb-rank-cell ${rankClass}`}>{rank}</div>
+          {/* 2) no lb-name-sub */}
           <div className="lb-name-cell">
             <div className="lb-name-main">{g?`${g.first_name} ${g.last_name}`:"Unknown"}</div>
-            
           </div>
+          {/* 2) no lb-score-label */}
           <div className="lb-score-cell">
             <div className="lb-score-big">{mode==="season"?(row.avg as number).toFixed(1):mode==="weekly"?(row as any).total_stableford_points:""}</div>
-            
           </div>
+          {/* 2) no lb-thru-label; 1a) asterisk if unqualified; weekly shows $$$ */}
           <div className="lb-thru-cell">
-            <div className="lb-thru-big">{mode==="weekly"?(hbhScores.length>0?hbhScores.length:"—"):row.rounds}</div>
-            
+            {mode==="season"
+              ?<div className="lb-thru-big">{row.rounds}{!row.qualified?"*":""}</div>
+              :<div className="lb-thru-big" style={{color:weeklyEarned>0?"var(--gold-600)":"var(--text-muted)",fontSize:15}}>{weeklyEarned>0?`$${weeklyEarned.toFixed(0)}`:"—"}</div>
+            }
           </div>
         </div>
         {isExpanded&&(
@@ -566,17 +575,23 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
             {mode==="season"?(
               <div className="lb-detail-grid">
                 <div className="lb-detail-item"><div className="lb-detail-key">HCP Index</div><div className="lb-detail-val">{g?.current_handicap_index?.toFixed(1)}</div></div>
-                <div className="lb-detail-item"><div className="lb-detail-key">Rounds</div><div className="lb-detail-val">{stats.rounds}</div></div>
+                <div className="lb-detail-item"><div className="lb-detail-key">Rounds</div><div className="lb-detail-val">{stats.rounds}{!row.qualified?"*":""}</div></div>
                 <div className="lb-detail-item"><div className="lb-detail-key">1st Place Wins</div><div className="lb-detail-val">{stats.wins}</div></div>
                 <div className="lb-detail-item"><div className="lb-detail-key">2nd Place</div><div className="lb-detail-val">{stats.seconds}</div></div>
                 <div className="lb-detail-item"><div className="lb-detail-key">Best Round</div><div className="lb-detail-val" style={{color:"var(--gold-600)"}}>{stats.best}</div></div>
                 <div className="lb-detail-item"><div className="lb-detail-key">Worst Round</div><div className="lb-detail-val" style={{color:"var(--red-600)"}}>{stats.worst}</div></div>
-                <div className="lb-detail-item" style={{gridColumn:"1/-1"}}><div className="lb-detail-key">Total Earnings</div><div className="lb-detail-val" style={{color:"var(--green-700)"}}>${stats.totalEarnings.toFixed(0)}</div></div>
+                {/* 1) Net Earnings only — no breakdown of stableford won / entry fees */}
+                <div className="lb-detail-item" style={{gridColumn:"1/-1"}}>
+                  <div className="lb-detail-key">Net Earnings (stableford − entry fees)</div>
+                  <div className="lb-detail-val" style={{color:stats.netEarnings>=0?"var(--green-700)":"var(--red-600)",fontSize:22}}>
+                    {stats.netEarnings>=0?"+$"+stats.netEarnings.toFixed(0):"-$"+Math.abs(stats.netEarnings).toFixed(0)}
+                  </div>
+                </div>
               </div>
             ):(
               <>
                 <div className="lb-detail-grid" style={{marginBottom:hbhScores.length>0?10:0}}>
-                  <div className="lb-detail-item"><div className="lb-detail-key">Playing HCP</div><div className="lb-detail-val">{signup?.playing_handicap??teePlayed?calcPlayingHandicap(g?.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"—"}</div></div>
+                  <div className="lb-detail-item"><div className="lb-detail-key">Playing HCP</div><div className="lb-detail-val">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&teePlayed?calcPlayingHandicap(g.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"—")}</div></div>
                   <div className="lb-detail-item"><div className="lb-detail-key">Tees Played</div><div className="lb-detail-val">{teePlayed?.tee_box_name??"—"}</div></div>
                   {weeklyEntry?.weekly_payout_won>0&&<div className="lb-detail-item"><div className="lb-detail-key">Stableford Win</div><div className="lb-detail-val" style={{color:"var(--gold-600)"}}>${weeklyEntry.weekly_payout_won}</div></div>}
                   {weeklyEntry?.skins_payout_won>0&&<div className="lb-detail-item"><div className="lb-detail-key">Skins Won</div><div className="lb-detail-val" style={{color:"var(--green-700)"}}>${weeklyEntry.skins_payout_won}</div></div>}
@@ -588,23 +603,16 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                       <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Hole by Hole</div>
                       <div className="hbh-grid">
                         {[...Array(9)].map((_,i)=><div key={i} className="hbh-cell header">{i+1}</div>)}
-                        {hbhScores.slice(0,9).map((hs:any)=>{
-                          const p=hs.stableford_points;
-                          const cls=p>=4?"eagle":p===3?"birdie":p===2?"par":p===1?"bogey":"dbl";
-                          return<div key={hs.hole_number} className={`hbh-cell ${cls}`}>{hs.gross_score}<span style={{fontSize:9,display:"block",lineHeight:1}}>{p}pt</span></div>;
-                        })}
+                        {hbhScores.slice(0,9).map((hs:any)=>{const p=hs.stableford_points;const cls=p>=4?"eagle":p===3?"birdie":p===2?"par":p===1?"bogey":"dbl";return<div key={hs.hole_number} className={`hbh-cell ${cls}`}>{hs.gross_score}<span style={{fontSize:9,display:"block",lineHeight:1}}>{p}pt</span></div>;})}
                       </div>
                       {hbhScores.length>9&&<div className="hbh-grid" style={{marginTop:3}}>
                         {[...Array(9)].map((_,i)=><div key={i} className="hbh-cell header">{i+10}</div>)}
-                        {hbhScores.slice(9,18).map((hs:any)=>{
-                          const p=hs.stableford_points;
-                          const cls=p>=4?"eagle":p===3?"birdie":p===2?"par":p===1?"bogey":"dbl";
-                          return<div key={hs.hole_number} className={`hbh-cell ${cls}`}>{hs.gross_score}<span style={{fontSize:9,display:"block",lineHeight:1}}>{p}pt</span></div>;
-                        })}
+                        {hbhScores.slice(9,18).map((hs:any)=>{const p=hs.stableford_points;const cls=p>=4?"eagle":p===3?"birdie":p===2?"par":p===1?"bogey":"dbl";return<div key={hs.hole_number} className={`hbh-cell ${cls}`}>{hs.gross_score}<span style={{fontSize:9,display:"block",lineHeight:1}}>{p}pt</span></div>;})}
                       </div>}
                     </div>
                   );
                 })()}
+                {hbhScores.length===0&&<div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",marginTop:4}}>Total-only entry — no hole-by-hole data</div>}
               </>
             )}
           </div>
@@ -616,71 +624,62 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
   return(
     <div>
       <div className="section-title">Leaderboard</div>
-      <div className="section-sub">Saturday School · All Seasons</div>
 
-      {/* Year filter */}
-      <div className="year-row">
-        <button className={`year-pill${selSeason==="all"?" active":""}`} onClick={()=>setSelSeason("all")}>All Time</button>
-        {allSeasons.map(y=><button key={y} className={`year-pill${selSeason===y?" active":""}`} onClick={()=>setSelSeason(y)}>{y}</button>)}
+      {/* 1) Season dropdown */}
+      <div className="form-group" style={{marginBottom:12}}>
+        <select className="form-select" value={selSeason} onChange={e=>{setSelSeason(parseInt(e.target.value));setSelEventId(null);setExpandedId(null);}}>
+          {allSeasons.map(y=><option key={y} value={y}>{y} Season</option>)}
+        </select>
       </div>
 
       <div className="tab-sub">
         {tabs.map(t=><button key={t.id} className={`tab-sub-btn${subTab===t.id?" active":""}`} onClick={()=>{setSubTab(t.id);setExpandedId(null);}}>{t.label}</button>)}
       </div>
 
-      {/* ── SEASON AVG ── */}
       {subTab==="season"&&(
         <>
-          <div style={{fontSize:14,color:"var(--text-muted)",marginBottom:12}}>Season average · Min 15 rounds · Guests excluded</div>
-          {seasonAvg.length===0&&<div className="empty-state"><div className="empty-text">No qualifying golfers yet</div><div className="empty-sub">Requires 15+ rounds</div></div>}
+          <div style={{fontSize:13,color:"var(--text-muted)",marginBottom:10}}><span style={{color:"var(--gold-700)"}}>*</span> = fewer than 15 rounds (not yet qualified)</div>
+          {seasonAvg.length===0&&<div className="empty-state"><div className="empty-text">No rounds recorded</div></div>}
           {seasonAvg.length>0&&(
             <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
               <div className="lb-header">
-                <div className="lb-header-cell">POS</div>
-                <div className="lb-header-cell">Golfer</div>
-                <div className="lb-header-cell right">Avg</div>
-                <div className="lb-header-cell right">Rnds</div>
+                <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
+                <div className="lb-header-cell right">Avg</div><div className="lb-header-cell right">Rnds</div>
               </div>
-              {seasonAvg.map((row,i)=>renderLbRow({golfer_id:row.golfer_id,avg:row.avg,rounds:row.rounds},i+1,"season"))}
+              {seasonAvg.map((row:any,i:number)=>renderLbRow(row,i+1,"season"))}
             </div>
           )}
         </>
       )}
 
-      {/* ── TOP 15 AVG ── */}
       {subTab==="top15"&&(
         <>
-          <div style={{fontSize:14,color:"var(--text-muted)",marginBottom:12}}>Best 15 rounds average · Min 15 rounds · Guests excluded</div>
+          <div style={{fontSize:13,color:"var(--text-muted)",marginBottom:10}}><span style={{color:"var(--gold-700)"}}>*</span> = fewer than 15 rounds (not yet qualified)</div>
+          {top15Avg.length===0&&<div className="empty-state"><div className="empty-text">No rounds recorded</div></div>}
           {top15Avg.length>0&&(
             <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
               <div className="lb-header">
-                <div className="lb-header-cell">POS</div>
-                <div className="lb-header-cell">Golfer</div>
-                <div className="lb-header-cell right">Avg</div>
-                <div className="lb-header-cell right">Rnds</div>
+                <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
+                <div className="lb-header-cell right">Avg</div><div className="lb-header-cell right">Rnds</div>
               </div>
-              {top15Avg.map((row,i)=>renderLbRow({golfer_id:row.golfer_id,avg:row.avg,rounds:row.rounds},i+1,"season"))}
+              {top15Avg.map((row:any,i:number)=>renderLbRow(row,i+1,"season"))}
             </div>
           )}
         </>
       )}
 
-      {/* ── WEEKLY ── */}
       {subTab==="weekly"&&(
         <>
           <div className="form-group">
             <label className="form-label">Event</label>
-            <select className="form-select" value={displayEvent?.event_id||""} onChange={e=>setSelEventId(parseInt(e.target.value))}>
+            <select className="form-select" value={displayEvent?.event_id||""} onChange={e=>{setSelEventId(parseInt(e.target.value));setExpandedId(null);}}>
               {seasonEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
             </select>
           </div>
           {displayEvent&&(
             <>
               {!skinsEligible&&eventEntries.some((e:any)=>e.entry_type==="Total Only")&&(
-                <div className="skins-warning">
-                  <span>⚠</span>
-                  <span>Mixed score entry — skins cannot be calculated as not all players submitted hole-by-hole scores.</span>
-                </div>
+                <div className="skins-warning"><span>⚠</span><span>Mixed entry — skins cannot be calculated until all players have hole-by-hole scores.</span></div>
               )}
               <div className="stat-grid">
                 <div className="stat-card"><div className="stat-value">{paidEntries.length}</div><div className="stat-label">Players</div></div>
@@ -703,21 +702,16 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                 </div>
               )}
               <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
-                <div className="lb-header" style={{gridTemplateColumns:"36px 1fr 64px 56px"}}>
-                  <div className="lb-header-cell">POS</div>
-                  <div className="lb-header-cell">Golfer</div>
-                  <div className="lb-header-cell right">Pts</div>
-                  <div className="lb-header-cell right">Holes</div>
+                <div className="lb-header" style={{gridTemplateColumns:"36px 1fr 56px 62px"}}>
+                  <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
+                  <div className="lb-header-cell right">Pts</div><div className="lb-header-cell right">$$$</div>
                 </div>
-                {eventEntries.map((entry:any,i:number)=>renderLbRow({...entry,rounds:entry.total_stableford_points},i+1,"weekly"))}
+                {eventEntries.map((entry:any,i:number)=>renderLbRow(entry,i+1,"weekly"))}
               </div>
             </>
           )}
         </>
       )}
-
-      {/* ── PAYOUTS (admin only) ── */}
-      {subTab==="finance"&&adminMode&&<FinanceView golfers={golfers} leaderboard={leaderboard} events={seasonEvents} charityDonations={charityDonations} setCharityDonations={setCharityDonations} showSuccess={showSuccess}/>}
     </div>
   );
 }
@@ -1087,7 +1081,7 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
         const g=golfers.find((x:any)=>x.golfer_id===parseInt(scorer.golferId));
         const course=courses.find((c:any)=>c.course_id===parseInt(scorer.courseId));
         const phcp=g&&course?calcPlayingHandicap(g.current_handicap_index,course.tee_slope,course.tee_rating,course.par):null;
-        const holeCalcs=course&&mode==="hole"?calcHoleScores(scorer.grossScores,phcp||0,course):[];
+        const holeCalcs=g&&course&&mode==="hole"?calcHoleScores(scorer.grossScores,phcp??0,course):[];
         const calcTotal=holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
         const alreadyIn=selEvent&&scorer.golferId?leaderboard.some((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===parseInt(scorer.golferId)):false;
 
@@ -1123,7 +1117,7 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
                 <input className="form-input" type="number" min="0" max="72" placeholder="e.g. 36" value={scorer.totalPts} onChange={e=>updateScorer(idx,"totalPts",e.target.value)}/>
               </div>
             )}
-            {mode==="hole"&&course&&(
+            {mode==="hole"&&g&&course&&(
               <div className="score-grid">
                 <table className="score-table">
                   <thead><tr><th>Hole</th><th>Par</th><th>SI</th><th>Gross</th><th>Net</th><th>Pts</th></tr></thead>
@@ -1169,21 +1163,35 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
 // ============================================================
 // ADMIN TAB
 // ============================================================
-function AdminTab({golfers,setGolfers,courses,events,setEvents,signups,setSignups,leaderboard,showSuccess}:any){
-  const [subTab,setSubTab]=useState("hcp");
+function AdminTab({golfers,setGolfers,courses,events,setEvents,signups,setSignups,leaderboard,charityDonations,setCharityDonations,showSuccess}:any){
+  // 3a) Order: events, pairings, handicaps, course hcps, scores, payouts, courses, roster
+  const [subTab,setSubTab]=useState("events");
   return(
     <div>
       <div className="section-title">Admin</div>
       <div className="section-sub">League management tools</div>
       <div className="tab-sub">
-        {[{id:"hcp",label:"Handicaps"},{id:"coursehcp",label:"Course HCPs"},{id:"events",label:"Events"},{id:"pairings",label:"Pairings"}].map(t=>(
+        {[
+          {id:"events",label:"Events"},
+          {id:"pairings",label:"Pairings"},
+          {id:"hcp",label:"Handicaps"},
+          {id:"coursehcp",label:"Course HCPs"},
+          {id:"scores",label:"Scores"},
+          {id:"payouts",label:"Payouts"},
+          {id:"courses",label:"Courses"},
+          {id:"roster",label:"Roster"},
+        ].map(t=>(
           <button key={t.id} className={`tab-sub-btn${subTab===t.id?" active":""}`} onClick={()=>setSubTab(t.id)}>{t.label}</button>
         ))}
       </div>
-      {subTab==="hcp"&&<HandicapManager golfers={golfers} setGolfers={setGolfers} showSuccess={showSuccess}/>}
-      {subTab==="coursehcp"&&<CourseHcpSheet golfers={golfers} courses={courses} showSuccess={showSuccess}/>}
       {subTab==="events"&&<EventCreator courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} golfers={golfers} showSuccess={showSuccess}/>}
       {subTab==="pairings"&&<PairingDashboard golfers={golfers} courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} showSuccess={showSuccess}/>}
+      {subTab==="hcp"&&<HandicapManager golfers={golfers} setGolfers={setGolfers} showSuccess={showSuccess}/>}
+      {subTab==="coursehcp"&&<CourseHcpSheet golfers={golfers} courses={courses} showSuccess={showSuccess}/>}
+      {subTab==="scores"&&<div className="empty-state"><div className="empty-text">Score Correction</div><div className="empty-sub">Coming soon</div></div>}
+      {subTab==="payouts"&&<FinanceView golfers={golfers} leaderboard={leaderboard} events={[...events].filter((e:any)=>e.status==="Completed").sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime())} charityDonations={charityDonations} setCharityDonations={setCharityDonations} showSuccess={showSuccess}/>}
+      {subTab==="courses"&&<div className="empty-state"><div className="empty-text">Course Manager</div><div className="empty-sub">Coming soon</div></div>}
+      {subTab==="roster"&&<div className="empty-state"><div className="empty-text">Golfer Roster</div><div className="empty-sub">Coming soon</div></div>}
     </div>
   );
 }
@@ -1345,31 +1353,32 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
 function AnalyticsTab({golfers,courses,events,leaderboard}:any){
   const [subTab,setSubTab]=useState("course");
   const [selGolfer,setSelGolfer]=useState("");
-  const [selSeason,setSelSeason]=useState<number|"all">(2026);
+  const allSeasons=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
+  const [selSeason,setSelSeason]=useState<number>(allSeasons[0]||2026);
 
-  const allSeasons=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a);
   const courseNames=uniqueCourseNames(courses);
   const courseAvgs=courseNames.map(name=>{
-    const evIds=events.filter((e:any)=>e.course_name===name&&(selSeason==="all"||e.season===selSeason)).map((e:any)=>e.event_id);
+    const evIds=events.filter((e:any)=>e.course_name===name&&e.season===selSeason).map((e:any)=>e.event_id);
     const entries=leaderboard.filter((r:any)=>evIds.includes(r.event_id)&&!golfers.find((g:any)=>g.golfer_id===r.golfer_id)?.is_guest);
     const avg=entries.length?entries.reduce((s:number,r:any)=>s+r.total_stableford_points,0)/entries.length:0;
     return{name,avg,count:entries.length};
   });
   const scatterData=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").map((g:any)=>{
-    const rounds=[...leaderboard.filter((r:any)=>r.golfer_id===g.golfer_id&&(selSeason==="all"||r.season===selSeason)).map((r:any)=>r.total_stableford_points),...(EXTRA_ROUNDS_BY_GOLFER[g.golfer_id]||[]).filter(r=>selSeason==="all"||r.season===selSeason).map(r=>r.pts)];
+    const rounds=[...leaderboard.filter((r:any)=>r.golfer_id===g.golfer_id&&r.season===selSeason).map((r:any)=>r.total_stableford_points),...(EXTRA_ROUNDS_BY_GOLFER[g.golfer_id]||[]).filter((r:any)=>r.season===selSeason).map((r:any)=>r.pts)];
     if(!rounds.length)return null;
     return{golfer:g,hcp:g.current_handicap_index,avg:rounds.reduce((a:number,b:number)=>a+b,0)/rounds.length,rounds:rounds.length};
   }).filter(Boolean);
   const selG=golfers.find((g:any)=>g.golfer_id===parseInt(selGolfer));
-  const golferRounds=selG?[...leaderboard.filter((r:any)=>r.golfer_id===selG.golfer_id&&(selSeason==="all"||r.season===selSeason)).map((r:any)=>({pts:r.total_stableford_points,eid:r.event_id})),...(EXTRA_ROUNDS_BY_GOLFER[selG.golfer_id]||[]).filter(r=>selSeason==="all"||r.season===selSeason).map((r:any,i:number)=>({pts:r.pts,eid:-(i+1)}))].sort((a:any,b:any)=>a.eid-b.eid):[];
+  const golferRounds=selG?[...leaderboard.filter((r:any)=>r.golfer_id===selG.golfer_id&&r.season===selSeason).map((r:any)=>({pts:r.total_stableford_points,eid:r.event_id})),...(EXTRA_ROUNDS_BY_GOLFER[selG.golfer_id]||[]).filter((r:any)=>r.season===selSeason).map((r:any,i:number)=>({pts:r.pts,eid:-(i+1)}))].sort((a:any,b:any)=>a.eid-b.eid):[];
 
   return(
     <div>
       <div className="section-title">Analytics</div>
       <div className="section-sub">Performance breakdown</div>
-      <div className="year-row">
-        <button className={`year-pill${selSeason==="all"?" active":""}`} onClick={()=>setSelSeason("all")}>All Time</button>
-        {allSeasons.map((y:any)=><button key={y} className={`year-pill${selSeason===y?" active":""}`} onClick={()=>setSelSeason(y)}>{y}</button>)}
+      <div className="form-group" style={{marginBottom:12}}>
+        <select className="form-select" value={selSeason} onChange={e=>setSelSeason(parseInt(e.target.value))}>
+          {allSeasons.map(y=><option key={y} value={y}>{y} Season</option>)}
+        </select>
       </div>
       <div className="tab-sub">
         {[{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"},{id:"golfer",label:"Golfer History"}].map(t=>(
