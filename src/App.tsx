@@ -1487,7 +1487,7 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
                       <td style={{fontWeight:600}}>{holeIdx+1}</td>
                       <td>{refCourse?.hole_pars[holeIdx]}</td>
                       {activeScorersFull.map((s,si)=>{
-                        const h=s.holeCalcs[holeIdx]||{};
+                        const h=s.holeCalcs[holeIdx]||{} as {points?:number|null};
                         const pts=h.points;
                         return(
                           <td key={si} className={`score-input-cell ${ptsClass(pts)}`} style={{padding:"3px 2px"}}>
@@ -1816,7 +1816,7 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
                 <thead><tr><th>Hole</th><th>Par</th><th>SI</th><th>Gross</th><th>Pts</th></tr></thead>
                 <tbody>
                   {Array.from({length:18},(_,i)=>{
-                    const h=holeCalcs[i]||{};
+                    const h=holeCalcs[i]||{} as {points?:number|null};
                     return(<tr key={i}>
                       <td style={{fontWeight:600}}>{i+1}</td>
                       <td>{corrCourse.hole_pars[i]}</td>
