@@ -1,6 +1,54 @@
 import { useState, useEffect, useCallback } from "react";
 
 // ============================================================
+// SUPABASE CLIENT
+// Paste your project URL and anon key here (or use env vars).
+// Get these from: Supabase dashboard → Settings → API
+// ============================================================
+const SUPABASE_URL  = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL)  || "https://YOUR_PROJECT_ID.supabase.co";
+const SUPABASE_KEY  = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_ANON_KEY) || "YOUR_ANON_KEY_HERE";
+
+// Minimal Supabase REST client (no npm install needed for Claude artifact preview)
+// In your real Netlify project, replace this with: import { createClient } from '@supabase/supabase-js'
+const supabase = (() => {
+  const headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type": "application/json",
+    "Prefer": "return=representation",
+  };
+
+  const rpc = async (table: string, method: string, body?: any, query = "") => {
+    const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
+    const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `${method} ${table} failed (${res.status})`);
+    }
+    if (res.status === 204) return [];
+    return res.json();
+  };
+
+  return {
+    from: (table: string) => ({
+      select: (cols = "*") => rpc(table, "GET", undefined, `?select=${cols}&order=created_at.asc`),
+      insert: (data: any) => rpc(table, "POST", Array.isArray(data) ? data : [data]),
+      upsert: (data: any, onConflict?: string) =>
+        rpc(table, "POST", Array.isArray(data) ? data : [data],
+          onConflict ? `?on_conflict=${onConflict}` : ""),
+      update: (data: any, match: Record<string, any>) => {
+        const q = Object.entries(match).map(([k, v]) => `${k}=eq.${v}`).join("&");
+        return rpc(table, "PATCH", data, `?${q}`);
+      },
+      delete: (match: Record<string, any>) => {
+        const q = Object.entries(match).map(([k, v]) => `${k}=eq.${v}`).join("&");
+        return rpc(table, "DELETE", undefined, `?${q}`);
+      },
+    }),
+  };
+})();
+
+// ============================================================
 // CSS – DM Sans / DM Serif, larger accessible fonts
 // ============================================================
 const CSS = `
@@ -412,28 +460,310 @@ function uniqueCourseNames(courses:any[]){return[...new Set(courses.map(c=>c.cou
 function teeBoxesForCourse(courses:any[],name:string){return courses.filter(c=>c.course_name===name);}
 
 // ============================================================
-// APP ROOT
+// APP ROOT — Supabase connected
 // ============================================================
 export default function App(){
-  const [golfers,setGolfers]=useState(INITIAL_GOLFERS);
-  const [courses,setCourses]=useState(INITIAL_COURSES);
-  const [events,setEvents]=useState(INITIAL_EVENTS);
-  const [signups,setSignups]=useState(INITIAL_SIGNUPS);
-  const [leaderboard,setLeaderboard]=useState(INITIAL_LEADERBOARD);
-  const [holeScores,setHoleScores]=useState(INITIAL_HOLE_SCORES);
-  const [charityDonations,setCharityDonations]=useState(INITIAL_CHARITY_DONATIONS);
+  // ── state ──────────────────────────────────────────────────
+  const [golfers,setGolfers]=useState<any[]>([]);
+  const [courses,setCourses]=useState<any[]>([]);
+  const [events,setEvents]=useState<any[]>([]);
+  const [signups,setSignups]=useState<any[]>([]);
+  const [leaderboard,setLeaderboard]=useState<any[]>([]);
+  const [holeScores,setHoleScores]=useState<any[]>([]);
+  const [charityDonations,setCharityDonations]=useState<any[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [dbError,setDbError]=useState<string|null>(null);
   const [activeTab,setActiveTab]=useState("leaderboard");
   const [adminMode,setAdminMode]=useState(false);
   const [successMsg,setSuccessMsg]=useState("");
+  const [errorMsg,setErrorMsg]=useState("");
 
   const showSuccess=useCallback((msg:string)=>{setSuccessMsg(msg);setTimeout(()=>setSuccessMsg(""),3500);},[]);
+  const showError=useCallback((msg:string)=>{setErrorMsg(msg);setTimeout(()=>setErrorMsg(""),5000);},[]);
 
-  // Listen for guest golfer additions
+  // ── initial load ────────────────────────────────────────────
+  useEffect(()=>{
+    const load=async()=>{
+      try{
+        setLoading(true);
+        const [g,c,ev,su,lb,hs,cd]=await Promise.all([
+          supabase.from("golfers").select(),
+          supabase.from("courses").select(),
+          supabase.from("events").select(),
+          supabase.from("event_signups").select(),
+          supabase.from("event_leaderboard").select(),
+          supabase.from("hole_scores").select(),
+          supabase.from("charity_donations").select(),
+        ]);
+        // Map DB column names → app field names
+        setGolfers(g.map((r:any)=>({...r,golfer_id:r.golfer_id})));
+        setCourses(c.map((r:any)=>({...r,course_id:r.course_id})));
+        setEvents(ev.map((r:any)=>({...r,event_id:r.event_id,tee_times:r.tee_times||[]})));
+        setSignups(su.map((r:any)=>({...r,signup_id:r.signup_id})));
+        setLeaderboard(lb.map((r:any)=>({...r,summary_id:r.summary_id})));
+        setHoleScores(hs);
+        setCharityDonations(cd);
+        setDbError(null);
+      }catch(e:any){
+        setDbError(e.message||"Failed to connect to database");
+      }finally{
+        setLoading(false);
+      }
+    };
+    load();
+  },[]);
+
+  // ── guest golfer listener ───────────────────────────────────
   useEffect(()=>{const h=(e:any)=>setGolfers(p=>[...p,e.detail]);window.addEventListener("addGolfer",h);return()=>window.removeEventListener("addGolfer",h);},[]);
 
+  // ── DB write helpers ────────────────────────────────────────
+  // Each write: optimistically update local state, then sync to Supabase.
+  // On error, revert and show message.
+
+  const dbUpsertGolfer=useCallback(async(golfer:any)=>{
+    const prev=golfers;
+    const isNew=!golfer.golfer_id||golfer.golfer_id>1e12;// temp IDs from Date.now()
+    try{
+      if(isNew){
+        const {golfer_id:_,...rest}=golfer;
+        const [inserted]=await supabase.from("golfers").insert(rest);
+        setGolfers(p=>p.map(g=>g.golfer_id===golfer.golfer_id?{...g,golfer_id:inserted.golfer_id}:g));
+      }else{
+        const {golfer_id,created_at,...rest}=golfer;
+        await supabase.from("golfers").update(rest,{golfer_id});
+      }
+    }catch(e:any){setGolfers(prev);showError(`Save failed: ${e.message}`);}
+  },[golfers,showError]);
+
+  const dbDeleteGolfer=useCallback(async(golfer_id:number)=>{
+    const prev=golfers;
+    try{await supabase.from("golfers").delete({golfer_id});}
+    catch(e:any){setGolfers(prev);showError(`Delete failed: ${e.message}`);}
+  },[golfers,showError]);
+
+  const dbUpsertCourse=useCallback(async(course:any)=>{
+    const prev=courses;
+    const isNew=!course.course_id||course.course_id>1e12;
+    try{
+      if(isNew){
+        const {course_id:_,...rest}=course;
+        const [inserted]=await supabase.from("courses").insert(rest);
+        setCourses(p=>p.map(c=>c.course_id===course.course_id?{...c,course_id:inserted.course_id}:c));
+      }else{
+        const {course_id,created_at,...rest}=course;
+        await supabase.from("courses").update(rest,{course_id});
+      }
+    }catch(e:any){setCourses(prev);showError(`Save failed: ${e.message}`);}
+  },[courses,showError]);
+
+  const dbDeleteCourse=useCallback(async(course_id:number)=>{
+    const prev=courses;
+    try{await supabase.from("courses").delete({course_id});}
+    catch(e:any){setCourses(prev);showError(`Delete failed: ${e.message}`);}
+  },[courses,showError]);
+
+  const dbUpsertEvent=useCallback(async(event:any)=>{
+    const prev=events;
+    const isNew=!event.event_id||event.event_id>1e12;
+    try{
+      if(isNew){
+        const {event_id:_,...rest}=event;
+        const [inserted]=await supabase.from("events").insert(rest);
+        setEvents(p=>p.map(e=>e.event_id===event.event_id?{...e,event_id:inserted.event_id}:e));
+        return inserted.event_id;
+      }else{
+        const {event_id,created_at,...rest}=event;
+        await supabase.from("events").update(rest,{event_id});
+        return event_id;
+      }
+    }catch(e:any){setEvents(prev);showError(`Save failed: ${e.message}`);}
+  },[events,showError]);
+
+  const dbDeleteEvent=useCallback(async(event_id:number)=>{
+    const prev=events; const prevSu=signups;
+    try{await supabase.from("events").delete({event_id});}// cascade deletes signups
+    catch(e:any){setEvents(prev);setSignups(prevSu);showError(`Delete failed: ${e.message}`);}
+  },[events,signups,showError]);
+
+  const dbUpsertSignup=useCallback(async(signup:any)=>{
+    const prev=signups;
+    try{
+      const {signup_id,created_at,...rest}=signup;
+      const isNew=!signup_id||signup_id>1e12;
+      if(isNew){
+        const [inserted]=await supabase.from("event_signups").insert(rest);
+        setSignups(p=>p.map(s=>s.signup_id===signup.signup_id?{...s,signup_id:inserted.signup_id}:s));
+      }else{
+        await supabase.from("event_signups").update(rest,{signup_id});
+      }
+    }catch(e:any){setSignups(prev);showError(`RSVP save failed: ${e.message}`);}
+  },[signups,showError]);
+
+  const dbUpsertLeaderboard=useCallback(async(entry:any)=>{
+    const prev=leaderboard;
+    try{
+      const isNew=!entry.summary_id||entry.summary_id>1e12;
+      if(isNew){
+        const {summary_id:_,...rest}=entry;
+        const [inserted]=await supabase.from("event_leaderboard").insert(rest);
+        setLeaderboard(p=>p.map(r=>r.summary_id===entry.summary_id?{...r,summary_id:inserted.summary_id}:r));
+        return inserted.summary_id;
+      }else{
+        const {summary_id,created_at,...rest}=entry;
+        await supabase.from("event_leaderboard").update(rest,{summary_id});
+        return summary_id;
+      }
+    }catch(e:any){setLeaderboard(prev);showError(`Score save failed: ${e.message}`);}
+  },[leaderboard,showError]);
+
+  const dbDeleteLeaderboard=useCallback(async(summary_id:number)=>{
+    const prev=leaderboard; const prevHs=holeScores;
+    try{await supabase.from("event_leaderboard").delete({summary_id});}// cascade deletes hole_scores
+    catch(e:any){setLeaderboard(prev);setHoleScores(prevHs);showError(`Delete failed: ${e.message}`);}
+  },[leaderboard,holeScores,showError]);
+
+  const dbInsertHoleScores=useCallback(async(scores:any[])=>{
+    try{await supabase.from("hole_scores").insert(scores);}
+    catch(e:any){showError(`Hole scores save failed: ${e.message}`);}
+  },[showError]);
+
+  const dbDeleteHoleScores=useCallback(async(summary_id:number)=>{
+    try{await supabase.from("hole_scores").delete({summary_id});}
+    catch(e:any){showError(`Delete failed: ${e.message}`);}
+  },[showError]);
+
+  const dbUpsertCharity=useCallback(async(donation:any)=>{
+    const prev=charityDonations;
+    try{
+      const {id:_,...rest}=donation;
+      const [inserted]=await supabase.from("charity_donations").insert(rest);
+      setCharityDonations(p=>p.map(d=>d.id===donation.id?{...d,id:inserted.id}:d));
+    }catch(e:any){setCharityDonations(prev);showError(`Save failed: ${e.message}`);}
+  },[charityDonations,showError]);
+
+  // ── wrapped setters that also write to DB ──────────────────
+  // These are passed to child components exactly like the old setState functions
+  // but they also trigger a DB sync.
+
+  const setGolfersDB=useCallback((updater:any)=>{
+    setGolfers(prev=>{
+      const next=typeof updater==="function"?updater(prev):updater;
+      // Diff: find added or changed golfer and upsert
+      const changed=next.filter((n:any)=>{
+        const old=prev.find((o:any)=>o.golfer_id===n.golfer_id);
+        return !old||JSON.stringify(old)!==JSON.stringify(n);
+      });
+      const removed=prev.filter((o:any)=>!next.find((n:any)=>n.golfer_id===o.golfer_id));
+      changed.forEach((g:any)=>dbUpsertGolfer(g));
+      removed.forEach((g:any)=>{ if(g.golfer_id&&g.golfer_id<1e12) dbDeleteGolfer(g.golfer_id); });
+      return next;
+    });
+  },[dbUpsertGolfer,dbDeleteGolfer]);
+
+  const setCoursesDB=useCallback((updater:any)=>{
+    setCourses(prev=>{
+      const next=typeof updater==="function"?updater(prev):updater;
+      const changed=next.filter((n:any)=>{
+        const old=prev.find((o:any)=>o.course_id===n.course_id);
+        return !old||JSON.stringify(old)!==JSON.stringify(n);
+      });
+      const removed=prev.filter((o:any)=>!next.find((n:any)=>n.course_id===o.course_id));
+      changed.forEach((c:any)=>dbUpsertCourse(c));
+      removed.forEach((c:any)=>{ if(c.course_id&&c.course_id<1e12) dbDeleteCourse(c.course_id); });
+      return next;
+    });
+  },[dbUpsertCourse,dbDeleteCourse]);
+
+  const setEventsDB=useCallback((updater:any)=>{
+    setEvents(prev=>{
+      const next=typeof updater==="function"?updater(prev):updater;
+      const changed=next.filter((n:any)=>{
+        const old=prev.find((o:any)=>o.event_id===n.event_id);
+        return !old||JSON.stringify(old)!==JSON.stringify(n);
+      });
+      const removed=prev.filter((o:any)=>!next.find((n:any)=>n.event_id===o.event_id));
+      changed.forEach((e:any)=>dbUpsertEvent(e));
+      removed.forEach((e:any)=>{ if(e.event_id&&e.event_id<1e12) dbDeleteEvent(e.event_id); });
+      return next;
+    });
+  },[dbUpsertEvent,dbDeleteEvent]);
+
+  const setSignupsDB=useCallback((updater:any)=>{
+    setSignups(prev=>{
+      const next=typeof updater==="function"?updater(prev):updater;
+      const changed=next.filter((n:any)=>{
+        const old=prev.find((o:any)=>o.signup_id===n.signup_id);
+        return !old||JSON.stringify(old)!==JSON.stringify(n);
+      });
+      changed.forEach((s:any)=>dbUpsertSignup(s));
+      return next;
+    });
+  },[dbUpsertSignup]);
+
+  const setLeaderboardDB=useCallback((updater:any)=>{
+    setLeaderboard(prev=>{
+      const next=typeof updater==="function"?updater(prev):updater;
+      const changed=next.filter((n:any)=>{
+        const old=prev.find((o:any)=>o.summary_id===n.summary_id);
+        return !old||JSON.stringify(old)!==JSON.stringify(n);
+      });
+      const removed=prev.filter((o:any)=>!next.find((n:any)=>n.summary_id===o.summary_id));
+      changed.forEach((r:any)=>dbUpsertLeaderboard(r));
+      removed.forEach((r:any)=>{ if(r.summary_id&&r.summary_id<1e12) dbDeleteLeaderboard(r.summary_id); });
+      return next;
+    });
+  },[dbUpsertLeaderboard,dbDeleteLeaderboard]);
+
+  const setHoleScoresDB=useCallback((updater:any)=>{
+    setHoleScores(prev=>{
+      const next=typeof updater==="function"?updater(prev):updater;
+      // Only insert new scores (hole scores are append-only from score entry)
+      const added=next.filter((n:any)=>!prev.find((o:any)=>o.score_id===n.score_id));
+      if(added.length>0) dbInsertHoleScores(added.map(({score_id:_,...r}:any)=>r));
+      return next;
+    });
+  },[dbInsertHoleScores]);
+
+  const setCharityDB=useCallback((updater:any)=>{
+    setCharityDonations(prev=>{
+      const next=typeof updater==="function"?updater(prev):updater;
+      const added=next.filter((n:any)=>!prev.find((o:any)=>o.id===n.id));
+      added.forEach((d:any)=>dbUpsertCharity(d));
+      return next;
+    });
+  },[dbUpsertCharity]);
+
+  // ── loading / error screens ─────────────────────────────────
   const tabs=adminMode
     ?[{id:"leaderboard",label:"Leaderboard"},{id:"rsvp",label:"Sign Up"},{id:"score",label:"Scoring"},{id:"admin",label:"⚙ Admin"},{id:"analytics",label:"Analytics"}]
     :[{id:"leaderboard",label:"Leaderboard"},{id:"rsvp",label:"Sign Up"},{id:"score",label:"Scoring"},{id:"analytics",label:"Analytics"}];
+
+  if(loading) return(
+    <>
+      <style>{CSS}</style>
+      <div className="app-shell" style={{justifyContent:"center",alignItems:"center",gap:16}}>
+        <div style={{fontFamily:"DM Serif Display,serif",fontSize:28,color:"var(--green-800)"}}>Saturday School</div>
+        <div style={{fontSize:15,color:"var(--text-muted)"}}>Loading league data…</div>
+        <div style={{width:40,height:40,border:"4px solid var(--green-100)",borderTop:"4px solid var(--green-700)",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    </>
+  );
+
+  if(dbError) return(
+    <>
+      <style>{CSS}</style>
+      <div className="app-shell" style={{justifyContent:"center",alignItems:"center",gap:12,padding:24}}>
+        <div style={{fontFamily:"DM Serif Display,serif",fontSize:26,color:"var(--green-800)"}}>Saturday School</div>
+        <div style={{background:"var(--red-100)",border:"1px solid var(--red-400)",borderRadius:"var(--radius-md)",padding:"16px 20px",textAlign:"center",maxWidth:380}}>
+          <div style={{fontWeight:700,color:"var(--red-600)",marginBottom:8}}>Database Connection Error</div>
+          <div style={{fontSize:14,color:"var(--text-secondary)",marginBottom:12}}>{dbError}</div>
+          <div style={{fontSize:13,color:"var(--text-muted)"}}>Check your Supabase URL and anon key in App.tsx, then refresh the page.</div>
+        </div>
+        <button className="btn btn-outline" onClick={()=>window.location.reload()}>Retry</button>
+      </div>
+    </>
+  );
 
   return(
     <>
@@ -448,10 +778,11 @@ export default function App(){
         </header>
         <main className="main-content">
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
+          {errorMsg&&<div style={{background:"var(--red-100)",border:"1px solid var(--red-400)",borderRadius:"var(--radius-md)",padding:"12px 16px",color:"var(--red-600)",fontSize:14,marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>⚠</span>{errorMsg}</div>}
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} showSuccess={showSuccess}/>}
-          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignups} showSuccess={showSuccess} adminMode={adminMode}/>}
-          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} leaderboard={leaderboard} setLeaderboard={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScores} setEvents={setEvents} showSuccess={showSuccess}/>}
-          {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfers} courses={courses} setCourses={setCourses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} leaderboard={leaderboard} setLeaderboard={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScores} charityDonations={charityDonations} setCharityDonations={setCharityDonations} showSuccess={showSuccess}/>}
+          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} adminMode={adminMode}/>}
+          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} showSuccess={showSuccess}/>}
+          {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} charityDonations={charityDonations} setCharityDonations={setCharityDB} showSuccess={showSuccess}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard}/>}
         </main>
       </div>
@@ -461,6 +792,8 @@ export default function App(){
 
 // ============================================================
 // HELPERS – season data builder
+// All rounds now come from Supabase via the leaderboard state.
+// EXTRA_ROUNDS_BY_GOLFER is no longer needed.
 // ============================================================
 function buildSeasonRounds(golfers:any[],leaderboard:any[],season:number){
   const byG:Record<number,number[]>={};
@@ -470,19 +803,12 @@ function buildSeasonRounds(golfers:any[],leaderboard:any[],season:number){
     if(!g||g.is_guest)return;
     (byG[r.golfer_id]=byG[r.golfer_id]||[]).push(r.total_stableford_points);
   });
-  Object.entries(EXTRA_ROUNDS_BY_GOLFER).forEach(([gid,rounds])=>{
-    const id=parseInt(gid);
-    const g=golfers.find((x:any)=>x.golfer_id===id);
-    if(!g||g.is_guest)return;
-    (rounds as any[]).forEach((r:any)=>{if(r.season===season)(byG[id]=byG[id]||[]).push(r.pts);});
-  });
   return byG;
 }
 
 function golferStats(golfers:any[],leaderboard:any[],gid:number,season:number){
   const entries=leaderboard.filter((r:any)=>r.golfer_id===gid&&r.season===season);
-  const extra=(EXTRA_ROUNDS_BY_GOLFER[gid]||[]).filter((r:any)=>r.season===season).map((r:any)=>r.pts);
-  const allPts=[...entries.map((r:any)=>r.total_stableford_points),...extra];
+  const allPts=entries.map((r:any)=>r.total_stableford_points);
   const wins=entries.filter((r:any)=>r.weekly_payout_won>0&&r.weekly_payout_won===Math.max(...leaderboard.filter((x:any)=>x.event_id===r.event_id).map((x:any)=>x.weekly_payout_won))).length;
   const seconds=entries.filter((r:any)=>{
     const evEntries=[...leaderboard.filter((x:any)=>x.event_id===r.event_id)].sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
@@ -1782,12 +2108,12 @@ function AnalyticsTab({golfers,courses,events,leaderboard}:any){
     return{name,avg,count:entries.length};
   });
   const scatterData=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").map((g:any)=>{
-    const rounds=[...leaderboard.filter((r:any)=>r.golfer_id===g.golfer_id&&r.season===selSeason).map((r:any)=>r.total_stableford_points),...(EXTRA_ROUNDS_BY_GOLFER[g.golfer_id]||[]).filter((r:any)=>r.season===selSeason).map((r:any)=>r.pts)];
+    const rounds=[...leaderboard.filter((r:any)=>r.golfer_id===g.golfer_id&&r.season===selSeason).map((r:any)=>r.total_stableford_points)];
     if(!rounds.length)return null;
     return{golfer:g,hcp:g.current_handicap_index,avg:rounds.reduce((a:number,b:number)=>a+b,0)/rounds.length,rounds:rounds.length};
   }).filter(Boolean);
   const selG=golfers.find((g:any)=>g.golfer_id===parseInt(selGolfer));
-  const golferRounds=selG?[...leaderboard.filter((r:any)=>r.golfer_id===selG.golfer_id&&r.season===selSeason).map((r:any)=>({pts:r.total_stableford_points,eid:r.event_id})),...(EXTRA_ROUNDS_BY_GOLFER[selG.golfer_id]||[]).filter((r:any)=>r.season===selSeason).map((r:any,i:number)=>({pts:r.pts,eid:-(i+1)}))].sort((a:any,b:any)=>a.eid-b.eid):[];
+  const golferRounds=selG?[...leaderboard.filter((r:any)=>r.golfer_id===selG.golfer_id&&r.season===selSeason).map((r:any)=>({pts:r.total_stableford_points,eid:r.event_id}))].sort((a:any,b:any)=>a.eid-b.eid):[];
 
   return(
     <div>
