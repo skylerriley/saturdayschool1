@@ -582,7 +582,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                 <div className="lb-detail-item"><div className="lb-detail-key">Worst Round</div><div className="lb-detail-val" style={{color:"var(--red-600)"}}>{stats.worst}</div></div>
                 {/* 1) Net Earnings only — no breakdown of stableford won / entry fees */}
                 <div className="lb-detail-item" style={{gridColumn:"1/-1"}}>
-                  <div className="lb-detail-key">Net Earnings (stableford − entry fees)</div>
+                  <div className="lb-detail-key">Net Earnings</div>
                   <div className="lb-detail-val" style={{color:stats.netEarnings>=0?"var(--green-700)":"var(--red-600)",fontSize:22}}>
                     {stats.netEarnings>=0?"+$"+stats.netEarnings.toFixed(0):"-$"+Math.abs(stats.netEarnings).toFixed(0)}
                   </div>
