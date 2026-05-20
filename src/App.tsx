@@ -682,7 +682,29 @@ export default function App(){
         return !old||JSON.stringify(old)!==JSON.stringify(n);
       });
       const removed=prev.filter((o:any)=>!next.find((n:any)=>n.event_id===o.event_id));
-      changed.forEach((e:any)=>dbUpsertEvent(e));
+
+      // For new events: insert first, get real ID, then patch signups
+      changed.forEach(async(e:any)=>{
+        const isNew=!e.event_id||e.event_id>1e12;
+        if(isNew){
+          const tempId=e.event_id;
+          const realId=await dbUpsertEvent(e);
+          if(realId&&realId!==tempId){
+            // Patch the temp event_id in both local state and pending signups
+            setEvents(p=>p.map(ev=>ev.event_id===tempId?{...ev,event_id:realId}:ev));
+            setSignups(prev=>{
+              const signupsToInsert=prev.filter((s:any)=>s.event_id===tempId);
+              const patched=prev.map((s:any)=>s.event_id===tempId?{...s,event_id:realId}:s);
+              // Insert each signup now that they have the real event_id
+              signupsToInsert.forEach((s:any)=>dbUpsertSignup({...s,event_id:realId}));
+              return patched;
+            });
+          }
+        }else{
+          dbUpsertEvent(e);
+        }
+      });
+
       removed.forEach((e:any)=>{ if(e.event_id&&e.event_id<1e12) dbDeleteEvent(e.event_id); });
       return next;
     });
@@ -695,7 +717,9 @@ export default function App(){
         const old=prev.find((o:any)=>o.signup_id===n.signup_id);
         return !old||JSON.stringify(old)!==JSON.stringify(n);
       });
-      changed.forEach((s:any)=>dbUpsertSignup(s));
+      // Don't sync signups whose event_id is still a temp value — they'll be
+      // patched to the real event_id by setEventsDB and re-synced then
+      changed.filter((s:any)=>!(s.event_id>1e12)).forEach((s:any)=>dbUpsertSignup(s));
       return next;
     });
   },[dbUpsertSignup]);
@@ -1576,7 +1600,7 @@ function GolferRoster({golfers,setGolfers,showSuccess}:any){
       setGolfers((p:any)=>p.map((g:any)=>g.golfer_id===editId?{...g,...form,current_handicap_index:parseFloat(form.current_handicap_index)||18}:g));
       showSuccess(`${form.first_name} ${form.last_name} updated`);
     }else{
-      const newId=Math.max(...golfers.map((g:any)=>g.golfer_id),0)+1;
+      const newId=Date.now();
       setGolfers((p:any)=>[...p,{golfer_id:newId,first_name:form.first_name.trim(),last_name:form.last_name.trim(),email_address:form.email_address.trim(),current_handicap_index:parseFloat(form.current_handicap_index)||18,is_guest:false,status:"Active",season_fee_paid:form.season_fee_paid}]);
       showSuccess(`${form.first_name} ${form.last_name} added`);
     }
@@ -1650,7 +1674,7 @@ function CourseManager({courses,setCourses,showSuccess}:any){
     if(pars.length!==18||sis.length!==18){showSuccess("⚠ Must have exactly 18 values for par and stroke index");return;}
     const entry={...form,tee_slope:parseInt(form.tee_slope)||113,tee_rating:parseFloat(form.tee_rating)||72.0,par:parseInt(form.par)||72,hole_pars:pars,hole_stroke_indices:sis};
     if(editing==="new"){
-      const newId=Math.max(...courses.map((c:any)=>c.course_id),0)+1;
+      const newId=Date.now();
       setCourses((p:any)=>[...p,{...entry,course_id:newId}]);
       showSuccess(`${entry.tee_box_name} tee added to ${entry.course_name}`);
     }else{
@@ -1911,10 +1935,10 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
       setEvents((p:any)=>p.map((e:any)=>e.event_id===editId?{...e,date,course_name:courseName,tee_times:tts,season}:e));
       showSuccess(`Event updated: ${formatDate(date)}`);
     }else{
-      const newId=Math.max(...events.map((e:any)=>e.event_id),0)+1;
+      const newId=Date.now();
       setEvents((p:any)=>[...p,{event_id:newId,season,date,course_name:courseName,tee_times:tts,status:"Upcoming"}]);
       const activeGs=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active");
-      setSignups((p:any)=>[...p,...activeGs.map((g:any,i:number)=>({signup_id:Date.now()+i,event_id:newId,golfer_id:g.golfer_id,attending:"Unconfirmed",assigned_tee_time:null,tee_box_course_id:null,playing_handicap:null,is_guest_entry:false,sponsor_golfer_id:null}))]);
+      setSignups((p:any)=>[...p,...activeGs.map((g:any,i:number)=>({signup_id:Date.now()+i+1,event_id:newId,golfer_id:g.golfer_id,attending:"Unconfirmed",assigned_tee_time:null,tee_box_course_id:null,playing_handicap:null,is_guest_entry:false,sponsor_golfer_id:null}))]);
       showSuccess(`Event created: ${formatDate(date)}`);
     }
     resetForm();
