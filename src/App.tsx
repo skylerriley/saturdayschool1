@@ -939,14 +939,15 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
 
   // Helper: assign tie positions to a sorted array
   const withTiePositions=(arr:any[],scoreKey:string)=>{
-    let pos=1;
+    let currentPos=1;
     return arr.map((row,i)=>{
       if(i>0&&arr[i][scoreKey]===arr[i-1][scoreKey]){
-        return{...row,pos:arr[i-1]._pos,tied:true};
+        // Same score as previous — use same position, mark tied
+        return{...row,pos:currentPos,tied:true};
       }
-      const r={...row,_pos:pos,pos,tied:false};
-      pos=i+2;// next unique position
-      return r;
+      // New unique score — position is 1-based rank
+      currentPos=i+1;
+      return{...row,pos:currentPos,tied:false};
     });
   };
 
@@ -1030,12 +1031,16 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
               const back9Pts=back9.reduce((s:number,h:any)=>s+(h.stableford_points||0),0);
               return(
                 <>
-                  {/* 5: show total score + HCP + tees + earnings together */}
+                  {/* Weekly metrics: Total Score, HCP, Tees, Earnings */}
                   <div className="lb-detail-grid" style={{marginBottom:10}}>
-                    {weeklyEntry&&<div className="lb-detail-item"><div className="lb-detail-key">Total Gross</div><div className="lb-detail-val" style={{color:"var(--green-700)",fontSize:26,fontWeight:700}}>{front9Gross+back9Gross}</div></div>}
+                    {weeklyEntry&&<div className="lb-detail-item"><div className="lb-detail-key">Stableford Pts</div><div className="lb-detail-val" style={{color:"var(--green-700)",fontSize:26,fontWeight:700}}>{weeklyEntry.total_stableford_points}</div></div>}
+                    {/* 3: Total Gross only shown when H×H data exists */}
+                    {hbhScores.length>0&&<div className="lb-detail-item"><div className="lb-detail-key">Total Gross</div><div className="lb-detail-val" style={{fontWeight:700,fontSize:22}}>{front9Gross+back9Gross}</div></div>}
                     <div className="lb-detail-item"><div className="lb-detail-key">Playing HCP</div><div className="lb-detail-val">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&teePlayed?calcPlayingHandicap(g.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"—")}</div></div>
                     <div className="lb-detail-item"><div className="lb-detail-key">Tees Played</div><div className="lb-detail-val">{teePlayed?.tee_box_name??"—"}</div></div>
-                    {weeklyEarned>0&&<div className="lb-detail-item" style={{gridColumn:"1/-1"}}><div className="lb-detail-key">Round Earnings</div><div className="lb-detail-val" style={{color:"var(--gold-600)"}}>${weeklyEarned.toFixed(0)}</div></div>}
+                    {/* 3: Show stableford and skins winnings as separate lines */}
+                    {weeklyEntry?.weekly_payout_won>0&&<div className="lb-detail-item"><div className="lb-detail-key">Stableford Won</div><div className="lb-detail-val" style={{color:"var(--gold-600)",fontWeight:700}}>${Number(weeklyEntry.weekly_payout_won).toFixed(0)}</div></div>}
+                    {weeklyEntry?.skins_payout_won>0&&<div className="lb-detail-item"><div className="lb-detail-key">Skins Won</div><div className="lb-detail-val" style={{color:"var(--green-700)",fontWeight:700}}>${Number(weeklyEntry.skins_payout_won).toFixed(0)}</div></div>}
                   </div>
 
                   {/* 5: Full golf scorecard table */}
@@ -1080,7 +1085,8 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                         {back9.length>0&&renderHalf(back9,9,"IN",back9Gross,back9Pts)}
                         {front9.length>0&&back9.length>0&&(
                           <div style={{display:"flex",gap:20,padding:"8px 4px",borderTop:"2px solid var(--green-700)",marginTop:4}}>
-                            
+                            <div><span style={{fontSize:11,color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Total Gross</span><div style={{fontWeight:700,fontSize:18}}>{front9Gross+back9Gross}</div></div>
+                            <div><span style={{fontSize:11,color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Total Pts</span><div style={{fontWeight:700,fontSize:18,color:"var(--green-700)"}}>{front9Pts+back9Pts}</div></div>
                           </div>
                         )}
                       </div>
@@ -2116,6 +2122,8 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
 
   const allSeasonsList=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
   const [filterSeason,setFilterSeason]=useState<number|"all">(allSeasonsList[0]||new Date().getFullYear());
+  const sortedEvents=[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+  const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
   const filteredEvents=filterSeason==="all"?sortedEvents:sortedEvents.filter((e:any)=>e.season===filterSeason);
 
   return(
