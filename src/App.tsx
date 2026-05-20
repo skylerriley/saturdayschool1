@@ -2211,7 +2211,7 @@ function GolferHistoryChart({golfer,rounds}:any){
         <div className="stat-card"><div className="stat-value" style={{color:"var(--red-600)"}}>{worst}</div><div className="stat-label">Worst</div></div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:9}}>
-        <div style={{fontSize:16,fontWeight:700,color:"var(--green-700)"}}>{golfer.first_name} {golfer.last_name}</div>
+        <div style={{fontSize:17,fontWeight:700,color:"var(--green-700)"}}>{golfer.first_name} {golfer.last_name}</div>
         <span style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"var(--text-muted)"}}>
           <span style={{width:14,height:3,background:"#1a7340",display:"inline-block",borderRadius:2}}></span>Rounds
           <span style={{width:14,height:3,background:"#c47800",display:"inline-block",borderRadius:2,marginLeft:4}}></span>Avg
