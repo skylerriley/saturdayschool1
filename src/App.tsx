@@ -29,9 +29,29 @@ const supabase = (() => {
     return res.json();
   };
 
+  // Fetch ALL rows by paginating in chunks of 1000 (Supabase default limit)
+  const fetchAll = async (table: string, cols = "*", orderCol = "created_at") => {
+    const PAGE = 1000;
+    let all: any[] = [];
+    let from = 0;
+    while (true) {
+      const url = `${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=${orderCol}.asc&limit=${PAGE}&offset=${from}`;
+      const res = await fetch(url, { method: "GET", headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || `GET ${table} failed (${res.status})`);
+      }
+      const page: any[] = await res.json();
+      all = all.concat(page);
+      if (page.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  };
+
   return {
     from: (table: string) => ({
-      select: (cols = "*") => rpc(table, "GET", undefined, `?select=${cols}&order=created_at.asc`),
+      select: (cols = "*") => fetchAll(table, cols),
       insert: (data: any) => rpc(table, "POST", Array.isArray(data) ? data : [data]),
       upsert: (data: any, onConflict?: string) =>
         rpc(table, "POST", Array.isArray(data) ? data : [data],
@@ -213,6 +233,25 @@ const CSS = `
   .hbh-cell.bogey{background:#fff3e0;color:#b35c00;}
   .hbh-cell.dbl{background:var(--red-100);color:var(--red-600);}
   .hbh-cell.header{background:var(--green-900);color:var(--gold-300);font-size:11px;}
+
+  /* Golf scorecard — score symbols */
+  .sc-score{display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;width:24px;height:24px;line-height:1;}
+  .sc-eagle{border-radius:50%;border:2px solid var(--gold-500);outline:2px solid var(--gold-500);outline-offset:2px;background:var(--gold-50);color:var(--gold-800);}
+  .sc-birdie{border-radius:50%;border:2px solid var(--green-500);background:var(--green-50);color:var(--green-700);}
+  .sc-par{color:var(--text-primary);}
+  .sc-bogey{border:2px solid var(--earth-600);background:var(--earth-50);color:var(--earth-800);}
+  .sc-dbl{border:2px solid var(--red-600);outline:2px solid var(--red-600);outline-offset:2px;background:var(--red-100);color:var(--red-800);}
+  .sc-triple{background:var(--red-800);color:white;border-radius:2px;}
+
+  /* Scorecard table */
+  .scorecard-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:10px;}
+  .scorecard-table{border-collapse:collapse;font-size:12px;min-width:360px;width:100%;}
+  .scorecard-table th{background:var(--green-900);color:var(--gold-300);font-weight:700;padding:5px 3px;text-align:center;font-size:11px;white-space:nowrap;}
+  .scorecard-table th.label-col{text-align:left;padding-left:8px;min-width:52px;}
+  .scorecard-table td{padding:5px 3px;text-align:center;border-bottom:1px solid var(--border);}
+  .scorecard-table td.label-col{text-align:left;padding-left:8px;font-weight:600;font-size:11px;color:var(--text-secondary);white-space:nowrap;}
+  .scorecard-table .total-col{background:var(--green-50);font-weight:700;font-size:13px;color:var(--green-800);}
+  .scorecard-table tr:nth-child(even) td:not(.label-col){background:var(--surface2);}
 
   /* ── SCORE GRID ── */
   .score-grid{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
@@ -833,14 +872,28 @@ function buildSeasonRounds(golfers:any[],leaderboard:any[],season:number){
 function golferStats(golfers:any[],leaderboard:any[],gid:number,season:number){
   const entries=leaderboard.filter((r:any)=>r.golfer_id===gid&&r.season===season);
   const allPts=entries.map((r:any)=>r.total_stableford_points);
-  const wins=entries.filter((r:any)=>r.weekly_payout_won>0&&r.weekly_payout_won===Math.max(...leaderboard.filter((x:any)=>x.event_id===r.event_id).map((x:any)=>x.weekly_payout_won))).length;
-  const seconds=entries.filter((r:any)=>{
-    const evEntries=[...leaderboard.filter((x:any)=>x.event_id===r.event_id)].sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
-    return evEntries[1]?.golfer_id===gid;
-  }).length;
-  const stablefordWon=entries.reduce((s:number,r:any)=>s+r.weekly_payout_won,0);
-  const netEarnings=stablefordWon-(allPts.length*20);
-  return{rounds:allPts.length,avg:allPts.length?allPts.reduce((a,b)=>a+b,0)/allPts.length:0,best:allPts.length?Math.max(...allPts):0,worst:allPts.length?Math.min(...allPts):0,wins,seconds,netEarnings};
+  // Derive wins/seconds and stableford earnings from score rankings, not stored payout fields
+  let wins=0, seconds=0, stablefordEarned=0;
+  const eventIds=[...new Set(entries.map((r:any)=>r.event_id))];
+  eventIds.forEach((eid:any)=>{
+    const evEntries=[...leaderboard.filter((x:any)=>x.event_id===eid&&x.buy_in_paid)]
+      .sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
+    if(!evEntries.length)return;
+    const pot=evEntries.length*20;
+    const topPts=evEntries[0].total_stableford_points;
+    const tied1st=evEntries.filter((e:any)=>e.total_stableford_points===topPts);
+    const secondPts=tied1st.length===1?evEntries[tied1st.length]?.total_stableford_points:null;
+    const tied2nd=secondPts!=null?evEntries.filter((e:any)=>e.total_stableford_points===secondPts):[];
+    if(tied1st.some((e:any)=>e.golfer_id===gid)){
+      wins++;
+      stablefordEarned+=(tied1st.length>1?pot:pot*0.75)/tied1st.length;
+    } else if(tied2nd.some((e:any)=>e.golfer_id===gid)){
+      seconds++;
+      stablefordEarned+=(pot*0.25)/tied2nd.length;
+    }
+  });
+  const netEarnings=stablefordEarned-(allPts.length*20);
+  return{rounds:allPts.length,avg:allPts.length?allPts.reduce((a,b)=>a+b,0)/allPts.length:0,best:allPts.length?Math.max(...allPts):0,worst:allPts.length?Math.min(...allPts):0,wins,seconds,stablefordEarned,netEarnings};
 }
 
 // ============================================================
@@ -884,13 +937,44 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
   // 3) Remove Payouts from leaderboard — now in Admin
   const tabs=[{id:"season",label:"Season Avg"},{id:"top15",label:"Top 15 Avg"},{id:"weekly",label:"Weekly"}];
 
+  // Helper: assign tie positions to a sorted array
+  const withTiePositions=(arr:any[],scoreKey:string)=>{
+    let pos=1;
+    return arr.map((row,i)=>{
+      if(i>0&&arr[i][scoreKey]===arr[i-1][scoreKey]){
+        return{...row,pos:arr[i-1]._pos,tied:true};
+      }
+      const r={...row,_pos:pos,pos,tied:false};
+      pos=i+2;// next unique position
+      return r;
+    });
+  };
+
+  const seasonAvgWithTies=withTiePositions(seasonAvg,"avg");
+  const top15AvgWithTies=withTiePositions(top15Avg,"avg");
+  const eventEntriesWithTies=withTiePositions(eventEntries,"total_stableford_points");
+
+  // Scorecard golf symbol
+  const ScoreSymbol=({gross,par}:{gross:number,par:number})=>{
+    const diff=gross-par;
+    let cls="sc-par";
+    if(diff<=-2)cls="sc-eagle";
+    else if(diff===-1)cls="sc-birdie";
+    else if(diff===1)cls="sc-bogey";
+    else if(diff===2)cls="sc-dbl";
+    else if(diff>=3)cls="sc-triple";
+    return <span className={`sc-score ${cls}`}>{gross}</span>;
+  };
+
   // Render ESPN-style leaderboard row
-  const renderLbRow=(row:any,rank:number,mode:"season"|"weekly")=>{
+  const renderLbRow=(row:any,mode:"season"|"weekly")=>{
     const gid=row.golfer_id;
     const g=golfers.find((x:any)=>x.golfer_id===gid);
     const isExpanded=expandedId===gid;
     const stats=golferStats(golfers,leaderboard,gid,selSeason);
-    const rankClass=rank===1?"r1":rank===2?"r2":rank===3?"r3":"";
+    // 4: tie display
+    const posLabel=row.tied?`T${row.pos}`:String(row.pos);
+    const rankClass=row.pos===1?"r1":row.pos===2?"r2":row.pos===3?"r3":"";
 
     const weeklyEntry=mode==="weekly"?leaderboard.find((r:any)=>r.event_id===displayEvent?.event_id&&r.golfer_id===gid):null;
     const hbhScores=weeklyEntry?.entry_type==="Hole-by-Hole"
@@ -903,16 +987,14 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
     return(
       <div key={gid}>
         <div className={`lb-row${isExpanded?" expanded":""}`} onClick={()=>setExpandedId(isExpanded?null:gid)}>
-          <div className={`lb-rank-cell ${rankClass}`}>{rank}</div>
-          {/* 2) no lb-name-sub */}
+          <div className={`lb-rank-cell ${rankClass}`} style={{fontSize:row.tied?16:22,fontWeight:700}}>{posLabel}</div>
           <div className="lb-name-cell">
             <div className="lb-name-main">{g?`${g.first_name} ${g.last_name}`:"Unknown"}</div>
           </div>
-          {/* 2) no lb-score-label */}
           <div className="lb-score-cell">
-            <div className="lb-score-big">{mode==="season"?(row.avg as number).toFixed(1):mode==="weekly"?(row as any).total_stableford_points:""}</div>
+            {/* 4b: 2 decimal places on season avg */}
+            <div className="lb-score-big">{mode==="season"?(row.avg as number).toFixed(2):mode==="weekly"?(row as any).total_stableford_points:""}</div>
           </div>
-          {/* 2) no lb-thru-label; 1a) asterisk if unqualified; weekly shows $$$ */}
           <div className="lb-thru-cell">
             {mode==="season"
               ?<div className="lb-thru-big">{row.rounds}{!row.qualified?"*":""}</div>
@@ -930,41 +1012,84 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                 <div className="lb-detail-item"><div className="lb-detail-key">2nd Place</div><div className="lb-detail-val">{stats.seconds}</div></div>
                 <div className="lb-detail-item"><div className="lb-detail-key">Best Round</div><div className="lb-detail-val" style={{color:"var(--gold-600)"}}>{stats.best}</div></div>
                 <div className="lb-detail-item"><div className="lb-detail-key">Worst Round</div><div className="lb-detail-val" style={{color:"var(--red-600)"}}>{stats.worst}</div></div>
-                {/* 1) Net Earnings only — no breakdown of stableford won / entry fees */}
                 <div className="lb-detail-item" style={{gridColumn:"1/-1"}}>
-                  <div className="lb-detail-key">Net Earnings</div>
+                  <div className="lb-detail-key">Net Earnings (stableford − entry fees)</div>
                   <div className="lb-detail-val" style={{color:stats.netEarnings>=0?"var(--green-700)":"var(--red-600)",fontSize:22}}>
                     {stats.netEarnings>=0?"+$"+stats.netEarnings.toFixed(0):"-$"+Math.abs(stats.netEarnings).toFixed(0)}
                   </div>
                 </div>
               </div>
-            ):(
-              <>
-                <div className="lb-detail-grid" style={{marginBottom:hbhScores.length>0?10:0}}>
-                  <div className="lb-detail-item"><div className="lb-detail-key">Playing HCP</div><div className="lb-detail-val">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&teePlayed?calcPlayingHandicap(g.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"—")}</div></div>
-                  <div className="lb-detail-item"><div className="lb-detail-key">Tees Played</div><div className="lb-detail-val">{teePlayed?.tee_box_name??"—"}</div></div>
-                  {weeklyEntry?.weekly_payout_won>0&&<div className="lb-detail-item"><div className="lb-detail-key">Stableford Win</div><div className="lb-detail-val" style={{color:"var(--gold-600)"}}>${weeklyEntry.weekly_payout_won}</div></div>}
-                  {weeklyEntry?.skins_payout_won>0&&<div className="lb-detail-item"><div className="lb-detail-key">Skins Won</div><div className="lb-detail-val" style={{color:"var(--green-700)"}}>${weeklyEntry.skins_payout_won}</div></div>}
-                </div>
-                {hbhScores.length>0&&(()=>{
-                  const c=teePlayed||courses.find((c:any)=>c.course_name===displayEvent?.course_name);
-                  return(
-                    <div>
-                      <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Hole by Hole</div>
-                      <div className="hbh-grid">
-                        {[...Array(9)].map((_,i)=><div key={i} className="hbh-cell header">{i+1}</div>)}
-                        {hbhScores.slice(0,9).map((hs:any)=>{const p=hs.stableford_points;const cls=p>=4?"eagle":p===3?"birdie":p===2?"par":p===1?"bogey":"dbl";return<div key={hs.hole_number} className={`hbh-cell ${cls}`}>{hs.gross_score}<span style={{fontSize:9,display:"block",lineHeight:1}}>{p}pt</span></div>;})}
+            ):(()=>{
+              // 5: weekly detail with total score + proper scorecard
+              const course=teePlayed||courses.find((c:any)=>c.course_name===displayEvent?.course_name);
+              const front9=hbhScores.slice(0,9);
+              const back9=hbhScores.slice(9,18);
+              const front9Gross=front9.reduce((s:number,h:any)=>s+(h.gross_score||0),0);
+              const back9Gross=back9.reduce((s:number,h:any)=>s+(h.gross_score||0),0);
+              const front9Pts=front9.reduce((s:number,h:any)=>s+(h.stableford_points||0),0);
+              const back9Pts=back9.reduce((s:number,h:any)=>s+(h.stableford_points||0),0);
+              return(
+                <>
+                  {/* 5: show total score + HCP + tees + earnings together */}
+                  <div className="lb-detail-grid" style={{marginBottom:10}}>
+                    {weeklyEntry&&<div className="lb-detail-item"><div className="lb-detail-key">Total Gross</div><div className="lb-detail-val" style={{color:"var(--green-700)",fontSize:26,fontWeight:700}}>{front9Gross+back9Gross}</div></div>}
+                    <div className="lb-detail-item"><div className="lb-detail-key">Playing HCP</div><div className="lb-detail-val">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&teePlayed?calcPlayingHandicap(g.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"—")}</div></div>
+                    <div className="lb-detail-item"><div className="lb-detail-key">Tees Played</div><div className="lb-detail-val">{teePlayed?.tee_box_name??"—"}</div></div>
+                    {weeklyEarned>0&&<div className="lb-detail-item" style={{gridColumn:"1/-1"}}><div className="lb-detail-key">Round Earnings</div><div className="lb-detail-val" style={{color:"var(--gold-600)"}}>${weeklyEarned.toFixed(0)}</div></div>}
+                  </div>
+
+                  {/* 5: Full golf scorecard table */}
+                  {hbhScores.length>0&&course&&(()=>{
+                    const renderHalf=(holes:any[],startIdx:number,outIn:string,grossTotal:number,ptsTotal:number)=>(
+                      <div className="scorecard-wrap">
+                        <table className="scorecard-table">
+                          <thead>
+                            <tr>
+                              <th className="label-col">Hole</th>
+                              {holes.map((_:any,i:number)=><th key={i}>{startIdx+i+1}</th>)}
+                              <th className="total-col">{outIn}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td className="label-col">Par</td>
+                              {holes.map((h:any,i:number)=><td key={i} style={{color:"var(--text-muted)",fontSize:11}}>{course?.hole_pars?.[startIdx+i]??""}</td>)}
+                              <td className="total-col">{course?.hole_pars?.slice(startIdx,startIdx+9).reduce((a:number,b:number)=>a+b,0)??""}</td>
+                            </tr>
+                            <tr>
+                              <td className="label-col">Score</td>
+                              {holes.map((h:any,i:number)=>{
+                                const par=course?.hole_pars?.[startIdx+i];
+                                return<td key={i}>{h.gross_score&&par!=null?<ScoreSymbol gross={h.gross_score} par={par}/>:""}</td>;
+                              })}
+                              <td className="total-col">{grossTotal||""}</td>
+                            </tr>
+                            <tr>
+                              <td className="label-col" style={{color:"var(--text-muted)",fontSize:10}}>Pts</td>
+                              {holes.map((h:any,i:number)=><td key={i} style={{fontSize:10,color:"var(--text-muted)"}}>{h.stableford_points!=null?h.stableford_points:""}</td>)}
+                              <td className="total-col" style={{color:"var(--green-700)"}}>{ptsTotal}</td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
-                      {hbhScores.length>9&&<div className="hbh-grid" style={{marginTop:3}}>
-                        {[...Array(9)].map((_,i)=><div key={i} className="hbh-cell header">{i+10}</div>)}
-                        {hbhScores.slice(9,18).map((hs:any)=>{const p=hs.stableford_points;const cls=p>=4?"eagle":p===3?"birdie":p===2?"par":p===1?"bogey":"dbl";return<div key={hs.hole_number} className={`hbh-cell ${cls}`}>{hs.gross_score}<span style={{fontSize:9,display:"block",lineHeight:1}}>{p}pt</span></div>;})}
-                      </div>}
-                    </div>
-                  );
-                })()}
-                {hbhScores.length===0&&<div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",marginTop:4}}>Total-only entry — no hole-by-hole data</div>}
-              </>
-            )}
+                    );
+                    return(
+                      <div>
+                        <div style={{fontSize:12,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Scorecard</div>
+                        {front9.length>0&&renderHalf(front9,0,"OUT",front9Gross,front9Pts)}
+                        {back9.length>0&&renderHalf(back9,9,"IN",back9Gross,back9Pts)}
+                        {front9.length>0&&back9.length>0&&(
+                          <div style={{display:"flex",gap:20,padding:"8px 4px",borderTop:"2px solid var(--green-700)",marginTop:4}}>
+                            
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {hbhScores.length===0&&<div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",marginTop:4}}>Total-only entry — no hole-by-hole data</div>}
+                </>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -996,7 +1121,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                 <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
                 <div className="lb-header-cell right">Avg</div><div className="lb-header-cell right">Rnds</div>
               </div>
-              {seasonAvg.map((row:any,i:number)=>renderLbRow(row,i+1,"season"))}
+              {seasonAvgWithTies.map((row:any)=>renderLbRow(row,"season"))}
             </div>
           )}
         </>
@@ -1012,7 +1137,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                 <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
                 <div className="lb-header-cell right">Avg</div><div className="lb-header-cell right">Rnds</div>
               </div>
-              {top15Avg.map((row:any,i:number)=>renderLbRow(row,i+1,"season"))}
+              {top15AvgWithTies.map((row:any)=>renderLbRow(row,"season"))}
             </div>
           )}
         </>
@@ -1056,7 +1181,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                   <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
                   <div className="lb-header-cell right">Pts</div><div className="lb-header-cell right">$$$</div>
                 </div>
-                {eventEntries.map((entry:any,i:number)=>renderLbRow(entry,i+1,"weekly"))}
+                {eventEntriesWithTies.map((entry:any)=>renderLbRow(entry,"weekly"))}
               </div>
             </>
           )}
@@ -1069,6 +1194,9 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
 
 
 function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDonations,showSuccess}:any){
+  const allSeasonsList=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
+  const currentSeason=allSeasonsList[0]||new Date().getFullYear();
+  const [donationSeason,setDonationSeason]=useState<number|"all">(currentSeason);
   const [selEventId,setSelEventId]=useState(events[0]?.event_id||null);
   const [newDonationAmt,setNewDonationAmt]=useState("");
   const [newDonationNote,setNewDonationNote]=useState("");
@@ -1077,8 +1205,18 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
   const paidIn=entries.filter((e:any)=>e.buy_in_paid).length;
   const skinsPaid=entries.filter((e:any)=>e.skins_paid).length;
   const charityFromRounds=leaderboard.filter((e:any)=>e.charity_paid).length*5;
-  const extraDonations=charityDonations.reduce((s:number,d:any)=>s+d.amount,0);
+  const extraDonations=charityDonations.reduce((s:number,d:any)=>s+Number(d.amount),0);
   const lifetimeCharity=charityFromRounds+extraDonations;
+
+  // Season-filtered donations
+  const seasonEventIds=new Set(events.filter((e:any)=>donationSeason==="all"||e.season===donationSeason).map((e:any)=>e.event_id));
+  const seasonCharityFromRounds=leaderboard.filter((e:any)=>e.charity_paid&&seasonEventIds.has(e.event_id)).length*5;
+  const filteredDonations=donationSeason==="all"?charityDonations:charityDonations.filter((d:any)=>{
+    const yr=d.date?parseInt(d.date.slice(0,4)):null;
+    return yr===donationSeason;
+  });
+  const seasonExtraDonations=filteredDonations.reduce((s:number,d:any)=>s+Number(d.amount),0);
+  const seasonCharity=seasonCharityFromRounds+seasonExtraDonations;
 
   const addDonation=()=>{
     if(!newDonationAmt)return;
@@ -1092,29 +1230,42 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
       <div className="charity-hero">
         <div className="charity-label">Lifetime Charity Pot</div>
         <div className="charity-amount">${lifetimeCharity.toLocaleString()}</div>
-        <div className="charity-label" style={{marginTop:5}}>Rounds: ${charityFromRounds} · Donations: ${extraDonations}</div>
+        <div className="charity-label" style={{marginTop:5}}>Rounds: ${charityFromRounds} · Donations: ${extraDonations.toFixed(0)}</div>
       </div>
 
-      {/* Extra donations */}
-      <div className="card-title" style={{marginBottom:8}}>Charity Donations</div>
-      {charityDonations.map((d:any)=>(
+      {/* 2a: Season-filtered donations view */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+        <div className="card-title">Charity by Season</div>
+        <select style={{fontSize:13,padding:"4px 8px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-sm)",fontFamily:"DM Sans,sans-serif",color:"var(--text-primary)"}} value={donationSeason} onChange={e=>setDonationSeason(e.target.value==="all"?"all":parseInt(e.target.value))}>
+          <option value="all">All Seasons</option>
+          {allSeasonsList.map(y=><option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+      <div className="card" style={{padding:"12px 16px",marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <span style={{fontSize:14,color:"var(--text-muted)"}}>{donationSeason==="all"?"All seasons":donationSeason+" season"} charity</span>
+          <span style={{fontFamily:"DM Serif Display,serif",fontSize:28,color:"var(--green-700)"}}>${seasonCharity.toLocaleString()}</span>
+        </div>
+        <div className="info-row"><span className="info-key">From rounds ($5/player)</span><span className="info-val money">${seasonCharityFromRounds}</span></div>
+        <div className="info-row"><span className="info-key">Extra donations</span><span className="info-val money">${seasonExtraDonations.toFixed(0)}</span></div>
+      </div>
+
+      <div className="card-title" style={{marginBottom:8}}>Donations ({donationSeason==="all"?"All":donationSeason})</div>
+      {filteredDonations.length===0&&<div style={{fontSize:13,color:"var(--text-muted)",marginBottom:10}}>No donations recorded for this period.</div>}
+      {filteredDonations.map((d:any)=>(
         <div key={d.id} className="info-row">
           <span className="info-key">{d.note}</span>
           <span style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:12,color:"var(--text-muted)"}}>{d.date}</span>
-            <span className="money">${d.amount}</span>
+            <span className="money">${Number(d.amount).toFixed(0)}</span>
           </span>
         </div>
       ))}
       <div className="card" style={{marginTop:10}}>
         <div className="card-title" style={{marginBottom:10}}>Add Donation</div>
-        <div className="form-group">
-          <label className="form-label">Amount ($)</label>
-          <input className="form-input" type="number" min="0" placeholder="50" value={newDonationAmt} onChange={e=>setNewDonationAmt(e.target.value)}/>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Note</label>
-          <input className="form-input" placeholder="e.g. Birthday donation" value={newDonationNote} onChange={e=>setNewDonationNote(e.target.value)}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+          <div className="form-group" style={{marginBottom:0}}><label className="form-label">Amount ($)</label><input className="form-input" type="number" min="0" placeholder="50" value={newDonationAmt} onChange={e=>setNewDonationAmt(e.target.value)}/></div>
+          <div className="form-group" style={{marginBottom:0}}><label className="form-label">Note</label><input className="form-input" placeholder="e.g. Birthday" value={newDonationNote} onChange={e=>setNewDonationNote(e.target.value)}/></div>
         </div>
         <button className="btn btn-primary btn-full" onClick={addDonation} disabled={!newDonationAmt}>Record Donation</button>
       </div>
@@ -1123,7 +1274,7 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
       <div className="form-group">
         <label className="form-label">Event Breakdown</label>
         <select className="form-select" value={selEventId||""} onChange={e=>setSelEventId(parseInt(e.target.value))}>
-          {events.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
+          {[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime()).map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
         </select>
       </div>
       <div className="stat-grid">
@@ -1139,9 +1290,9 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
           {entries.filter((e:any)=>e.weekly_payout_won>0||e.skins_payout_won>0).map((e:any)=>(
             <tr key={e.summary_id}>
               <td>{golferName(golfers,e.golfer_id)}</td>
-              <td style={{textAlign:"right"}} className="money">${e.weekly_payout_won.toFixed(0)}</td>
-              <td style={{textAlign:"right"}} className="money">${e.skins_payout_won.toFixed(0)}</td>
-              <td style={{textAlign:"right"}} className="money">${(e.weekly_payout_won+e.skins_payout_won).toFixed(0)}</td>
+              <td style={{textAlign:"right"}} className="money">${Number(e.weekly_payout_won).toFixed(0)}</td>
+              <td style={{textAlign:"right"}} className="money">${Number(e.skins_payout_won).toFixed(0)}</td>
+              <td style={{textAlign:"right"}} className="money">${(Number(e.weekly_payout_won)+Number(e.skins_payout_won)).toFixed(0)}</td>
             </tr>
           ))}
         </tbody>
@@ -1733,7 +1884,6 @@ function CourseManager({courses,setCourses,showSuccess}:any){
   );
 }
 
-// ── 3c) SCORE CORRECTION ─────────────────────────────────────
 function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,holeScores,setHoleScores,showSuccess}:any){
   const [selEventId,setSelEventId]=useState("");
   const [selGolferId,setSelGolferId]=useState("");
@@ -1742,7 +1892,11 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
   const [corrCourseId,setCorrCourseId]=useState("");
   const [corrGross,setCorrGross]=useState<string[]>(Array(18).fill(""));
 
-  const allEvents=[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+  // 2b: year filter
+  const allSeasonsList=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
+  const [filterYear,setFilterYear]=useState<number>(allSeasonsList[0]||new Date().getFullYear());
+  const filteredEvents=[...events].filter((e:any)=>e.season===filterYear).sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+
   const selEvent=events.find((e:any)=>e.event_id===parseInt(selEventId));
   const entry=leaderboard.find((r:any)=>r.event_id===parseInt(selEventId)&&r.golfer_id===parseInt(selGolferId));
   const existingHbh=entry?.entry_type==="Hole-by-Hole"?holeScores.filter((hs:any)=>hs.summary_id===entry.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number):[];
@@ -1797,10 +1951,19 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
     <div>
       <div className="card-title" style={{marginBottom:8}}>Score Correction</div>
       <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:14}}>Select an event and golfer to view and correct their score.</p>
+
+      {/* 2b: Year filter */}
+      <div className="form-group">
+        <label className="form-label">Season</label>
+        <select className="form-select" value={filterYear} onChange={e=>{setFilterYear(parseInt(e.target.value));setSelEventId("");setSelGolferId("");}}>
+          {allSeasonsList.map(y=><option key={y} value={y}>{y} Season</option>)}
+        </select>
+      </div>
+
       <div className="form-group"><label className="form-label">Event</label>
         <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setSelGolferId("");}}>
           <option value="">Select event…</option>
-          {allEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
+          {filteredEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
         </select>
       </div>
       {selEventId&&(
@@ -1951,14 +2114,18 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
     showSuccess("Event deleted");
   };
 
-  const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
-  const sortedEvents=[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+  const allSeasonsList=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
+  const [filterSeason,setFilterSeason]=useState<number|"all">(allSeasonsList[0]||new Date().getFullYear());
+  const filteredEvents=filterSeason==="all"?sortedEvents:sortedEvents.filter((e:any)=>e.season===filterSeason);
 
   return(
     <div>
       <div className="card-title" style={{marginBottom:12}}>{editId?"Edit Event":"Create New Event"}</div>
       <div className="form-group"><label className="form-label">Season (Year)</label><input className="form-input" type="number" min="2020" max="2040" value={season} onChange={e=>setSeason(parseInt(e.target.value))}/></div>
-      <div className="form-group"><label className="form-label">Date</label><input className="form-input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+      <div className="form-group"><label className="form-label">Date</label>
+        <input className="form-input" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{cursor:"pointer"}}/>
+        {date&&<div style={{fontSize:12,color:"var(--green-700)",marginTop:4,fontWeight:500}}>📅 {formatDate(date)}</div>}
+      </div>
       <div className="form-group"><label className="form-label">Golf Course</label><select className="form-select" value={courseName} onChange={e=>setCourseName(e.target.value)}><option value="">Select course…</option>{courseNames.map(n=><option key={n} value={n}>{n}</option>)}</select></div>
       <div className="form-group"><label className="form-label">Tee Times (one per line)</label><textarea className="form-input" rows={4} value={teeTimes} onChange={e=>setTeeTimes(e.target.value)} style={{resize:"vertical"}}/></div>
       <div style={{display:"flex",gap:8,marginBottom:16}}>
@@ -1968,8 +2135,15 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
       <hr className="divider"/>
       <div className="card-title" style={{marginBottom:8}}>Invitation Email</div>
       <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School – Upcoming Round&body=Hi all, join us for our next Saturday round. Please RSVP on the app!`} className="btn btn-outline btn-full" style={{textDecoration:"none",display:"flex",marginBottom:20}}>✉ Send Invitation</a>
-      <div className="card-title" style={{marginBottom:8}}>All Events</div>
-      {sortedEvents.map((ev:any)=>(
+
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+        <div className="card-title">All Events</div>
+        <select style={{fontSize:13,padding:"4px 8px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-sm)",fontFamily:"DM Sans,sans-serif",color:"var(--text-primary)"}} value={filterSeason} onChange={e=>setFilterSeason(e.target.value==="all"?"all":parseInt(e.target.value))}>
+          <option value="all">All Seasons</option>
+          {allSeasonsList.map(y=><option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+      {filteredEvents.map((ev:any)=>(
         <div key={ev.event_id} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 0",borderBottom:"1px solid var(--border)"}}>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontWeight:600,fontSize:15}}>{formatDate(ev.date)}</div>
