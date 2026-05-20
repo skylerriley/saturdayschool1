@@ -1033,7 +1033,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                 <>
                   {/* Weekly metrics: Total Score, HCP, Tees, Earnings */}
                   <div className="lb-detail-grid" style={{marginBottom:10}}>
-                    {weeklyEntry&&<div className="lb-detail-item"><div className="lb-detail-key">Stableford Pts</div><div className="lb-detail-val" style={{color:"var(--green-700)",fontSize:26,fontWeight:700}}>{weeklyEntry.total_stableford_points}</div></div>}
+                    
                     {/* 3: Total Gross only shown when H×H data exists */}
                     {hbhScores.length>0&&<div className="lb-detail-item"><div className="lb-detail-key">Total Gross</div><div className="lb-detail-val" style={{fontWeight:700,fontSize:22}}>{front9Gross+back9Gross}</div></div>}
                     <div className="lb-detail-item"><div className="lb-detail-key">Playing HCP</div><div className="lb-detail-val">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&teePlayed?calcPlayingHandicap(g.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"—")}</div></div>
