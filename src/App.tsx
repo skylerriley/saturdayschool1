@@ -1,4 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale,
+  PointElement, LineElement, BarElement,
+  LineController, BarController, ScatterController,
+  Filler, Legend, Tooltip
+} from "chart.js";
+ChartJS.register(
+  CategoryScale, LinearScale,
+  PointElement, LineElement, BarElement,
+  LineController, BarController, ScatterController,
+  Filler, Legend, Tooltip
+);
 
 // ============================================================
 // SUPABASE CLIENT
@@ -2459,40 +2472,25 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
 // ============================================================
 // ANALYTICS TAB — rich dashboard
 // ============================================================
-// ChartCanvas: self-contained chart component using a ref.
-// Avoids the getElementById race condition that caused blank charts
-// when the canvas was rendered conditionally or after a key-remount.
+// ChartCanvas: mounts a canvas via ref and builds the chart.
+// Avoids getElementById race conditions entirely.
 // ============================================================
-function ChartCanvas({buildFn,deps,height=200,style}:{buildFn:(C:any,canvas:HTMLCanvasElement)=>any,deps:any[],height?:number,style?:any}){
-  const canvasRef=useRef<HTMLCanvasElement>(null);
+function ChartCanvas({config,deps,height=200,style}:{
+  config:object, deps:any[], height?:number, style?:any
+}){
+  const ref=useRef<HTMLCanvasElement>(null);
   useEffect(()=>{
-    const canvas=canvasRef.current; if(!canvas)return;
-    const tryBuild=()=>{
-      const C=(window as any).Chart; if(!C)return false;
-      // Destroy any existing chart instance on this canvas
-      const existing=(C as any).getChart(canvas); if(existing)existing.destroy();
-      buildFn(C,canvas); return true;
-    };
-    if(!tryBuild()){
-      const id=setInterval(()=>{if(tryBuild())clearInterval(id);},200);
-      return()=>clearInterval(id);
-    }
+    const canvas=ref.current; if(!canvas)return;
+    const existing=ChartJS.getChart(canvas); if(existing)existing.destroy();
+    new ChartJS(canvas,config as any);
+    return()=>{ const c=ChartJS.getChart(canvas); if(c)c.destroy(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[canvasRef.current,...deps]);
-  return <div style={{position:"relative",width:"100%",height,...style}}><canvas ref={canvasRef}/></div>;
-}
-
-// Legacy shim kept for any remaining callers
-function useChart(canvasId:string,buildFn:(Chart:any)=>any,deps:any[]){
-  useEffect(()=>{
-    const tryBuild=()=>{
-      const C=(window as any).Chart; if(!C)return false;
-      const ctx=document.getElementById(canvasId) as HTMLCanvasElement; if(!ctx)return false;
-      const existing=C.getChart(canvasId); if(existing)existing.destroy();
-      buildFn(C); return true;
-    };
-    if(!tryBuild()){const id=setInterval(()=>{if(tryBuild())clearInterval(id);},300);return()=>clearInterval(id);}
-  },deps);
+  },[...deps]);
+  return(
+    <div style={{position:"relative",width:"100%",height,...(style||{})}}>
+      <canvas ref={ref}/>
+    </div>
+  );
 }
 
 // Derive wins/earnings for analytics (same logic as golferStats but for all golfers at once)
@@ -2670,11 +2668,10 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
       return{date:ev.date,avg,course:ev.course_name};
     });
 
-  // Build functions for ChartCanvas — defined here so they close over the data
-  const buildTrendChart=(C:any,canvas:HTMLCanvasElement)=>new C(canvas,{
-    type:"line",
+  const trendConfig = {
+    type:"line" as const,
     data:{
-      labels:eventTrend.map((_:any,i:number)=>`Rd ${i+1}`),
+      labels:eventTrend.map((_:any,i:number)=>"Rd "+(i+1)),
       datasets:[{
         label:"Field Avg",
         data:eventTrend.map((e:any)=>parseFloat(e.avg.toFixed(1))),
@@ -2682,31 +2679,37 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
         pointBackgroundColor:"#1a7340",pointRadius:5,fill:true,tension:0.35
       }]
     },
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
-      tooltip:{callbacks:{label:(c:any)=>` ${c.parsed.y.toFixed(1)} pts avg`,
-        title:(items:any)=>{const ev=eventTrend[items[0].dataIndex];return`${formatDate(ev.date)}`;}}
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{
+          label:(c:any)=>(" "+c.parsed.y.toFixed(1)+" pts avg"),
+          title:(items:any)=>{const ev=eventTrend[items[0].dataIndex];return formatDate(ev.date);}
+        }}
+      },
+      scales:{
+        x:{ticks:{color:"#6b5240",font:{size:12}},grid:{display:false}},
+        y:{beginAtZero:false,min:24,ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}
       }
-    },scales:{x:{ticks:{color:"#6b5240",font:{size:12}},grid:{display:false}},
-      y:{beginAtZero:false,min:24,ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}}}
-  });
+    }
+  };
 
-  const buildWinsChart=(C:any,canvas:HTMLCanvasElement)=>new C(canvas,{
-    type:"bar",
+  const winsConfig = {
+    type:"bar" as const,
     data:{
       labels:winData.map((d:any)=>d.golfer.first_name),
-      datasets:[{
-        label:"Wins",data:winData.map((d:any)=>d.wins),
-        backgroundColor:"#c47800",borderRadius:5
-      },{
-        label:"2nds",data:winData.map((d:any)=>d.seconds),
-        backgroundColor:"rgba(26,115,64,0.45)",borderRadius:5
-      }]
+      datasets:[
+        {label:"Wins",data:winData.map((d:any)=>d.wins),backgroundColor:"#c47800",borderRadius:5},
+        {label:"2nds",data:winData.map((d:any)=>d.seconds),backgroundColor:"rgba(26,115,64,0.45)",borderRadius:5}
+      ]
     },
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:true,labels:{color:"#6b5240",font:{size:12}}}},
-      scales:{x:{ticks:{color:"#6b5240",font:{size:12}},grid:{display:false}},
-        y:{ticks:{color:"#6b5240",stepSize:1},grid:{color:"rgba(74,55,40,0.1)"},beginAtZero:true}}}
-  });
+      scales:{
+        x:{ticks:{color:"#6b5240",font:{size:12}},grid:{display:false}},
+        y:{ticks:{color:"#6b5240",stepSize:1},grid:{color:"rgba(74,55,40,0.1)"},beginAtZero:true}
+      }
+    }
+  };
 
   return(
     <div>
@@ -2759,7 +2762,7 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
       {eventTrend.length>1&&(
         <div className="card" style={{marginBottom:12}}>
           <div className="card-title" style={{marginBottom:10}}>Field Scoring Trend</div>
-          <ChartCanvas buildFn={buildTrendChart} deps={[eventTrend]} height={190}/>
+          <ChartCanvas config={trendConfig} deps={[season,eventTrend.length]} height={190}/>
         </div>
       )}
       {eventTrend.length<=1&&seasonEvents.length>0&&(
@@ -2772,7 +2775,7 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
       {winData.length>0&&(
         <div className="card" style={{marginBottom:12}}>
           <div className="card-title" style={{marginBottom:10}}>Wins &amp; 2nd Place Finishes</div>
-          <ChartCanvas buildFn={buildWinsChart} deps={[winData]} height={190}/>
+          <ChartCanvas config={winsConfig} deps={[season,winData.length]} height={190}/>
         </div>
       )}
       {winData.length===0&&seasonEvents.length>0&&(
@@ -2832,18 +2835,54 @@ function ConsistencyTable({seasonData}:any){
 }
 
 function CourseChart({courseAvgs}:any){
-  const buildFn=(C:any,canvas:HTMLCanvasElement)=>new C(canvas,{type:"bar",data:{labels:courseAvgs.map((c:any)=>c.name),datasets:[{label:"Avg Pts",data:courseAvgs.map((c:any)=>parseFloat(c.avg.toFixed(1))),backgroundColor:["#1a7340","#c47800","#a32020","#0f4526","#9a5a00"],borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>` ${c.parsed.y.toFixed(1)} pts avg`}}},scales:{y:{beginAtZero:false,min:20,ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:14}},grid:{color:"rgba(74,55,40,0.1)"}},x:{ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},grid:{display:false}}}}});
+  const config = {
+    type:"bar" as const,
+    data:{
+      labels:courseAvgs.map((c:any)=>c.name),
+      datasets:[{
+        label:"Avg Pts",
+        data:courseAvgs.map((c:any)=>parseFloat(c.avg.toFixed(1))),
+        backgroundColor:["#1a7340","#c47800","#a32020","#0f4526","#9a5a00"],
+        borderRadius:6
+      }]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>(c.parsed.y.toFixed(1)+" pts avg")}}},
+      scales:{
+        y:{beginAtZero:false,min:20,ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:14}},grid:{color:"rgba(74,55,40,0.1)"}},
+        x:{ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},grid:{display:false}}
+      }
+    }
+  };
   return(
     <div>
       <div className="card-title" style={{marginBottom:4}}>Stableford Averages by Course</div>
       <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:12}}>Field average stableford points per course this season.</p>
-      {courseAvgs.map((c:any)=><div key={c.name} className="info-row"><span className="info-key">{c.name}</span><span className="info-val">{c.count>0?`${c.avg.toFixed(1)} pts avg (${c.count} rounds)`:"No data"}</span></div>)}
-      <ChartCanvas buildFn={buildFn} deps={[courseAvgs]} height={210} style={{marginTop:16}}/>
+      {courseAvgs.map((c:any)=><div key={c.name} className="info-row"><span className="info-key">{c.name}</span><span className="info-val">{c.count>0?(c.avg.toFixed(1)+" pts avg ("+c.count+" rounds)"):"No data"}</span></div>)}
+      <ChartCanvas config={config} deps={[courseAvgs.length,courseAvgs.map((c:any)=>c.avg).join()]} height={210} style={{marginTop:16}}/>
     </div>
   );
 }
 function ScatterChart({scatterData}:any){
-  const buildFn=(C:any,canvas:HTMLCanvasElement)=>new C(canvas,{type:"scatter",data:{datasets:[{label:"Golfers",data:scatterData.map((d:any)=>({x:d.hcp,y:parseFloat(d.avg.toFixed(1)),name:`${d.golfer.first_name} ${d.golfer.last_name}`})),backgroundColor:"#1a7340",pointRadius:10,pointHoverRadius:13}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>`${c.raw.name}: HCP ${c.raw.x} → ${c.raw.y.toFixed(1)} pts avg`}}},scales:{x:{title:{display:true,text:"Handicap Index",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}},y:{title:{display:true,text:"Avg Stableford Pts",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}}}}); 
+  const config = {
+    type:"scatter" as const,
+    data:{
+      datasets:[{
+        label:"Golfers",
+        data:scatterData.map((d:any)=>({x:d.hcp,y:parseFloat(d.avg.toFixed(1)),name:d.golfer.first_name+" "+d.golfer.last_name})),
+        backgroundColor:"#1a7340",pointRadius:10,pointHoverRadius:13
+      }]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:(c:any)=>(c.raw.name+": HCP "+c.raw.x+" - "+c.raw.y.toFixed(1)+" pts avg")}}
+      },
+      scales:{
+        x:{title:{display:true,text:"Handicap Index",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}},
+        y:{title:{display:true,text:"Avg Stableford Pts",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}
+      }
+    }
+  };
   if(scatterData.length<2) return(
     <div>
       <div className="card-title" style={{marginBottom:5}}>Handicap Index vs Avg Performance</div>
@@ -2856,7 +2895,7 @@ function ScatterChart({scatterData}:any){
     <div>
       <div className="card-title" style={{marginBottom:5}}>Handicap Index vs Avg Performance</div>
       <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:12}}>Higher scores for a given HCP = outperforming handicap. Tap a dot for name.</p>
-      <ChartCanvas buildFn={buildFn} deps={[scatterData]} height={270}/>
+      <ChartCanvas config={config} deps={[scatterData.length,scatterData.map((d:any)=>d.golfer.golfer_id).join()]} height={270}/>
     </div>
   );
 }
@@ -2867,24 +2906,28 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
   const totalEarned=rounds.reduce((s:number,r:any)=>s+r.earned,0);
   const netEarnings=totalEarned-(rounds.length*20);
 
-  const buildHistChart=(C:any,canvas:HTMLCanvasElement)=>new C(canvas,{
-    type:"line",
+  const histConfig = {
+    type:"line" as const,
     data:{
-      labels:rounds.map((_:any,i:number)=>`R${i+1}`),
+      labels:rounds.map((_:any,i:number)=>"R"+(i+1)),
       datasets:[
         {label:"Points",data:rounds.map((r:any)=>r.pts),borderColor:"#1a7340",backgroundColor:"rgba(26,115,64,0.08)",pointBackgroundColor:"#1a7340",pointRadius:5,fill:true,tension:0.3},
         {label:"Avg",data:Array(rounds.length).fill(parseFloat(avg.toFixed(1))),borderColor:"#c47800",borderDash:[5,4],pointRadius:0,fill:false}
       ]
     },
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>c.dataset.label==="Avg"?` Avg: ${c.parsed.y.toFixed(1)}`:`${c.parsed.y} pts`,title:(items:any)=>{const r=rounds[items[0].dataIndex];return`${formatDate(r.date)} · ${r.course.split(" ")[0]}`;}}
-      }},
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{
+          label:(c:any)=>(c.dataset.label==="Avg" ? ("Avg: "+c.parsed.y.toFixed(1)) : (c.parsed.y+" pts")),
+          title:(items:any)=>{const r=rounds[items[0].dataIndex];return formatDate(r.date)+" - "+r.course.split(" ")[0];}
+        }}
+      },
       scales:{
         x:{ticks:{color:"#6b5240",font:{size:12},maxTicksLimit:12},grid:{display:false}},
         y:{min:Math.max(0,worst-5),ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}
       }
     }
-  });
+  };
 
   // Running avg line for trend arrow
   const trend=rounds.length>2?(rounds[rounds.length-1].pts+rounds[rounds.length-2].pts)/2 - (rounds[0].pts+rounds[1].pts)/2:0;
@@ -2931,7 +2974,7 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
           <span style={{width:14,height:3,background:"#c47800",display:"inline-block",borderRadius:2,marginLeft:4}}></span>Avg
         </span>
       </div>
-      <ChartCanvas buildFn={buildHistChart} deps={[golfer.golfer_id,rounds.length]} height={210} style={{marginBottom:16}}/>
+      <ChartCanvas config={histConfig} deps={[golfer.golfer_id,rounds.length]} height={210} style={{marginBottom:16}}/>
 
       {/* Per-round table */}
       <div className="card-title" style={{marginBottom:8}}>Round-by-Round</div>
