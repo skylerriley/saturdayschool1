@@ -973,7 +973,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
     ?[...leaderboard.filter((e:any)=>e.event_id===displayEvent.event_id)].sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)
     :[];
 
-  const paidEntries=eventEntries.filter((e:any)=>e.buy_in_paid);
+  const paidEntries=[...eventEntries.filter((e:any)=>e.buy_in_paid)].sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
   const totalPot=paidEntries.length*20;
   const first1stPts=paidEntries[0]?.total_stableford_points;
   const tied1st=paidEntries.filter((e:any)=>e.total_stableford_points===first1stPts);
@@ -1327,22 +1327,56 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                 {skinsEligible&&<div className="stat-card"><div className="stat-value" style={{color:"var(--green-700)"}}>${eventEntries.filter((e:any)=>e.skins_paid).length*10}</div><div className="stat-label">Skins Pot</div></div>}
                 {hasLiveSkins&&<div className="stat-card"><div style={{fontSize:13,fontWeight:700,color:"var(--green-600)",marginBottom:2}}>✓ Skins Live</div><div className="stat-label">{Object.keys(liveSkinPayouts).length} winner{Object.keys(liveSkinPayouts).length!==1?"s":""}</div></div>}
               </div>
-              {eventEntries.length>=2&&(
-                <div className="podium-row">
-                  {eventEntries.slice(0,2).map((e:any,i:number)=>{
-                    const pct=i===0?(tied1st.length>1?1.0:0.75):0.25;
-                    const payout=(totalPot*pct/(i===0?tied1st.length:1)).toFixed(0);
-                    return(
-                      <div key={e.summary_id} className={`podium-card p${i+1}`}>
-                        <div className="podium-pos">{i===0?"🥇":"🥈"}</div>
-                        <div className="podium-pname">{golferName(golfers,e.golfer_id).split(" ")[0]}</div>
-                        <div className="podium-pscore">{e.total_stableford_points} pts</div>
-                        <div className="podium-payout">${payout}</div>
+              {eventEntries.length>=2&&(()=>{
+                const isTied=tied1st.length>1;
+                // Tied 1st: show all tied players sharing full pot, no 2nd
+                if(isTied){
+                  return(
+                    <div style={{display:"grid",gridTemplateColumns:"repeat("+Math.min(tied1st.length,4)+",1fr)",gap:10,marginBottom:18}}>
+                      {tied1st.map((e:any)=>{
+                        const payout=(totalPot/tied1st.length).toFixed(0);
+                        return(
+                          <div key={e.summary_id} className="podium-card p1">
+                            <div className="podium-pos">🥇</div>
+                            <div className="podium-pname">{golferName(golfers,e.golfer_id).split(" ")[0]}</div>
+                            <div className="podium-pscore">{e.total_stableford_points} pts</div>
+                            <div className="podium-payout">${payout}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+                // Solo 1st: winner gets 2/3, runner-up gets 1/3
+                const winner=paidEntries[0];
+                // Find runner-up (first player with different score from winner)
+                const runnerUp=paidEntries.find((e:any)=>e.total_stableford_points<(winner?.total_stableford_points??0));
+                const winnerPayout=(totalPot*(2/3)).toFixed(0);
+                // Runner-up payout splits 1/3 among all tied for 2nd
+                const secondPts=runnerUp?.total_stableford_points;
+                const tied2nd=secondPts!=null?paidEntries.filter((e:any)=>e.total_stableford_points===secondPts):[];
+                const runnerUpPayout=tied2nd.length>0?((totalPot*(1/3))/tied2nd.length).toFixed(0):"0";
+                return(
+                  <div className="podium-row">
+                    {winner&&(
+                      <div className="podium-card p1">
+                        <div className="podium-pos">🥇</div>
+                        <div className="podium-pname">{golferName(golfers,winner.golfer_id).split(" ")[0]}</div>
+                        <div className="podium-pscore">{winner.total_stableford_points} pts</div>
+                        <div className="podium-payout">${winnerPayout}</div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    )}
+                    {runnerUp&&(
+                      <div className="podium-card p2">
+                        <div className="podium-pos">🥈{tied2nd.length>1&&<span style={{fontSize:12,marginLeft:3}}>×{tied2nd.length}</span>}</div>
+                        <div className="podium-pname">{tied2nd.length>1?"Tied 2nd":golferName(golfers,runnerUp.golfer_id).split(" ")[0]}</div>
+                        <div className="podium-pscore">{runnerUp.total_stableford_points} pts</div>
+                        <div className="podium-payout">${runnerUpPayout}{tied2nd.length>1?" ea":""}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
                 <div className="lb-header" style={{gridTemplateColumns:"36px 1fr 56px 62px"}}>
                   <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
@@ -2223,15 +2257,54 @@ function HandicapManager({golfers,setGolfers,showSuccess}:any){
 function CourseHcpSheet({golfers,courses,showSuccess}:any){
   const courseNames=uniqueCourseNames(courses);
   const [selCourseName,setSelCourseName]=useState(courseNames[0]||"");
+  const [showModal,setShowModal]=useState(false);
+  const [copied,setCopied]=useState(false);
   const tees=teeBoxesForCourse(courses,selCourseName);
-  const members=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active");
-  const buildEmailBody=()=>{
-    let body=`Saturday School – Course Handicaps\n${selCourseName}\n\n`;
-    body+=`${"Golfer".padEnd(22)}${tees.map((t:any)=>t.tee_box_name.padEnd(10)).join("")}\n${"-".repeat(22+tees.length*10)}\n`;
-    members.forEach((g:any)=>{body+=`${(g.first_name+" "+g.last_name).padEnd(22)}${tees.map((t:any)=>String(calcPlayingHandicap(g.current_handicap_index,t.tee_slope,t.tee_rating,t.par)).padEnd(10)).join("")}\n`;});
-    return body;
+  const members=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").sort((a:any,b:any)=>a.first_name.localeCompare(b.first_name));
+
+  // Build a rich HTML table suitable for pasting into Gmail / Outlook
+  const buildHtmlTable=()=>{
+    const thStyle="padding:8px 14px;text-align:center;background:#1a4a28;color:#f5d97a;font-size:14px;font-weight:700;";
+    const tdNameStyle="padding:8px 14px;font-size:14px;border-bottom:1px solid #e0d4c4;white-space:nowrap;";
+    const tdHcpStyle="padding:2px 0;font-size:11px;color:#888;";
+    const tdValStyle="padding:8px 14px;text-align:center;font-size:16px;font-weight:700;color:#1a6b3a;border-bottom:1px solid #e0d4c4;";
+    let rows=members.map((g:any)=>{
+      const cells=tees.map((t:any)=>"<td style=\""+tdValStyle+"\">"+calcPlayingHandicap(g.current_handicap_index,t.tee_slope,t.tee_rating,t.par)+"</td>").join("");
+      return "<tr><td style=\""+tdNameStyle+"\">"+g.first_name+" "+g.last_name+"<div style=\""+tdHcpStyle+"\">HCP "+g.current_handicap_index.toFixed(1)+"</div></td>"+cells+"</tr>";
+    }).join("");
+    const headers=tees.map((t:any)=>"<th style=\""+thStyle+"\">"+t.tee_box_name+"<br/><span style=\"font-weight:400;font-size:11px;opacity:0.85;\">Sl "+t.tee_slope+" / Rt "+t.tee_rating+"</span></th>").join("");
+    return (
+      "<div style=\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;\">" +
+      "<h2 style=\"background:#1a4a28;color:#f5d97a;margin:0;padding:14px 18px;font-size:18px;\">⛳ Saturday School</h2>" +
+      "<h3 style=\"background:#2d6e45;color:white;margin:0;padding:10px 18px;font-size:15px;font-weight:400;\">Playing Handicaps — "+selCourseName+"</h3>" +
+      "<table style=\"width:100%;border-collapse:collapse;font-family:Arial,sans-serif;\">" +
+      "<thead><tr><th style=\""+thStyle+"text-align:left;\">Golfer</th>"+headers+"</tr></thead>" +
+      "<tbody>"+rows+"</tbody></table>" +
+      "<p style=\"font-size:12px;color:#888;padding:10px 18px;\">Generated by Saturday School App</p></div>"
+    );
   };
-  const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
+
+  const handleCopy=async()=>{
+    const html=buildHtmlTable();
+    try{
+      // Try rich HTML copy first (works in Chrome/Edge, pastes as formatted table)
+      await navigator.clipboard.write([
+        new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([html],{type:"text/plain"})})
+      ]);
+      setCopied(true);
+      setTimeout(()=>setCopied(false),3000);
+    }catch{
+      // Fallback: copy plain HTML string
+      try{
+        await navigator.clipboard.writeText(html);
+        setCopied(true);
+        setTimeout(()=>setCopied(false),3000);
+      }catch{
+        showSuccess("Could not access clipboard — try on a different browser");
+      }
+    }
+  };
+
   return(
     <div>
       <div className="card-title" style={{marginBottom:8}}>Course Handicap Sheet</div>
@@ -2245,7 +2318,55 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
               <tbody>{members.map((g:any)=><tr key={g.golfer_id}><td>{g.first_name} {g.last_name}<br/><span style={{fontSize:12,color:"var(--text-muted)"}}>HCP {g.current_handicap_index.toFixed(1)}</span></td>{tees.map((t:any)=><td key={t.course_id} style={{fontWeight:700,fontSize:18,color:"var(--green-700)"}}>{calcPlayingHandicap(g.current_handicap_index,t.tee_slope,t.tee_rating,t.par)}</td>)}</tr>)}</tbody>
             </table>
           </div>
-          <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School – Course Handicaps: ${selCourseName}&body=${encodeURIComponent(buildEmailBody())}`} className="btn btn-outline btn-full" style={{marginTop:14,textDecoration:"none",display:"flex"}}>✉ Email Course Handicaps</a>
+
+          {/* Email buttons */}
+          <div style={{display:"flex",gap:10,marginTop:14,flexWrap:"wrap"}}>
+            <button className="btn btn-primary" style={{flex:1}} onClick={()=>setShowModal(true)}>✉ Email Handicaps</button>
+          </div>
+
+          {/* Email modal */}
+          {showModal&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:999,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowModal(false)}>
+              <div style={{background:"var(--surface)",borderRadius:"var(--radius-lg) var(--radius-lg) 0 0",padding:24,width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+                <div style={{fontSize:18,fontWeight:700,color:"var(--green-800)",marginBottom:4}}>Email Course Handicaps</div>
+                <div style={{fontSize:14,color:"var(--text-muted)",marginBottom:20}}>{selCourseName}</div>
+
+                {/* Step instructions */}
+                <div style={{display:"flex",flexDirection:"column",gap:14}}>
+
+                  {/* Step 1: Copy */}
+                  <div style={{background:"var(--surface2)",borderRadius:"var(--radius-md)",padding:16,border:"1px solid var(--border)"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 1 — Copy the table</div>
+                    <p style={{fontSize:14,color:"var(--text-primary)",marginBottom:12,lineHeight:1.5}}>
+                      Copies a formatted HTML table to your clipboard. When you paste it into Gmail or Outlook it will look like a proper table with colors.
+                    </p>
+                    <button className={copied?"btn btn-primary btn-full":"btn btn-outline btn-full"} onClick={handleCopy} style={{fontWeight:700}}>
+                      {copied?"✅ Copied to clipboard!":"📋 Copy Formatted Table"}
+                    </button>
+                  </div>
+
+                  {/* Step 2: Open email */}
+                  <div style={{background:"var(--surface2)",borderRadius:"var(--radius-md)",padding:16,border:"1px solid var(--border)"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 2 — Compose &amp; paste</div>
+                    <p style={{fontSize:14,color:"var(--text-primary)",marginBottom:12,lineHeight:1.5}}>
+                      Open your email app, start a new message to the group, then paste (<strong>Ctrl+V</strong> / <strong>⌘V</strong>) into the body. The table will appear with full formatting.
+                    </p>
+                    <div style={{background:"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:"var(--radius-md)",padding:"10px 12px",fontSize:13,color:"var(--green-800)"}}>
+                      <strong>Suggested subject:</strong> Saturday School – Playing Handicaps ({selCourseName})
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  <div style={{background:"var(--surface2)",borderRadius:"var(--radius-md)",padding:16,border:"1px solid var(--border)"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>Preview</div>
+                    <div style={{overflowX:"auto",fontSize:13}} dangerouslySetInnerHTML={{__html:buildHtmlTable()}}/>
+                  </div>
+                </div>
+
+                <button className="btn btn-outline btn-full" style={{marginTop:18}} onClick={()=>setShowModal(false)}>Close</button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
