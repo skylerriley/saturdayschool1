@@ -272,6 +272,9 @@ const CSS = `
   .score-table td{padding:8px 4px;text-align:center;border-bottom:1px solid var(--border);font-size:14px;}
   .score-table tr:nth-child(even) td{background:var(--surface2);}
   .score-input-cell input{width:40px;padding:5px 2px;text-align:center;border:1.5px solid var(--border-md);border-radius:5px;font-size:15px;font-family:'DM Sans',sans-serif;}
+  .score-input-cell input::-webkit-outer-spin-button,
+  .score-input-cell input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .score-input-cell input[type=number]{-moz-appearance:textfield;appearance:textfield;}
   .score-input-cell input:focus{border-color:var(--green-500);outline:none;box-shadow:0 0 0 2px rgba(34,139,80,0.15);}
   .pts-eagle{background:var(--gold-100);color:var(--gold-800);font-weight:700;}
   .pts-birdie{background:var(--green-100);color:var(--green-700);font-weight:700;}
@@ -301,7 +304,7 @@ const CSS = `
   .pairing-hcp{font-size:14px;color:var(--green-600);font-weight:600;}
 
   /* ── RSVP ── */
-  .rsvp-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1.5px solid var(--border);gap:8px;}
+  .rsvp-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1.5px solid var(--border-md);gap:8px;}
   .rsvp-row:last-child{border-bottom:none;}
   .rsvp-name{font-size:16px;font-weight:500;flex:1;min-width:0;text-align:left;}
   .rsvp-actions{display:flex;gap:5px;flex-shrink:0;}
@@ -902,7 +905,10 @@ function golferStats(golfers:any[],leaderboard:any[],gid:number,season:number){
   });
   const entries=deduped;
   const allPts=entries.map((r:any)=>r.total_stableford_points);
-  // Derive wins/seconds and stableford earnings from score rankings, not stored payout fields
+  // Derive wins/seconds and stableford earnings from score rankings.
+  // Payout rules:
+  //   - Solo 1st: 2/3 of pot to winner, 1/3 to 2nd place
+  //   - Tied 1st: entire pot split evenly among all tied leaders, no 2nd payout
   let wins=0, seconds=0, stablefordEarned=0;
   const eventIds=[...new Set(entries.map((r:any)=>r.event_id))];
   eventIds.forEach((eid:any)=>{
@@ -912,14 +918,22 @@ function golferStats(golfers:any[],leaderboard:any[],gid:number,season:number){
     const pot=evEntries.length*20;
     const topPts=evEntries[0].total_stableford_points;
     const tied1st=evEntries.filter((e:any)=>e.total_stableford_points===topPts);
-    const secondPts=tied1st.length===1?evEntries[tied1st.length]?.total_stableford_points:null;
+    // Only award 2nd place when there is exactly ONE player in 1st
+    const secondPts=tied1st.length===1&&evEntries.length>1?evEntries[1]?.total_stableford_points:null;
     const tied2nd=secondPts!=null?evEntries.filter((e:any)=>e.total_stableford_points===secondPts):[];
     if(tied1st.some((e:any)=>e.golfer_id===gid)){
       wins++;
-      stablefordEarned+=(tied1st.length>1?pot:pot*0.75)/tied1st.length;
+      if(tied1st.length===1){
+        // Solo winner gets 2/3
+        stablefordEarned+=pot*(2/3);
+      } else {
+        // Tied 1st: split entire pot
+        stablefordEarned+=pot/tied1st.length;
+      }
     } else if(tied2nd.some((e:any)=>e.golfer_id===gid)){
       seconds++;
-      stablefordEarned+=(pot*0.25)/tied2nd.length;
+      // 2nd place only exists when there's a solo 1st; they get 1/3
+      stablefordEarned+=(pot*(1/3))/tied2nd.length;
     }
   });
   const netEarnings=stablefordEarned-(allPts.length*20);
@@ -1060,13 +1074,13 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
       const pot=paidEv.length*20;
       const topPts=paidEv[0].total_stableford_points;
       const tied1stEv=paidEv.filter((e:any)=>e.total_stableford_points===topPts);
-      const secondPts=tied1stEv.length<paidEv.length?paidEv[tied1stEv.length]?.total_stableford_points:null;
+      const secondPts=tied1stEv.length===1&&paidEv.length>1?paidEv[1]?.total_stableford_points:null;
       const tied2ndEv=secondPts!=null?paidEv.filter((e:any)=>e.total_stableford_points===secondPts):[];
       let earned=0;
       if(tied1stEv.some((e:any)=>e.golfer_id===gid)){
-        earned=(tied1stEv.length>1?pot:pot*0.75)/tied1stEv.length;
+        earned=tied1stEv.length===1?pot*(2/3):pot/tied1stEv.length;
       } else if(tied2ndEv.some((e:any)=>e.golfer_id===gid)){
-        earned=(pot*0.25)/tied2ndEv.length;
+        earned=(pot*(1/3))/tied2ndEv.length;
       }
       // Use live skins calculation if available, else fall back to stored field
       earned+=hasLiveSkins?(liveSkinPayouts[gid]||0):Number(weeklyEntry.skins_payout_won||0);
@@ -1807,9 +1821,10 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
                           <td key={si} className={`score-input-cell ${ptsClass(pts)}`} style={{padding:"3px 2px"}}>
                             <input
                               type="number" min="1" max="15"
+                              inputMode="numeric"
                               value={s.grossScores[holeIdx]}
                               onChange={e=>updateGross(s.origIdx,holeIdx,e.target.value)}
-                              style={{width:44}}
+                              style={{width:44,MozAppearance:"textfield"}}
                             />
                           </td>
                         );
@@ -2089,15 +2104,20 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
   return(
     <div>
       <div className="card-title" style={{marginBottom:8}}>Score Correction</div>
-      <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:14}}>Select an event and golfer to view and correct their score.</p>
+      <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:14}}>Select an event and golfer to correct their score. Only the current season is editable.</p>
 
-      {/* 2b: Year filter */}
+      {/* 2b: Year filter — only current year is editable */}
       <div className="form-group">
         <label className="form-label">Season</label>
         <select className="form-select" value={filterYear} onChange={e=>{setFilterYear(parseInt(e.target.value));setSelEventId("");setSelGolferId("");}}>
-          {allSeasonsList.map(y=><option key={y} value={y}>{y} Season</option>)}
+          {allSeasonsList.map(y=><option key={y} value={y}>{y} Season{y!==allSeasonsList[0]?" (view only)":""}</option>)}
         </select>
       </div>
+      {filterYear!==allSeasonsList[0]&&(
+        <div style={{background:"var(--gold-50)",border:"1.5px solid var(--gold-300)",borderRadius:"var(--radius-md)",padding:"10px 14px",fontSize:13,color:"var(--gold-800)",marginBottom:12}}>
+          ⚠ Past seasons are read-only. Switch to the current season to make edits.
+        </div>
+      )}
 
       <div className="form-group"><label className="form-label">Event</label>
         <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setSelGolferId("");}}>
@@ -2147,7 +2167,7 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
                       <td style={{fontWeight:600}}>{i+1}</td>
                       <td>{corrCourse.hole_pars[i]}</td>
                       <td style={{color:"var(--text-muted)"}}>{corrCourse.hole_stroke_indices[i]}</td>
-                      <td className="score-input-cell"><input type="number" min="1" max="15" value={corrGross[i]} onChange={e=>{const v=[...corrGross];v[i]=e.target.value;setCorrGross(v);}}/></td>
+                      <td className="score-input-cell"><input type="number" min="1" max="15" inputMode="numeric" value={corrGross[i]} onChange={e=>{const v=[...corrGross];v[i]=e.target.value;setCorrGross(v);}}/></td>
                       <td className={ptsClass(h.points)} style={{fontWeight:h.points!=null?700:400}}>{h.points!=null?h.points:""}</td>
                     </tr>);
                   })}
@@ -2157,8 +2177,8 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
             </div>
           ))}
           <div style={{display:"flex",gap:8,marginTop:8}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={saveCorrection}>Save Correction</button>
-            <button className="btn btn-danger" onClick={deleteEntry}>Delete</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={saveCorrection} disabled={filterYear!==allSeasonsList[0]}>Save Correction</button>
+            <button className="btn btn-danger" onClick={deleteEntry} disabled={filterYear!==allSeasonsList[0]}>Delete</button>
           </div>
         </>
       )}
@@ -2171,14 +2191,17 @@ function HandicapManager({golfers,setGolfers,showSuccess}:any){
   const handleSave=()=>{setGolfers((p:any)=>p.map((g:any)=>edits[g.golfer_id]!==undefined?{...g,current_handicap_index:parseFloat(edits[g.golfer_id])||g.current_handicap_index}:g));setEdits({});showSuccess("Handicap indices updated");};
   return(
     <div>
-      <div className="card-title" style={{marginBottom:12}}>Weekly Handicap Update</div>
-      {golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").map((g:any)=>(
-        <div key={g.golfer_id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
-          <div style={{flex:1,fontSize:16,fontWeight:500}}>{g.first_name} {g.last_name}</div>
-          <input type="number" step="0.1" min="0" max="54" style={{width:76,padding:"8px 8px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-md)",fontFamily:"DM Sans,sans-serif",fontSize:16,textAlign:"center"}} value={edits[g.golfer_id]!==undefined?edits[g.golfer_id]:g.current_handicap_index} onChange={e=>setEdits(p=>({...p,[g.golfer_id]:e.target.value}))}/>
-        </div>
-      ))}
-      <button className="btn btn-primary btn-full" style={{marginTop:14}} onClick={handleSave}>Save All Handicaps</button>
+      <div className="card-title" style={{marginBottom:4}}>Weekly Handicap Update</div>
+      <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:14}}>Edit handicap indices. Press Save when done.</p>
+      <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",marginBottom:16}}>
+        {golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").map((g:any,i:number,arr:any[])=>(
+          <div key={g.golfer_id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 16px",borderBottom:i<arr.length-1?"1.5px solid var(--border-md)":"none",background:i%2===0?"var(--surface)":"var(--surface2)"}}>
+            <div style={{fontSize:16,fontWeight:600,color:"var(--text-primary)"}}>{g.first_name} {g.last_name}</div>
+            <input type="number" step="0.1" min="0" max="54" style={{width:80,padding:"8px 10px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-md)",fontFamily:"DM Sans,sans-serif",fontSize:16,textAlign:"center",fontWeight:700,color:"var(--green-700)"}} value={edits[g.golfer_id]!==undefined?edits[g.golfer_id]:g.current_handicap_index} onChange={e=>setEdits(p=>({...p,[g.golfer_id]:e.target.value}))}/>
+          </div>
+        ))}
+      </div>
+      <button className="btn btn-primary btn-full" onClick={handleSave} disabled={Object.keys(edits).length===0}>Save Handicaps {Object.keys(edits).length>0?`(${Object.keys(edits).length} changed)`:""}</button>
     </div>
   );
 }
@@ -2253,8 +2276,9 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
     showSuccess("Event deleted");
   };
 
+  const currentYear=new Date().getFullYear();
   const allSeasonsList=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
-  const [filterSeason,setFilterSeason]=useState<number|"all">(allSeasonsList[0]||new Date().getFullYear());
+  const [filterSeason,setFilterSeason]=useState<number|"all">(allSeasonsList[0]||currentYear);
   const sortedEvents=[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
   const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
   const filteredEvents=filterSeason==="all"?sortedEvents:sortedEvents.filter((e:any)=>e.season===filterSeason);
@@ -2290,8 +2314,9 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
             <div style={{fontWeight:600,fontSize:15}}>{formatDate(ev.date)}</div>
             <div style={{fontSize:13,color:"var(--text-muted)"}}>{ev.course_name} · <span className={`pill ${ev.status==="Completed"?"pill-green":ev.status==="Upcoming"?"pill-gold":"pill-blue"}`} style={{fontSize:10}}>{ev.status}</span></div>
           </div>
-          <button className="btn btn-sm btn-outline" onClick={()=>startEdit(ev)}>Edit</button>
-          <button className="btn btn-sm btn-danger" onClick={()=>deleteEvent(ev.event_id,ev.date)}>Del</button>
+          {ev.season===currentYear&&<button className="btn btn-sm btn-outline" onClick={()=>startEdit(ev)}>Edit</button>}
+          {ev.season===currentYear&&<button className="btn btn-sm btn-danger" onClick={()=>deleteEvent(ev.event_id,ev.date)}>Del</button>}
+          {ev.season!==currentYear&&<span style={{fontSize:11,color:"var(--text-muted)",padding:"4px 8px"}}>view only</span>}
         </div>
       ))}
     </div>
@@ -2480,13 +2505,16 @@ function calcSeasonLeaderData(golfers:any[],leaderboard:any[],events:any[],seaso
     const pot=paidEv.length*20;
     const topPts=paidEv[0].total_stableford_points;
     const tied1st=paidEv.filter((e:any)=>e.total_stableford_points===topPts);
-    const secondPts=tied1st.length<paidEv.length?paidEv[tied1st.length]?.total_stableford_points:null;
+    const secondPts=tied1st.length===1&&paidEv.length>1?paidEv[1]?.total_stableford_points:null;
     const tied2nd=secondPts!=null?paidEv.filter((e:any)=>e.total_stableford_points===secondPts):[];
     tied1st.forEach((e:any)=>{
-      if(stats[e.golfer_id]){stats[e.golfer_id].wins++;stats[e.golfer_id].earned+=(tied1st.length>1?pot:pot*0.75)/tied1st.length;}
+      if(stats[e.golfer_id]){
+        stats[e.golfer_id].wins++;
+        stats[e.golfer_id].earned+=tied1st.length===1?pot*(2/3):pot/tied1st.length;
+      }
     });
     tied2nd.forEach((e:any)=>{
-      if(stats[e.golfer_id]){stats[e.golfer_id].seconds++;stats[e.golfer_id].earned+=(pot*0.25)/tied2nd.length;}
+      if(stats[e.golfer_id]){stats[e.golfer_id].seconds++;stats[e.golfer_id].earned+=(pot*(1/3))/tied2nd.length;}
     });
   });
 
@@ -2696,6 +2724,7 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
             <div style={{fontSize:11,letterSpacing:"0.08em",textTransform:"uppercase",opacity:0.8,marginTop:2}}>Most Improved</div>
             <div style={{fontSize:16,fontWeight:700,marginTop:4}}>{mostImproved.golfer.first_name}</div>
             <div style={{fontSize:26,fontWeight:700,color:"#9fd4f7",lineHeight:1}}>+{mostImproved.delta.toFixed(1)} pts</div>
+            <div style={{fontSize:10,opacity:0.7,marginTop:4}}>2nd half avg vs 1st half</div>
           </div>
         )}
       </div>
@@ -2704,46 +2733,28 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
       {eventTrend.length>1&&(
         <div className="card" style={{marginBottom:12}}>
           <div className="card-title" style={{marginBottom:10}}>Field Scoring Trend</div>
-          <div style={{position:"relative",width:"100%",height:180}}><canvas id="overviewTrendChart"/></div>
+          <div style={{position:"relative",width:"100%",height:190}}><canvas id="overviewTrendChart" key={`trend-${season}-${eventTrend.length}`}/></div>
+        </div>
+      )}
+      {eventTrend.length<=1&&seasonEvents.length>0&&(
+        <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14}}>
+          📊 Scoring trend chart will appear once 2+ events are completed this season.
         </div>
       )}
 
       {/* Win tally */}
       {winData.length>0&&(
         <div className="card" style={{marginBottom:12}}>
-          <div className="card-title" style={{marginBottom:10}}>Wins & 2nd Place Finishes</div>
-          <div style={{position:"relative",width:"100%",height:180}}><canvas id="winTallyChart"/></div>
+          <div className="card-title" style={{marginBottom:10}}>Wins &amp; 2nd Place Finishes</div>
+          <div style={{position:"relative",width:"100%",height:190}}><canvas id="winTallyChart" key={`wins-${season}-${winData.length}`}/></div>
+        </div>
+      )}
+      {winData.length===0&&seasonEvents.length>0&&(
+        <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14}}>
+          🏆 Win tallies will appear once scoring is entered for this season.
         </div>
       )}
 
-      {/* Full standings table */}
-      <div className="card-title" style={{marginBottom:8}}>Season Standings</div>
-      <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-          <thead>
-            <tr style={{background:"var(--green-900)"}}>
-              <th style={{color:"var(--gold-300)",padding:"8px 10px",textAlign:"left",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Golfer</th>
-              <th style={{color:"var(--gold-300)",padding:"8px 6px",textAlign:"center",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Rds</th>
-              <th style={{color:"var(--gold-300)",padding:"8px 6px",textAlign:"center",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Avg</th>
-              <th style={{color:"var(--gold-300)",padding:"8px 6px",textAlign:"center",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>W</th>
-              <th style={{color:"var(--gold-300)",padding:"8px 6px",textAlign:"center",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Best</th>
-              <th style={{color:"var(--gold-300)",padding:"8px 8px",textAlign:"right",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Earned</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...seasonData].sort((a:any,b:any)=>b.avg-a.avg).map((d:any,i:number)=>(
-              <tr key={d.golfer.golfer_id} style={{background:i%2===1?"var(--surface2)":undefined,borderBottom:"1px solid var(--border)"}}>
-                <td style={{padding:"9px 10px",fontWeight:600,fontSize:14}}>{d.golfer.first_name} {d.golfer.last_name[0]}.</td>
-                <td style={{padding:"9px 6px",textAlign:"center",color:"var(--text-muted)"}}>{d.rounds}</td>
-                <td style={{padding:"9px 6px",textAlign:"center",fontWeight:700,color:"var(--green-700)"}}>{d.avg.toFixed(1)}</td>
-                <td style={{padding:"9px 6px",textAlign:"center",fontWeight:d.wins>0?700:400,color:d.wins>0?"var(--gold-600)":"var(--text-muted)"}}>{d.wins>0?d.wins:"—"}</td>
-                <td style={{padding:"9px 6px",textAlign:"center",color:"var(--gold-700)",fontWeight:600}}>{d.best}</td>
-                <td style={{padding:"9px 8px",textAlign:"right",fontWeight:700,color:d.earned>0?"var(--green-700)":"var(--text-muted)"}}>{d.earned>0?`$${d.earned.toFixed(0)}`:"—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }
@@ -2768,23 +2779,23 @@ function ConsistencyTable({seasonData}:any){
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
           <thead>
             <tr style={{background:"var(--green-900)"}}>
-              <th style={{color:"var(--gold-300)",padding:"8px 10px",textAlign:"left",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>#</th>
-              <th style={{color:"var(--gold-300)",padding:"8px 8px",textAlign:"left",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Golfer</th>
-              <th style={{color:"var(--gold-300)",padding:"8px 6px",textAlign:"center",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Avg</th>
-              <th style={{color:"var(--gold-300)",padding:"8px 6px",textAlign:"center",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Std Dev</th>
-              <th style={{color:"var(--gold-300)",padding:"8px 6px",textAlign:"center",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Range</th>
-              <th style={{color:"var(--gold-300)",padding:"8px 8px",textAlign:"center",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Rnds</th>
+              <th style={{color:"var(--gold-300)",padding:"9px 10px",textAlign:"left",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>#</th>
+              <th style={{color:"var(--gold-300)",padding:"9px 8px",textAlign:"left",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Golfer</th>
+              <th style={{color:"var(--gold-300)",padding:"9px 6px",textAlign:"center",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Avg</th>
+              <th style={{color:"var(--gold-300)",padding:"9px 6px",textAlign:"center",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Std Dev</th>
+              <th style={{color:"var(--gold-300)",padding:"9px 6px",textAlign:"center",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Range</th>
+              <th style={{color:"var(--gold-300)",padding:"9px 8px",textAlign:"center",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Rnds</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r:any,i:number)=>(
-              <tr key={r.golfer.golfer_id} style={{background:i%2===1?"var(--surface2)":undefined,borderBottom:"1px solid var(--border)"}}>
-                <td style={{padding:"9px 10px",fontWeight:700,color:i===0?"var(--gold-600)":"var(--text-muted)",fontSize:16}}>{i+1}</td>
-                <td style={{padding:"9px 8px",fontWeight:600}}>{r.golfer.first_name} {r.golfer.last_name}</td>
-                <td style={{padding:"9px 6px",textAlign:"center",color:"var(--green-700)",fontWeight:700}}>{r.avg.toFixed(1)}</td>
-                <td style={{padding:"9px 6px",textAlign:"center",fontWeight:700,color:i===0?"var(--green-600)":"var(--text-primary)"}}>{r.stdDev.toFixed(2)}</td>
-                <td style={{padding:"9px 6px",textAlign:"center",color:"var(--text-muted)"}}>{r.best}–{r.worst}</td>
-                <td style={{padding:"9px 8px",textAlign:"center",color:"var(--text-muted)"}}>{r.rounds}</td>
+              <tr key={r.golfer.golfer_id} style={{background:i===0?"var(--green-50)":i%2===1?"var(--surface2)":undefined,borderBottom:"1px solid var(--border)"}}>
+                <td style={{padding:"11px 10px",fontWeight:700,color:i===0?"var(--gold-500)":"var(--text-muted)",fontSize:18}}>{i===0?"⭐":i+1}</td>
+                <td style={{padding:"11px 8px",fontWeight:600,fontSize:16}}>{r.golfer.first_name} {r.golfer.last_name}</td>
+                <td style={{padding:"11px 6px",textAlign:"center",color:"var(--green-700)",fontWeight:700,fontSize:16}}>{r.avg.toFixed(1)}</td>
+                <td style={{padding:"11px 6px",textAlign:"center",fontWeight:700,fontSize:16,color:i===0?"var(--green-600)":"var(--text-primary)"}}>{r.stdDev.toFixed(2)}</td>
+                <td style={{padding:"11px 6px",textAlign:"center",color:"var(--text-muted)",fontSize:15}}>{r.best}–{r.worst}</td>
+                <td style={{padding:"11px 8px",textAlign:"center",color:"var(--text-muted)",fontSize:15}}>{r.rounds}</td>
               </tr>
             ))}
           </tbody>
@@ -2806,7 +2817,15 @@ function CourseChart({courseAvgs}:any){
   );
 }
 function ScatterChart({scatterData}:any){
-  useChart("scatterChart",(C)=>new C(document.getElementById("scatterChart"),{type:"scatter",data:{datasets:[{label:"Golfers",data:scatterData.map((d:any)=>({x:d.hcp,y:parseFloat(d.avg.toFixed(1)),name:`${d.golfer.first_name} ${d.golfer.last_name}`})),backgroundColor:"#1a7340",pointRadius:8,pointHoverRadius:11}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>`${c.raw.name}: HCP ${c.raw.x} → ${c.raw.y.toFixed(1)} pts avg`}}},scales:{x:{title:{display:true,text:"Handicap Index",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:14}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}},y:{title:{display:true,text:"Avg Stableford Pts",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:14}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}}}}),scatterData);
+  useChart("scatterChart",(C)=>new C(document.getElementById("scatterChart"),{type:"scatter",data:{datasets:[{label:"Golfers",data:scatterData.map((d:any)=>({x:d.hcp,y:parseFloat(d.avg.toFixed(1)),name:`${d.golfer.first_name} ${d.golfer.last_name}`})),backgroundColor:"#1a7340",pointRadius:10,pointHoverRadius:13}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>`${c.raw.name}: HCP ${c.raw.x} → ${c.raw.y.toFixed(1)} pts avg`}}},scales:{x:{title:{display:true,text:"Handicap Index",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}},y:{title:{display:true,text:"Avg Stableford Pts",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}}}}),scatterData);
+  if(scatterData.length<2) return(
+    <div>
+      <div className="card-title" style={{marginBottom:5}}>Handicap Index vs Avg Performance</div>
+      <div style={{textAlign:"center",padding:"40px 20px",color:"var(--text-muted)",fontSize:14}}>
+        📊 This chart needs at least 2 golfers with rounds this season to display.
+      </div>
+    </div>
+  );
   return(
     <div>
       <div className="card-title" style={{marginBottom:5}}>Handicap Index vs Avg Performance</div>
@@ -2822,7 +2841,8 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
   const totalEarned=rounds.reduce((s:number,r:any)=>s+r.earned,0);
   const netEarnings=totalEarned-(rounds.length*20);
 
-  useChart("histChart",(C)=>new C(document.getElementById("histChart"),{
+  const histCanvasId=`histChart-${golfer.golfer_id}`;
+  useChart(histCanvasId,(C)=>new C(document.getElementById(histCanvasId),{
     type:"line",
     data:{
       labels:rounds.map((r:any,i:number)=>`R${i+1}`),
@@ -2886,29 +2906,37 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
           <span style={{width:14,height:3,background:"#c47800",display:"inline-block",borderRadius:2,marginLeft:4}}></span>Avg
         </span>
       </div>
-      <div style={{position:"relative",width:"100%",height:210,marginBottom:16}}><canvas id="histChart" role="img" aria-label={`Line chart for ${golfer.first_name} ${golfer.last_name}`}>Round history</canvas></div>
+      <div style={{position:"relative",width:"100%",height:210,marginBottom:16}}><canvas id={`histChart-${golfer.golfer_id}`} key={`hist-${golfer.golfer_id}-${rounds.length}`} role="img" aria-label={`Line chart for ${golfer.first_name} ${golfer.last_name}`}>Round history</canvas></div>
 
       {/* Per-round table */}
       <div className="card-title" style={{marginBottom:8}}>Round-by-Round</div>
       <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead>
             <tr style={{background:"var(--green-900)"}}>
-              <th style={{color:"var(--gold-300)",padding:"7px 8px",textAlign:"left",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Date</th>
-              <th style={{color:"var(--gold-300)",padding:"7px 6px",textAlign:"center",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Pts</th>
-              <th style={{color:"var(--gold-300)",padding:"7px 6px",textAlign:"center",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>Rank</th>
-              <th style={{color:"var(--gold-300)",padding:"7px 8px",textAlign:"right",fontSize:11,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>$</th>
+              <th style={{color:"var(--gold-300)",padding:"9px 10px",textAlign:"left",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Date / Course</th>
+              <th style={{color:"var(--gold-300)",padding:"9px 8px",textAlign:"center",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Pts</th>
+              <th style={{color:"var(--gold-300)",padding:"9px 8px",textAlign:"center",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Rank</th>
+              <th style={{color:"var(--gold-300)",padding:"9px 10px",textAlign:"right",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>$</th>
             </tr>
           </thead>
           <tbody>
-            {rounds.map((r:any,i:number)=>(
-              <tr key={r.eid} style={{background:i%2===1?"var(--surface2)":undefined,borderBottom:"1px solid var(--border)"}}>
-                <td style={{padding:"8px 8px",fontSize:13}}>{formatDate(r.date)}</td>
-                <td style={{padding:"8px 6px",textAlign:"center",fontWeight:700,color:"var(--green-700)",fontSize:15}}>{r.pts}</td>
-                <td style={{padding:"8px 6px",textAlign:"center",color:"var(--text-muted)",fontSize:13}}>{r.rank}/{r.players}</td>
-                <td style={{padding:"8px 8px",textAlign:"right",fontWeight:700,fontSize:13,color:r.earned>0?"var(--gold-600)":"var(--text-muted)"}}>{r.earned>0?`$${r.earned.toFixed(0)}`:"—"}</td>
-              </tr>
-            ))}
+            {rounds.map((r:any,i:number)=>{
+              const dt=new Date(r.date+"T00:00:00");
+              const shortDate=dt.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+              const courseShort=r.course.replace(" Golf Club","").replace(" GC","").replace("Golf Course","").split(" ").slice(0,2).join(" ");
+              return(
+                <tr key={r.eid} style={{background:i%2===1?"var(--surface2)":undefined,borderBottom:"1px solid var(--border)"}}>
+                  <td style={{padding:"10px 10px"}}>
+                    <div style={{fontWeight:600,fontSize:15,color:"var(--text-primary)"}}>{shortDate}</div>
+                    <div style={{fontSize:13,color:"var(--text-muted)",marginTop:1}}>{courseShort}</div>
+                  </td>
+                  <td style={{padding:"10px 8px",textAlign:"center",fontWeight:700,color:"var(--green-700)",fontSize:18}}>{r.pts}</td>
+                  <td style={{padding:"10px 8px",textAlign:"center",fontSize:14,color:"var(--text-muted)"}}>{r.rank}<span style={{fontSize:11}}>/{r.players}</span></td>
+                  <td style={{padding:"10px 10px",textAlign:"right",fontWeight:700,fontSize:15,color:r.earned>0?"var(--gold-600)":"var(--text-muted)"}}>{r.earned>0?`$${r.earned.toFixed(0)}`:"—"}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
