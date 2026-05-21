@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 // ============================================================
 // SUPABASE CLIENT
@@ -1137,9 +1137,10 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                   <div className="lb-detail-grid" style={{marginBottom:10}}>
                     
                     {/* 3: Total Gross only shown when H×H data exists */}
-                    {hbhScores.length>0&&<div className="lb-detail-item"><div className="lb-detail-key">Total Gross</div><div className="lb-detail-val" style={{fontWeight:700,fontSize:22}}>{front9Gross+back9Gross}</div></div>}
+                    
                     <div className="lb-detail-item"><div className="lb-detail-key">Playing HCP</div><div className="lb-detail-val">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&teePlayed?calcPlayingHandicap(g.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"—")}</div></div>
                     <div className="lb-detail-item"><div className="lb-detail-key">Tees Played</div><div className="lb-detail-val">{teePlayed?.tee_box_name??"—"}</div></div>
+                    {hbhScores.length>0&&<div className="lb-detail-item"><div className="lb-detail-key">Total Gross</div><div className="lb-detail-val" style={{fontWeight:700,fontSize:22}}>{front9Gross+back9Gross}</div></div>}
                     {/* 3: Show stableford and skins winnings as separate lines */}
                     {weeklyEntry?.weekly_payout_won>0&&<div className="lb-detail-item"><div className="lb-detail-key">Stableford Won</div><div className="lb-detail-val" style={{color:"var(--gold-600)",fontWeight:700}}>${Number(weeklyEntry.weekly_payout_won).toFixed(0)}</div></div>}
                     {(()=>{
@@ -2197,7 +2198,7 @@ function HandicapManager({golfers,setGolfers,showSuccess}:any){
         {golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").map((g:any,i:number,arr:any[])=>(
           <div key={g.golfer_id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 16px",borderBottom:i<arr.length-1?"1.5px solid var(--border-md)":"none",background:i%2===0?"var(--surface)":"var(--surface2)"}}>
             <div style={{fontSize:16,fontWeight:600,color:"var(--text-primary)"}}>{g.first_name} {g.last_name}</div>
-            <input type="number" step="0.1" min="0" max="54" style={{width:80,padding:"8px 10px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-md)",fontFamily:"DM Sans,sans-serif",fontSize:16,textAlign:"center",fontWeight:700,color:"var(--green-700)"}} value={edits[g.golfer_id]!==undefined?edits[g.golfer_id]:g.current_handicap_index} onChange={e=>setEdits(p=>({...p,[g.golfer_id]:e.target.value}))}/>
+            <input type="number" step="0.1" min="0" max="54" style={{width:80,padding:"8px 10px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-md)",fontFamily:"DM Sans,sans-serif",fontSize:16,textAlign:"center",fontWeight:700}} value={edits[g.golfer_id]!==undefined?edits[g.golfer_id]:g.current_handicap_index} onChange={e=>setEdits(p=>({...p,[g.golfer_id]:e.target.value}))}/>
           </div>
         ))}
       </div>
@@ -2458,6 +2459,30 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
 // ============================================================
 // ANALYTICS TAB — rich dashboard
 // ============================================================
+// ChartCanvas: self-contained chart component using a ref.
+// Avoids the getElementById race condition that caused blank charts
+// when the canvas was rendered conditionally or after a key-remount.
+// ============================================================
+function ChartCanvas({buildFn,deps,height=200,style}:{buildFn:(C:any,canvas:HTMLCanvasElement)=>any,deps:any[],height?:number,style?:any}){
+  const canvasRef=useRef<HTMLCanvasElement>(null);
+  useEffect(()=>{
+    const canvas=canvasRef.current; if(!canvas)return;
+    const tryBuild=()=>{
+      const C=(window as any).Chart; if(!C)return false;
+      // Destroy any existing chart instance on this canvas
+      const existing=(C as any).getChart(canvas); if(existing)existing.destroy();
+      buildFn(C,canvas); return true;
+    };
+    if(!tryBuild()){
+      const id=setInterval(()=>{if(tryBuild())clearInterval(id);},200);
+      return()=>clearInterval(id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[canvasRef.current,...deps]);
+  return <div style={{position:"relative",width:"100%",height,...style}}><canvas ref={canvasRef}/></div>;
+}
+
+// Legacy shim kept for any remaining callers
 function useChart(canvasId:string,buildFn:(Chart:any)=>any,deps:any[]){
   useEffect(()=>{
     const tryBuild=()=>{
@@ -2645,7 +2670,8 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
       return{date:ev.date,avg,course:ev.course_name};
     });
 
-  useChart("overviewTrendChart",(C)=>new C(document.getElementById("overviewTrendChart"),{
+  // Build functions for ChartCanvas — defined here so they close over the data
+  const buildTrendChart=(C:any,canvas:HTMLCanvasElement)=>new C(canvas,{
     type:"line",
     data:{
       labels:eventTrend.map((_:any,i:number)=>`Rd ${i+1}`),
@@ -2662,9 +2688,9 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
       }
     },scales:{x:{ticks:{color:"#6b5240",font:{size:12}},grid:{display:false}},
       y:{beginAtZero:false,min:24,ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}}}
-  }),[eventTrend]);
+  });
 
-  useChart("winTallyChart",(C)=>new C(document.getElementById("winTallyChart"),{
+  const buildWinsChart=(C:any,canvas:HTMLCanvasElement)=>new C(canvas,{
     type:"bar",
     data:{
       labels:winData.map((d:any)=>d.golfer.first_name),
@@ -2680,7 +2706,7 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
       plugins:{legend:{display:true,labels:{color:"#6b5240",font:{size:12}}}},
       scales:{x:{ticks:{color:"#6b5240",font:{size:12}},grid:{display:false}},
         y:{ticks:{color:"#6b5240",stepSize:1},grid:{color:"rgba(74,55,40,0.1)"},beginAtZero:true}}}
-  }),[winData]);
+  });
 
   return(
     <div>
@@ -2733,7 +2759,7 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
       {eventTrend.length>1&&(
         <div className="card" style={{marginBottom:12}}>
           <div className="card-title" style={{marginBottom:10}}>Field Scoring Trend</div>
-          <div style={{position:"relative",width:"100%",height:190}}><canvas id="overviewTrendChart" key={`trend-${season}-${eventTrend.length}`}/></div>
+          <ChartCanvas buildFn={buildTrendChart} deps={[eventTrend]} height={190}/>
         </div>
       )}
       {eventTrend.length<=1&&seasonEvents.length>0&&(
@@ -2746,7 +2772,7 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
       {winData.length>0&&(
         <div className="card" style={{marginBottom:12}}>
           <div className="card-title" style={{marginBottom:10}}>Wins &amp; 2nd Place Finishes</div>
-          <div style={{position:"relative",width:"100%",height:190}}><canvas id="winTallyChart" key={`wins-${season}-${winData.length}`}/></div>
+          <ChartCanvas buildFn={buildWinsChart} deps={[winData]} height={190}/>
         </div>
       )}
       {winData.length===0&&seasonEvents.length>0&&(
@@ -2806,18 +2832,18 @@ function ConsistencyTable({seasonData}:any){
 }
 
 function CourseChart({courseAvgs}:any){
-  useChart("courseChart",(C)=>new C(document.getElementById("courseChart"),{type:"bar",data:{labels:courseAvgs.map((c:any)=>c.name),datasets:[{label:"Avg Pts",data:courseAvgs.map((c:any)=>parseFloat(c.avg.toFixed(1))),backgroundColor:["#1a7340","#c47800","#a32020","#0f4526"],borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>` ${c.parsed.y.toFixed(1)} pts avg`}}},scales:{y:{beginAtZero:false,min:20,ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:14}},grid:{color:"rgba(74,55,40,0.1)"}},x:{ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},grid:{display:false}}}}}),courseAvgs);
+  const buildFn=(C:any,canvas:HTMLCanvasElement)=>new C(canvas,{type:"bar",data:{labels:courseAvgs.map((c:any)=>c.name),datasets:[{label:"Avg Pts",data:courseAvgs.map((c:any)=>parseFloat(c.avg.toFixed(1))),backgroundColor:["#1a7340","#c47800","#a32020","#0f4526","#9a5a00"],borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>` ${c.parsed.y.toFixed(1)} pts avg`}}},scales:{y:{beginAtZero:false,min:20,ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:14}},grid:{color:"rgba(74,55,40,0.1)"}},x:{ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},grid:{display:false}}}}});
   return(
     <div>
       <div className="card-title" style={{marginBottom:4}}>Stableford Averages by Course</div>
       <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:12}}>Field average stableford points per course this season.</p>
       {courseAvgs.map((c:any)=><div key={c.name} className="info-row"><span className="info-key">{c.name}</span><span className="info-val">{c.count>0?`${c.avg.toFixed(1)} pts avg (${c.count} rounds)`:"No data"}</span></div>)}
-      <div style={{position:"relative",width:"100%",height:210,marginTop:16}}><canvas id="courseChart" role="img" aria-label="Bar chart of average stableford points by course">Avg stableford by course</canvas></div>
+      <ChartCanvas buildFn={buildFn} deps={[courseAvgs]} height={210} style={{marginTop:16}}/>
     </div>
   );
 }
 function ScatterChart({scatterData}:any){
-  useChart("scatterChart",(C)=>new C(document.getElementById("scatterChart"),{type:"scatter",data:{datasets:[{label:"Golfers",data:scatterData.map((d:any)=>({x:d.hcp,y:parseFloat(d.avg.toFixed(1)),name:`${d.golfer.first_name} ${d.golfer.last_name}`})),backgroundColor:"#1a7340",pointRadius:10,pointHoverRadius:13}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>`${c.raw.name}: HCP ${c.raw.x} → ${c.raw.y.toFixed(1)} pts avg`}}},scales:{x:{title:{display:true,text:"Handicap Index",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}},y:{title:{display:true,text:"Avg Stableford Pts",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}}}}),scatterData);
+  const buildFn=(C:any,canvas:HTMLCanvasElement)=>new C(canvas,{type:"scatter",data:{datasets:[{label:"Golfers",data:scatterData.map((d:any)=>({x:d.hcp,y:parseFloat(d.avg.toFixed(1)),name:`${d.golfer.first_name} ${d.golfer.last_name}`})),backgroundColor:"#1a7340",pointRadius:10,pointHoverRadius:13}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>`${c.raw.name}: HCP ${c.raw.x} → ${c.raw.y.toFixed(1)} pts avg`}}},scales:{x:{title:{display:true,text:"Handicap Index",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}},y:{title:{display:true,text:"Avg Stableford Pts",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}}}}); 
   if(scatterData.length<2) return(
     <div>
       <div className="card-title" style={{marginBottom:5}}>Handicap Index vs Avg Performance</div>
@@ -2830,7 +2856,7 @@ function ScatterChart({scatterData}:any){
     <div>
       <div className="card-title" style={{marginBottom:5}}>Handicap Index vs Avg Performance</div>
       <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:12}}>Higher scores for a given HCP = outperforming handicap. Tap a dot for name.</p>
-      <div style={{position:"relative",width:"100%",height:270}}><canvas id="scatterChart" role="img" aria-label="Scatter plot handicap vs avg points">Handicap vs stableford</canvas></div>
+      <ChartCanvas buildFn={buildFn} deps={[scatterData]} height={270}/>
     </div>
   );
 }
@@ -2841,11 +2867,10 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
   const totalEarned=rounds.reduce((s:number,r:any)=>s+r.earned,0);
   const netEarnings=totalEarned-(rounds.length*20);
 
-  const histCanvasId=`histChart-${golfer.golfer_id}`;
-  useChart(histCanvasId,(C)=>new C(document.getElementById(histCanvasId),{
+  const buildHistChart=(C:any,canvas:HTMLCanvasElement)=>new C(canvas,{
     type:"line",
     data:{
-      labels:rounds.map((r:any,i:number)=>`R${i+1}`),
+      labels:rounds.map((_:any,i:number)=>`R${i+1}`),
       datasets:[
         {label:"Points",data:rounds.map((r:any)=>r.pts),borderColor:"#1a7340",backgroundColor:"rgba(26,115,64,0.08)",pointBackgroundColor:"#1a7340",pointRadius:5,fill:true,tension:0.3},
         {label:"Avg",data:Array(rounds.length).fill(parseFloat(avg.toFixed(1))),borderColor:"#c47800",borderDash:[5,4],pointRadius:0,fill:false}
@@ -2859,7 +2884,7 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
         y:{min:Math.max(0,worst-5),ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}
       }
     }
-  }),[golfer,rounds]);
+  });
 
   // Running avg line for trend arrow
   const trend=rounds.length>2?(rounds[rounds.length-1].pts+rounds[rounds.length-2].pts)/2 - (rounds[0].pts+rounds[1].pts)/2:0;
@@ -2906,7 +2931,7 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
           <span style={{width:14,height:3,background:"#c47800",display:"inline-block",borderRadius:2,marginLeft:4}}></span>Avg
         </span>
       </div>
-      <div style={{position:"relative",width:"100%",height:210,marginBottom:16}}><canvas id={`histChart-${golfer.golfer_id}`} key={`hist-${golfer.golfer_id}-${rounds.length}`} role="img" aria-label={`Line chart for ${golfer.first_name} ${golfer.last_name}`}>Round history</canvas></div>
+      <ChartCanvas buildFn={buildHistChart} deps={[golfer.golfer_id,rounds.length]} height={210} style={{marginBottom:16}}/>
 
       {/* Per-round table */}
       <div className="card-title" style={{marginBottom:8}}>Round-by-Round</div>
