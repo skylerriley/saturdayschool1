@@ -31,11 +31,23 @@ const supabase = (() => {
 
   // Fetch ALL rows by paginating in chunks of 1000 (Supabase default limit)
   const fetchAll = async (table: string, cols = "*", orderCol = "created_at") => {
+    // Primary key per table — used as a stable tiebreaker for pagination
+    const PK_MAP: Record<string, string> = {
+      event_leaderboard: "summary_id",
+      events: "event_id",
+      golfers: "golfer_id",
+      courses: "course_id",
+      event_signups: "signup_id",
+      hole_scores: "score_id",
+      charity_donations: "id",
+    };
+    const pk = PK_MAP[table] || "id";
+  
     const PAGE = 1000;
     let all: any[] = [];
     let from = 0;
     while (true) {
-      const url = `${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=${orderCol}.asc&limit=${PAGE}&offset=${from}`;
+      const url = `${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=${orderCol}.asc,${pk}.asc&limit=${PAGE}&offset=${from}`;
       const res = await fetch(url, { method: "GET", headers });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -1163,10 +1175,8 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                         {front9.length>0&&renderHalf(front9,0,"OUT",front9Gross,front9Pts)}
                         {back9.length>0&&renderHalf(back9,9,"IN",back9Gross,back9Pts)}
                         {front9.length>0&&back9.length>0&&(
-                          <div style={{display:"flex",gap:20,padding:"8px 4px",borderTop:"2px solid var(--green-700)",marginTop:4}}>
-                            <div><span style={{fontSize:11,color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Total Gross</span><div style={{fontWeight:700,fontSize:18}}>{front9Gross+back9Gross}</div></div>
-                            <div><span style={{fontSize:11,color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Total Pts</span><div style={{fontWeight:700,fontSize:18,color:"var(--green-700)"}}>{front9Pts+back9Pts}</div></div>
-                          </div>
+                          <div>
+                            </div>
                         )}
                       </div>
                     );
