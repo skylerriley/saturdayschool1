@@ -690,11 +690,8 @@ export default function App(){
   },[leaderboard,holeScores,showError]);
 
   const dbInsertHoleScores=useCallback(async(scores:any[])=>{
-    try{
-      const inserted=await supabase.from("hole_scores").insert(scores);
-      return inserted; // return real rows so caller can patch local state ids
-    }
-    catch(e:any){showError(`Hole scores save failed: ${e.message}`);return[];}
+    try{await supabase.from("hole_scores").insert(scores);}
+    catch(e:any){showError(`Hole scores save failed: ${e.message}`);}
   },[showError]);
 
   const dbDeleteHoleScores=useCallback(async(summary_id:number)=>{
@@ -811,24 +808,9 @@ export default function App(){
   const setHoleScoresDB=useCallback((updater:any)=>{
     setHoleScores(prev=>{
       const next=typeof updater==="function"?updater(prev):updater;
-      // Only insert genuinely new scores (not already in DB — id < 1e12 means temp)
-      const added=next.filter((n:any)=>
-        n.score_id>1e12 && // temp id = came from nextId() seed (Date.now based)
-        !prev.find((o:any)=>o.score_id===n.score_id)
-      );
-      if(added.length>0){
-        // Strip temp score_id before inserting; patch state with real ids after
-        const payload=added.map(({score_id:_,...r}:any)=>r);
-        dbInsertHoleScores(payload).then((inserted:any[])=>{
-          if(!inserted||!inserted.length)return;
-          // Replace temp score_ids with real DB ids so future diffs work correctly
-          setHoleScores(p=>p.map((hs:any)=>{
-            if(hs.score_id<=1e12)return hs; // already real
-            const match=inserted.find((ins:any)=>ins.summary_id===hs.summary_id&&ins.hole_number===hs.hole_number);
-            return match?{...hs,score_id:match.score_id}:hs;
-          }));
-        }).catch(()=>{});
-      }
+      // Only insert new scores (hole scores are append-only from score entry)
+      const added=next.filter((n:any)=>!prev.find((o:any)=>o.score_id===n.score_id));
+      if(added.length>0) dbInsertHoleScores(added.map(({score_id:_,...r}:any)=>r));
       return next;
     });
   },[dbInsertHoleScores]);
@@ -890,7 +872,7 @@ export default function App(){
           {errorMsg&&<div style={{background:"var(--red-100)",border:"1px solid var(--red-400)",borderRadius:"var(--radius-md)",padding:"12px 16px",color:"var(--red-600)",fontSize:14,marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>⚠</span>{errorMsg}</div>}
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} showSuccess={showSuccess}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} adminMode={adminMode}/>}
-          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} showSuccess={showSuccess}/>}
+          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} showSuccess={showSuccess}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} charityDonations={charityDonations} setCharityDonations={setCharityDB} showSuccess={showSuccess}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard}/>}
         </main>
@@ -1712,7 +1694,7 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
 // ============================================================
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false});
 
-function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,showSuccess}:any){
+function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,showSuccess}:any){
   const [mode,setMode]=useState("total");
   const [selEventId,setSelEventId]=useState("");
   const [scorers,setScorers]=useState([emptyScorer()]);
@@ -1739,11 +1721,6 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
   };
 
   const handleSubmitAll=()=>{
-    // Monotonic counter: guarantees unique temp IDs even when
-    // Date.now() returns the same value for multiple scorers.
-    let idSeed=Date.now();
-    const nextId=()=>++idSeed;
-
     let count=0;
     scorers.forEach(scorer=>{
       if(!scorer.golferId||!scorer.courseId)return;
@@ -1756,19 +1733,23 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
       const holeCalcs=mode==="hole"?calcHoleScores(scorer.grossScores,phcp,course):[];
       const pts=mode==="total"?parseInt(scorer.totalPts):holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
       if(!pts||pts<0)return;
-      // Use nextId() so each summary_id is unique even in the same millisecond
-      const newSummaryId=nextId();
+      const newSummaryId=Date.now()+gid;
       const newEntry={summary_id:newSummaryId,event_id:eid,golfer_id:gid,season:selEvent?.season||2026,entry_type:mode==="hole"?"Hole-by-Hole":"Total Only",total_stableford_points:pts,buy_in_paid:true,skins_paid:mode==="hole",charity_paid:true,weekly_payout_won:0,skins_payout_won:0};
       const alreadyIn=leaderboard.some((r:any)=>r.event_id===eid&&r.golfer_id===gid);
       if(alreadyIn){setLeaderboard((p:any)=>p.map((r:any)=>r.event_id===eid&&r.golfer_id===gid?newEntry:r));}
       else{setLeaderboard((p:any)=>[...p,newEntry]);}
+      // Write tee_box_course_id and playing_handicap back to the signup row
+      setSignups((p:any)=>p.map((s:any)=>
+        s.event_id===eid&&s.golfer_id===gid
+          ?{...s,tee_box_course_id:parseInt(scorer.courseId),playing_handicap:phcp}
+          :s
+      ));
       if(mode==="hole"){
-        // Each hole gets its own unique id via nextId()
         const newScores=scorer.grossScores.map((gv:string,i:number)=>{
           if(!gv)return null;
           const net=calcHoleNetScore(parseInt(gv),phcp,course.hole_stroke_indices[i]);
           const p2=calcStablefordPoints(net,course.hole_pars[i]);
-          return{score_id:nextId(),summary_id:newSummaryId,hole_number:i+1,gross_score:parseInt(gv),net_score:net,stableford_points:p2};
+          return{score_id:Date.now()+gid+i,summary_id:newSummaryId,hole_number:i+1,gross_score:parseInt(gv),net_score:net,stableford_points:p2};
         }).filter(Boolean);
         setHoleScores((p:any)=>[...p,...newScores]);
       }
@@ -1925,30 +1906,6 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
       <button className="btn btn-primary btn-full" disabled={!selEventId||!canSubmit} onClick={handleSubmitAll} style={{marginTop:4}}>
         Submit {scorers.filter(s=>s.golferId&&s.courseId).length>1?`${scorers.filter(s=>s.golferId&&s.courseId).length} Scores`:"Score"}
       </button>
-
-      {/* Finalize Event — shown once scores exist for this event */}
-      {selEvent&&eventEntries.length>0&&(
-        <div style={{marginTop:24,borderTop:"1.5px solid var(--border-md)",paddingTop:20}}>
-          <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>Finalize Event</div>
-          <p style={{fontSize:14,color:"var(--text-secondary)",marginBottom:14,lineHeight:1.5}}>
-            All scores entered? Mark this event as <strong>Completed</strong> to lock it and move it off the active scoring list.
-            <br/><span style={{fontSize:13,color:"var(--text-muted)"}}>{eventEntries.length} score{eventEntries.length!==1?"s":""} recorded for this event.</span>
-          </p>
-          <button
-            className="btn btn-full"
-            style={{background:"var(--green-800)",color:"white",fontWeight:700,fontSize:16,padding:"14px",borderRadius:"var(--radius-md)",border:"none",cursor:"pointer"}}
-            onClick={()=>{
-              if(!window.confirm(`Finalize "${formatDate(selEvent.date)} — ${selEvent.course_name}"? This marks it Completed and removes it from the scoring list.`))return;
-              setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Completed"}:e));
-              setSelEventId("");
-              setScorers([emptyScorer()]);
-              showSuccess("Event marked as Completed!");
-            }}
-          >
-            ✓ Finalize Event
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -1980,7 +1937,7 @@ function AdminTab({golfers,setGolfers,courses,setCourses,events,setEvents,signup
       {subTab==="pairings"&&<PairingDashboard golfers={golfers} courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} showSuccess={showSuccess}/>}
       {subTab==="hcp"&&<HandicapManager golfers={golfers} setGolfers={setGolfers} showSuccess={showSuccess}/>}
       {subTab==="coursehcp"&&<CourseHcpSheet golfers={golfers} courses={courses} showSuccess={showSuccess}/>}
-      {subTab==="scores"&&<ScoreCorrection golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} setLeaderboard={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScores} showSuccess={showSuccess}/>}
+      {subTab==="scores"&&<ScoreCorrection golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignups} leaderboard={leaderboard} setLeaderboard={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScores} showSuccess={showSuccess}/>}
       {subTab==="payouts"&&<FinanceView golfers={golfers} leaderboard={leaderboard} events={[...events].filter((e:any)=>e.status==="Completed").sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime())} charityDonations={charityDonations} setCharityDonations={setCharityDonations} showSuccess={showSuccess}/>}
       {subTab==="courses"&&<CourseManager courses={courses} setCourses={setCourses} showSuccess={showSuccess}/>}
       {subTab==="roster"&&<GolferRoster golfers={golfers} setGolfers={setGolfers} showSuccess={showSuccess}/>}
@@ -2135,7 +2092,7 @@ function CourseManager({courses,setCourses,showSuccess}:any){
   );
 }
 
-function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,holeScores,setHoleScores,showSuccess}:any){
+function ScoreCorrection({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,showSuccess}:any){
   const [selEventId,setSelEventId]=useState("");
   const [selGolferId,setSelGolferId]=useState("");
   const [corrType,setCorrType]=useState("total");
@@ -2175,6 +2132,14 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
     if(!pts)return;
     const updated={...entry,total_stableford_points:pts,entry_type:corrType==="hole"?"Hole-by-Hole":"Total Only",skins_paid:corrType==="hole"};
     setLeaderboard((p:any)=>p.map((r:any)=>r.summary_id===entry.summary_id?updated:r));
+    // Update signup with the corrected tee box and playing handicap
+    if(corrCourse&&corrPhcp!=null){
+      setSignups((p:any)=>p.map((s:any)=>
+        s.event_id===entry.event_id&&s.golfer_id===entry.golfer_id
+          ?{...s,tee_box_course_id:corrCourse.course_id,playing_handicap:corrPhcp}
+          :s
+      ));
+    }
     if(corrType==="hole"&&corrCourse&&corrPhcp!=null){
       setHoleScores((p:any)=>{
         const without=p.filter((hs:any)=>hs.summary_id!==entry.summary_id);
@@ -2308,48 +2273,61 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
   const [selCourseName,setSelCourseName]=useState(courseNames[0]||"");
   const [showModal,setShowModal]=useState(false);
   const [copied,setCopied]=useState(false);
+  const [htmlPreview,setHtmlPreview]=useState("");
   const tees=teeBoxesForCourse(courses,selCourseName);
   const members=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").sort((a:any,b:any)=>a.first_name.localeCompare(b.first_name));
+  const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
 
-  // Build a rich HTML table suitable for pasting into Gmail / Outlook
-  const buildHtmlTable=()=>{
-    const thStyle="padding:8px 14px;text-align:center;background:#1a4a28;color:#f5d97a;font-size:14px;font-weight:700;";
-    const tdNameStyle="padding:8px 14px;font-size:14px;border-bottom:1px solid #e0d4c4;white-space:nowrap;";
-    const tdHcpStyle="padding:2px 0;font-size:11px;color:#888;";
-    const tdValStyle="padding:8px 14px;text-align:center;font-size:16px;font-weight:700;color:#1a6b3a;border-bottom:1px solid #e0d4c4;";
-    let rows=members.map((g:any)=>{
-      const cells=tees.map((t:any)=>"<td style=\""+tdValStyle+"\">"+calcPlayingHandicap(g.current_handicap_index,t.tee_slope,t.tee_rating,t.par)+"</td>").join("");
-      return "<tr><td style=\""+tdNameStyle+"\">"+g.first_name+" "+g.last_name+"<div style=\""+tdHcpStyle+"\">HCP "+g.current_handicap_index.toFixed(1)+"</div></td>"+cells+"</tr>";
+  // Build HTML table as a plain function — no escaped quotes, uses single quotes throughout
+  const buildHtmlTable=():string=>{
+    if(!tees.length||!members.length)return "";
+    const th="padding:8px 14px;text-align:center;background:#1a4a28;color:#f5d97a;font-size:14px;font-weight:700;";
+    const tdN="padding:8px 14px;font-size:14px;border-bottom:1px solid #e0d4c4;white-space:nowrap;";
+    const tdS="padding:2px 0;font-size:11px;color:#888;";
+    const tdV="padding:8px 14px;text-align:center;font-size:16px;font-weight:700;color:#1a6b3a;border-bottom:1px solid #e0d4c4;";
+    const heads=tees.map((t:any)=>[
+      '<th style="',th,'">',t.tee_box_name,
+      '<br><span style="font-weight:400;font-size:11px;opacity:0.85;">Sl ',t.tee_slope,' / Rt ',t.tee_rating,'</span></th>'
+    ].join("")).join("");
+    const body=members.map((g:any)=>{
+      const cells=tees.map((t:any)=>[
+        '<td style="',tdV,'">',calcPlayingHandicap(g.current_handicap_index,t.tee_slope,t.tee_rating,t.par),'</td>'
+      ].join("")).join("");
+      return ['<tr><td style="',tdN,'">',g.first_name," ",g.last_name,
+        '<div style="',tdS,'">HCP ',g.current_handicap_index.toFixed(1),'</div></td>',cells,'</tr>'
+      ].join("");
     }).join("");
-    const headers=tees.map((t:any)=>"<th style=\""+thStyle+"\">"+t.tee_box_name+"<br/><span style=\"font-weight:400;font-size:11px;opacity:0.85;\">Sl "+t.tee_slope+" / Rt "+t.tee_rating+"</span></th>").join("");
-    return (
-      "<div style=\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;\">" +
-      "<h2 style=\"background:#1a4a28;color:#f5d97a;margin:0;padding:14px 18px;font-size:18px;\">⛳ Saturday School</h2>" +
-      "<h3 style=\"background:#2d6e45;color:white;margin:0;padding:10px 18px;font-size:15px;font-weight:400;\">Playing Handicaps — "+selCourseName+"</h3>" +
-      "<table style=\"width:100%;border-collapse:collapse;font-family:Arial,sans-serif;\">" +
-      "<thead><tr><th style=\""+thStyle+"text-align:left;\">Golfer</th>"+headers+"</tr></thead>" +
-      "<tbody>"+rows+"</tbody></table>" +
-      "<p style=\"font-size:12px;color:#888;padding:10px 18px;\">Generated by Saturday School App</p></div>"
-    );
+    return [
+      '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">',
+      '<h2 style="background:#1a4a28;color:#f5d97a;margin:0;padding:14px 18px;font-size:18px;">&#x26F3; Saturday School</h2>',
+      '<h3 style="background:#2d6e45;color:white;margin:0;padding:10px 18px;font-size:15px;font-weight:400;">Playing Handicaps &mdash; ',selCourseName,'</h3>',
+      '<table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;">',
+      '<thead><tr><th style="',th,'text-align:left;">Golfer</th>',heads,'</tr></thead>',
+      '<tbody>',body,'</tbody></table>',
+      '<p style="font-size:12px;color:#888;padding:10px 18px;">Generated by Saturday School App</p></div>'
+    ].join("");
+  };
+
+  const handleOpenModal=()=>{
+    // Build HTML once when modal opens, store in state to avoid re-running on every render
+    try{ setHtmlPreview(buildHtmlTable()); }catch(e){ setHtmlPreview(""); }
+    setShowModal(true);
   };
 
   const handleCopy=async()=>{
-    const html=buildHtmlTable();
+    const html=htmlPreview||buildHtmlTable();
+    if(!html)return;
     try{
-      // Try rich HTML copy first (works in Chrome/Edge, pastes as formatted table)
       await navigator.clipboard.write([
         new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([html],{type:"text/plain"})})
       ]);
-      setCopied(true);
-      setTimeout(()=>setCopied(false),3000);
+      setCopied(true); setTimeout(()=>setCopied(false),3000);
     }catch{
-      // Fallback: copy plain HTML string
       try{
         await navigator.clipboard.writeText(html);
-        setCopied(true);
-        setTimeout(()=>setCopied(false),3000);
+        setCopied(true); setTimeout(()=>setCopied(false),3000);
       }catch{
-        showSuccess("Could not access clipboard — try on a different browser");
+        showSuccess("Clipboard not available — try Chrome or Safari");
       }
     }
   };
@@ -2370,7 +2348,7 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
 
           {/* Email buttons */}
           <div style={{display:"flex",gap:10,marginTop:14,flexWrap:"wrap"}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={()=>setShowModal(true)}>✉ Email Handicaps</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={handleOpenModal}>✉ Email Handicaps</button>
           </div>
 
           {/* Email modal */}
@@ -2398,24 +2376,24 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
                   <div style={{background:"var(--surface2)",borderRadius:"var(--radius-md)",padding:16,border:"1px solid var(--border)"}}>
                     <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 2 — Open mail &amp; paste</div>
                     <p style={{fontSize:14,color:"var(--text-primary)",marginBottom:12,lineHeight:1.5}}>
-                      Tap the button below to open a new email pre-addressed to the group, then paste (<strong>Ctrl+V</strong> / <strong>⌘V</strong>) the copied table into the body.
+                      Tap below to open a new email pre-addressed to the group, then paste (<strong>Ctrl+V</strong> or <strong>Cmd+V</strong>) the table into the body.
                     </p>
                     <a
-                      href={"mailto:?bcc="+allEmails.join(",")+"&subject=Saturday+School+%E2%80%93+Playing+Handicaps+%28"+encodeURIComponent(selCourseName)+"%29&body=Hi+all%2C+see+playing+handicaps+below+for+"+encodeURIComponent(selCourseName)+".+%28Paste+the+copied+table+here.%29"}
+                      href={"mailto:?bcc="+allEmails.join(",")+"&subject=Saturday+School+%E2%80%93+Playing+Handicaps+%28"+encodeURIComponent(selCourseName)+"%29"}
                       className="btn btn-outline btn-full"
                       style={{textDecoration:"none",display:"flex",justifyContent:"center",marginBottom:10}}
                     >
                       ✉ Open Mail App (pre-addressed)
                     </a>
                     <div style={{background:"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:"var(--radius-md)",padding:"10px 12px",fontSize:13,color:"var(--green-800)"}}>
-                      <strong>Tip:</strong> After your mail app opens, click in the body and paste ({navigator.platform?.includes("Mac")?"⌘V":"Ctrl+V"}) to insert the formatted table.
+                      <strong>Suggested subject:</strong> Saturday School – Playing Handicaps ({selCourseName})
                     </div>
                   </div>
 
                   {/* Preview */}
                   <div style={{background:"var(--surface2)",borderRadius:"var(--radius-md)",padding:16,border:"1px solid var(--border)"}}>
                     <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>Preview</div>
-                    <div style={{overflowX:"auto",fontSize:13}} dangerouslySetInnerHTML={{__html:buildHtmlTable()}}/>
+                    <div style={{overflowX:"auto",fontSize:13}} dangerouslySetInnerHTML={{__html:htmlPreview}}/>
                   </div>
                 </div>
 
