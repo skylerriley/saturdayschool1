@@ -690,8 +690,11 @@ export default function App(){
   },[leaderboard,holeScores,showError]);
 
   const dbInsertHoleScores=useCallback(async(scores:any[])=>{
-    try{await supabase.from("hole_scores").insert(scores);}
-    catch(e:any){showError(`Hole scores save failed: ${e.message}`);}
+    try{
+      const inserted=await supabase.from("hole_scores").insert(scores);
+      return inserted; // return real rows so caller can patch local state ids
+    }
+    catch(e:any){showError(`Hole scores save failed: ${e.message}`);return[];}
   },[showError]);
 
   const dbDeleteHoleScores=useCallback(async(summary_id:number)=>{
@@ -808,9 +811,24 @@ export default function App(){
   const setHoleScoresDB=useCallback((updater:any)=>{
     setHoleScores(prev=>{
       const next=typeof updater==="function"?updater(prev):updater;
-      // Only insert new scores (hole scores are append-only from score entry)
-      const added=next.filter((n:any)=>!prev.find((o:any)=>o.score_id===n.score_id));
-      if(added.length>0) dbInsertHoleScores(added.map(({score_id:_,...r}:any)=>r));
+      // Only insert genuinely new scores (not already in DB — id < 1e12 means temp)
+      const added=next.filter((n:any)=>
+        n.score_id>1e12 && // temp id = came from nextId() seed (Date.now based)
+        !prev.find((o:any)=>o.score_id===n.score_id)
+      );
+      if(added.length>0){
+        // Strip temp score_id before inserting; patch state with real ids after
+        const payload=added.map(({score_id:_,...r}:any)=>r);
+        dbInsertHoleScores(payload).then((inserted:any[])=>{
+          if(!inserted||!inserted.length)return;
+          // Replace temp score_ids with real DB ids so future diffs work correctly
+          setHoleScores(p=>p.map((hs:any)=>{
+            if(hs.score_id<=1e12)return hs; // already real
+            const match=inserted.find((ins:any)=>ins.summary_id===hs.summary_id&&ins.hole_number===hs.hole_number);
+            return match?{...hs,score_id:match.score_id}:hs;
+          }));
+        }).catch(()=>{});
+      }
       return next;
     });
   },[dbInsertHoleScores]);
@@ -1721,6 +1739,11 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
   };
 
   const handleSubmitAll=()=>{
+    // Monotonic counter: guarantees unique temp IDs even when
+    // Date.now() returns the same value for multiple scorers.
+    let idSeed=Date.now();
+    const nextId=()=>++idSeed;
+
     let count=0;
     scorers.forEach(scorer=>{
       if(!scorer.golferId||!scorer.courseId)return;
@@ -1733,17 +1756,19 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
       const holeCalcs=mode==="hole"?calcHoleScores(scorer.grossScores,phcp,course):[];
       const pts=mode==="total"?parseInt(scorer.totalPts):holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
       if(!pts||pts<0)return;
-      const newSummaryId=Date.now()+gid;
+      // Use nextId() so each summary_id is unique even in the same millisecond
+      const newSummaryId=nextId();
       const newEntry={summary_id:newSummaryId,event_id:eid,golfer_id:gid,season:selEvent?.season||2026,entry_type:mode==="hole"?"Hole-by-Hole":"Total Only",total_stableford_points:pts,buy_in_paid:true,skins_paid:mode==="hole",charity_paid:true,weekly_payout_won:0,skins_payout_won:0};
       const alreadyIn=leaderboard.some((r:any)=>r.event_id===eid&&r.golfer_id===gid);
       if(alreadyIn){setLeaderboard((p:any)=>p.map((r:any)=>r.event_id===eid&&r.golfer_id===gid?newEntry:r));}
       else{setLeaderboard((p:any)=>[...p,newEntry]);}
       if(mode==="hole"){
+        // Each hole gets its own unique id via nextId()
         const newScores=scorer.grossScores.map((gv:string,i:number)=>{
           if(!gv)return null;
           const net=calcHoleNetScore(parseInt(gv),phcp,course.hole_stroke_indices[i]);
           const p2=calcStablefordPoints(net,course.hole_pars[i]);
-          return{score_id:Date.now()+gid+i,summary_id:newSummaryId,hole_number:i+1,gross_score:parseInt(gv),net_score:net,stableford_points:p2};
+          return{score_id:nextId(),summary_id:newSummaryId,hole_number:i+1,gross_score:parseInt(gv),net_score:net,stableford_points:p2};
         }).filter(Boolean);
         setHoleScores((p:any)=>[...p,...newScores]);
       }
@@ -1900,6 +1925,30 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
       <button className="btn btn-primary btn-full" disabled={!selEventId||!canSubmit} onClick={handleSubmitAll} style={{marginTop:4}}>
         Submit {scorers.filter(s=>s.golferId&&s.courseId).length>1?`${scorers.filter(s=>s.golferId&&s.courseId).length} Scores`:"Score"}
       </button>
+
+      {/* Finalize Event — shown once scores exist for this event */}
+      {selEvent&&eventEntries.length>0&&(
+        <div style={{marginTop:24,borderTop:"1.5px solid var(--border-md)",paddingTop:20}}>
+          <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>Finalize Event</div>
+          <p style={{fontSize:14,color:"var(--text-secondary)",marginBottom:14,lineHeight:1.5}}>
+            All scores entered? Mark this event as <strong>Completed</strong> to lock it and move it off the active scoring list.
+            <br/><span style={{fontSize:13,color:"var(--text-muted)"}}>{eventEntries.length} score{eventEntries.length!==1?"s":""} recorded for this event.</span>
+          </p>
+          <button
+            className="btn btn-full"
+            style={{background:"var(--green-800)",color:"white",fontWeight:700,fontSize:16,padding:"14px",borderRadius:"var(--radius-md)",border:"none",cursor:"pointer"}}
+            onClick={()=>{
+              if(!window.confirm(`Finalize "${formatDate(selEvent.date)} — ${selEvent.course_name}"? This marks it Completed and removes it from the scoring list.`))return;
+              setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Completed"}:e));
+              setSelEventId("");
+              setScorers([emptyScorer()]);
+              showSuccess("Event marked as Completed!");
+            }}
+          >
+            ✓ Finalize Event
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2347,12 +2396,19 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
 
                   {/* Step 2: Open email */}
                   <div style={{background:"var(--surface2)",borderRadius:"var(--radius-md)",padding:16,border:"1px solid var(--border)"}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 2 — Compose &amp; paste</div>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 2 — Open mail &amp; paste</div>
                     <p style={{fontSize:14,color:"var(--text-primary)",marginBottom:12,lineHeight:1.5}}>
-                      Open your email app, start a new message to the group, then paste (<strong>Ctrl+V</strong> / <strong>⌘V</strong>) into the body. The table will appear with full formatting.
+                      Tap the button below to open a new email pre-addressed to the group, then paste (<strong>Ctrl+V</strong> / <strong>⌘V</strong>) the copied table into the body.
                     </p>
+                    <a
+                      href={"mailto:?bcc="+allEmails.join(",")+"&subject=Saturday+School+%E2%80%93+Playing+Handicaps+%28"+encodeURIComponent(selCourseName)+"%29&body=Hi+all%2C+see+playing+handicaps+below+for+"+encodeURIComponent(selCourseName)+".+%28Paste+the+copied+table+here.%29"}
+                      className="btn btn-outline btn-full"
+                      style={{textDecoration:"none",display:"flex",justifyContent:"center",marginBottom:10}}
+                    >
+                      ✉ Open Mail App (pre-addressed)
+                    </a>
                     <div style={{background:"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:"var(--radius-md)",padding:"10px 12px",fontSize:13,color:"var(--green-800)"}}>
-                      <strong>Suggested subject:</strong> Saturday School – Playing Handicaps ({selCourseName})
+                      <strong>Tip:</strong> After your mail app opens, click in the body and paste ({navigator.platform?.includes("Mac")?"⌘V":"Ctrl+V"}) to insert the formatted table.
                     </div>
                   </div>
 
