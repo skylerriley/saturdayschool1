@@ -3211,7 +3211,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
     :members;
 
   const playingField=defaultField.filter((g:any)=>!excludedIds.has(g.golfer_id));
-  const playingIds=new Set(playingField.map((g:any)=>g.golfer_id));
+  const playingIds=new Set<number>(playingField.map((g:any)=>g.golfer_id as number));
 
   const courseName=selEvent?.course_name||"";
 
@@ -3238,8 +3238,8 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
   const gA=golfers.find((g:any)=>g.golfer_id===parseInt(h2hA));
   const gB=golfers.find((g:any)=>g.golfer_id===parseInt(h2hB));
   const h2hSelEvent=selEvent;
-  const profA=gA?buildProfile(gA,leaderboard,events,signups,courseName,new Set([gA?.golfer_id,gB?.golfer_id].filter(Boolean))):null;
-  const profB=gB?buildProfile(gB,leaderboard,events,signups,courseName,new Set([gA?.golfer_id,gB?.golfer_id].filter(Boolean))):null;
+  const profA=gA?buildProfile(gA,leaderboard,events,signups,courseName,new Set<number>([gA?.golfer_id,gB?.golfer_id].filter(Boolean) as number[])):null;
+  const profB=gB?buildProfile(gB,leaderboard,events,signups,courseName,new Set<number>([gA?.golfer_id,gB?.golfer_id].filter(Boolean) as number[])):null;
 
   const h2hShared=gA&&gB?h2hHistory(leaderboard,events,gA.golfer_id,gB.golfer_id):[];
 
