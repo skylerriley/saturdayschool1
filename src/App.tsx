@@ -1677,7 +1677,7 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
           {forecastWx&&(()=>{
             const d=wmoToDesc(forecastWx.code);
             return(
-              <div className="info-row" style={{marginTop:2,borderTop:"1px solid var(--border)",paddingTop:8}}>
+              <div className="info-row" style={{marginTop:2,paddingTop:8}}>
                 <span className="info-key">Forecast</span>
                 <span className="info-val" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",justifyContent:"flex-end"}}>
                   <span style={{fontSize:18,lineHeight:1}}>{d.emoji}</span>
