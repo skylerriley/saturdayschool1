@@ -3376,7 +3376,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
 
               {/* Methodology note */}
               <div style={{marginTop:16,padding:"12px 14px",background:"var(--surface2)",borderRadius:"var(--radius-md)",fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
-                <strong style={{color:"var(--text-secondary)"}}>How odds are calculated:</strong> Projected score uses decay-weighted average (d=0.88/round), linear trend, course history, and HCP trajectory. {MC_TRIALS.toLocaleString()}-trial Monte Carlo simulation determines win probabilities. A {(VIG*100).toFixed(0)}% house edge is applied. Past performance does not guarantee future results.
+                <strong style={{color:"var(--text-secondary)"}}>How odds are calculated:</strong> Projected score uses decay-weighted average (d=0.88/round), linear trend, course history, and HCP trajectory. {MC_TRIALS.toLocaleString()}-trial Monte Carlo simulation determines win probabilities. Past performance does not guarantee future results.
               </div>
             </>
           )}
@@ -3691,7 +3691,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                 )}
 
                 <div style={{padding:"12px 14px",background:"var(--surface2)",borderRadius:"var(--radius-md)",fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
-                  <strong style={{color:"var(--text-secondary)"}}>H2H methodology:</strong> Win probability blends {MC_TRIALS.toLocaleString()}-trial Monte Carlo (60%) with decay-weighted head-to-head record (40%, d=0.85/event). Spread = projected score differential. Spread line uses standard -110 vig. {(VIG*100).toFixed(0)}% house edge applied throughout. Hole-by-hole: actual HxH data used where available, otherwise estimates pts distribution via stroke-index difficulty weighting.
+                  <strong style={{color:"var(--text-secondary)"}}>H2H methodology:</strong> Win probability blends {MC_TRIALS.toLocaleString()}-trial Monte Carlo (60%) with decay-weighted head-to-head record (40%, d=0.85/event). Spread = projected score differential. Spread line uses standard -110 vig. Hole-by-hole: actual HxH data used where available, otherwise estimates pts distribution via stroke-index difficulty weighting.
                 </div>
               </div>
             );
