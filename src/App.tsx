@@ -1036,7 +1036,6 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
   const [selEventId,setSelEventId]=useState<number|null>(null);
   const [expandedId,setExpandedId]=useState<number|null>(null);
   const [liveExpandedId,setLiveExpandedId]=useState<number|null>(null);
-  const [showKappy,setShowKappy]=useState(false);
 
   // 1) Season selector — dropdown only, no "all time"
   const allSeasons=[...new Set([...events.map((e:any)=>e.season),...leaderboard.map((r:any)=>r.season)])].sort((a:any,b:any)=>b-a) as number[];
@@ -1219,24 +1218,18 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
 
     return(
       <div key={gid}>
-        <div className={`lb-row${isExpanded?" expanded":""}`} onClick={()=>{
-          const willExpand=!isExpanded;
-          setExpandedId(willExpand?gid:null);
-          const isErrolClick=g&&g.first_name==="Errol"&&g.last_name==="Kaplan";
-          const isWinnerClick=mode==="weekly"&&row.pos===1&&!row.tied;
-          if(isErrolClick&&isWinnerClick&&willExpand){
-            setShowKappy(true);
-            setTimeout(()=>setShowKappy(false),3200);
-          }
-        }}>
+        <div className={`lb-row${isExpanded?" expanded":""}`} onClick={()=>setExpandedId(isExpanded?null:gid)}>
           <div className={`lb-rank-cell ${rankClass}`} style={{fontSize:row.tied?16:22,fontWeight:700}}>{posLabel}</div>
           <div className="lb-name-cell">
             <div className="lb-name-main">{(()=>{
               if(!g)return"Unknown";
               // Easter egg: Errol Kaplan wins the weekly event → "Happy Kappy 😊" when expanded
               const isErrol=g.first_name==="Errol"&&g.last_name==="Kaplan";
-              const isWeeklyWinner=mode==="weekly"&&row.pos===1&&!row.tied;
-              if(isErrol&&isWeeklyWinner&&isExpanded)return"Happy Kappy 😊";
+              const topGidPaid=paidEntries[0]?.golfer_id;
+              const topPtsPaid=paidEntries[0]?.total_stableford_points;
+              const errolSoloWin=mode==="weekly"&&paidEntries.length>0&&topGidPaid===gid
+                &&(paidEntries.length===1||paidEntries[1].total_stableford_points<topPtsPaid);
+              if(isErrol&&errolSoloWin&&isExpanded)return"Happy Kappy 😊";
               return g.first_name+" "+g.last_name;
             })()}</div>
           </div>
@@ -1697,51 +1690,6 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
         </>
       )}
 
-    {/* ── Happy Kappy cascade ── */}
-    {showKappy&&(()=>{
-      const count=28;
-      const items=Array.from({length:count},(_,i)=>{
-        const left=2+Math.round(Math.random()*96);
-        const delay=parseFloat((Math.random()*1.6).toFixed(2));
-        const dur=parseFloat((1.4+Math.random()*0.9).toFixed(2));
-        const size=20+Math.round(Math.random()*26);
-        const rotate=Math.round((Math.random()-0.5)*40);
-        return{i,left,delay,dur,size,rotate};
-      });
-      return(
-        <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999,overflow:"hidden"}}>
-          <style>{`
-            @keyframes kappyFloat{
-              0%  {transform:translateY(0px) rotate(var(--kr)) scale(0.6);opacity:0;}
-              8%  {opacity:1;}
-              85% {opacity:1;}
-              100%{transform:translateY(-110vh) rotate(var(--kr)) scale(1.15);opacity:0;}
-            }
-            .kappy-e{
-              position:absolute;
-              bottom:-40px;
-              line-height:1;
-              animation:kappyFloat var(--kd)s ease-out var(--kdl)s both;
-              pointer-events:none;
-              user-select:none;
-            }
-          `}</style>
-          {items.map(e=>(
-            <span
-              key={e.i}
-              className="kappy-e"
-              style={{
-                left:e.left+"%",
-                fontSize:e.size+"px",
-                ["--kr" as any]:e.rotate+"deg",
-                ["--kd" as any]:e.dur,
-                ["--kdl" as any]:e.delay,
-              }}
-            >😊</span>
-          ))}
-        </div>
-      );
-    })()}
     </div>
   );
 }
