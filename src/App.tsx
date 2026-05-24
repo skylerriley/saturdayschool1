@@ -3177,7 +3177,6 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
   // Computed once at mount via the lazy useState initializer.
   const [excludedIds,setExcludedIds]=useState<Set<number>>(()=>{
     const cutoff=Date.now()-60*24*60*60*1000; // 60 days ago in ms
-    // Build a map: golfer_id → date of most recent leaderboard entry
     const lastPlayed:Record<number,number>={};
     const evDateMap:Record<number,number>={};
     events.forEach((e:any)=>{evDateMap[e.event_id]=new Date(e.date+"T00:00:00").getTime();});
@@ -3187,12 +3186,12 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
       if(!lastPlayed[r.golfer_id]||evMs>lastPlayed[r.golfer_id])
         lastPlayed[r.golfer_id]=evMs;
     });
-    const inactive=new Set<number>();
+    const inactive:Set<number>=new Set();
     golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").forEach((g:any)=>{
       const last=lastPlayed[g.golfer_id];
-      if(!last||last<cutoff)inactive.add(g.golfer_id);
+      if(!last||last<cutoff)inactive.add(g.golfer_id as number);
     });
-    return inactive;
+    return inactive as Set<number>;
   });
 
   // H2H state
