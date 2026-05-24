@@ -4024,9 +4024,9 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                     const bWins=row.hi==="high"?(row.b>row.a):row.hi==="low"?(row.b<row.a):false;
                     return(
                       <div key={row.label} style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",padding:"9px 14px",borderBottom:"1px solid var(--border)"}}>
-                        <div style={{fontWeight:aWins?700:400,fontSize:15,color:aWins?"var(--green-700)":"var(--text-primary)"}}>{row.a}</div>
-                        <div style={{fontSize:11,color:"var(--text-muted)",textAlign:"center",padding:"0 8px",letterSpacing:"0.04em"}}>{row.label}</div>
-                        <div style={{fontWeight:bWins?700:400,fontSize:15,color:bWins?"var(--green-700)":"var(--text-primary)",textAlign:"right"}}>{row.b}</div>
+                        <div style={{fontWeight:aWins?700:400,fontSize:18,textAlign:"left",color:aWins?"var(--green-700)":"var(--text-primary)"}}>{row.a}</div>
+                        <div style={{fontSize:13,color:"var(--text-muted)",textAlign:"center",padding:"0 8px",letterSpacing:"0.04em"}}>{row.label}</div>
+                        <div style={{fontWeight:bWins?700:400,fontSize:18,color:bWins?"var(--green-700)":"var(--text-primary)",textAlign:"right"}}>{row.b}</div>
                       </div>
                     );
                   })}
@@ -4047,10 +4047,10 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                         const winner=r.ptsA>r.ptsB?"A":r.ptsB>r.ptsA?"B":"T";
                         return(
                           <div key={r.eid} style={{display:"grid",gridTemplateColumns:"1fr 40px 40px 40px",padding:"8px 12px",borderBottom:"1px solid var(--border)",background:i===0?"var(--green-50)":"transparent",gap:4,alignItems:"center"}}>
-                            <div style={{fontSize:13}}>{formatDate(r.date)}</div>
-                            <div style={{textAlign:"center",fontWeight:winner==="A"?700:400,fontSize:14,color:winner==="A"?"var(--green-700)":"var(--text-muted)"}}>{r.ptsA}</div>
-                            <div style={{textAlign:"center",fontWeight:winner==="B"?700:400,fontSize:14,color:winner==="B"?"var(--green-700)":"var(--text-muted)"}}>{r.ptsB}</div>
-                            <div style={{textAlign:"center",fontSize:13,fontWeight:600,color:winner==="T"?"var(--text-muted)":winner==="A"?"var(--green-700)":"var(--gold-700)"}}>
+                            <div style={{fontSize:16}}>{formatDate(r.date)}</div>
+                            <div style={{textAlign:"center",fontWeight:winner==="A"?700:400,fontSize:16,color:winner==="A"?"var(--green-700)":"var(--text-muted)"}}>{r.ptsA}</div>
+                            <div style={{textAlign:"center",fontWeight:winner==="B"?700:400,fontSize:16,color:winner==="B"?"var(--green-700)":"var(--text-muted)"}}>{r.ptsB}</div>
+                            <div style={{textAlign:"center",fontSize:16,fontWeight:600,color:winner==="T"?"var(--text-muted)":winner==="A"?"var(--green-700)":"var(--gold-700)"}}>
                               {winner==="T"?"TIE":winner==="A"?gA.first_name[0]:gB.first_name[0]}
                             </div>
                           </div>
