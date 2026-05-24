@@ -872,9 +872,9 @@ export default function App(){
           {errorMsg&&<div style={{background:"var(--red-100)",border:"1px solid var(--red-400)",borderRadius:"var(--radius-md)",padding:"12px 16px",color:"var(--red-600)",fontSize:14,marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>⚠</span>{errorMsg}</div>}
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} showSuccess={showSuccess}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} adminMode={adminMode}/>}
-          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} showSuccess={showSuccess}/>}
+          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} showSuccess={showSuccess}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} charityDonations={charityDonations} setCharityDonations={setCharityDB} showSuccess={showSuccess}/>}
-          {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard}/>}
+          {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores}/>}
         </main>
       </div>
     </>
@@ -1502,6 +1502,90 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
   );
 }
 
+
+// ============================================================
+// WEATHER WIDGET  — Open-Meteo, free, no API key required
+//
+// GPS accuracy note: we use exact course coordinates rather than
+// the ZIP 92612 centroid (~33.6459,-117.8428). The ZIP centroid
+// is 2.5–3 miles from either course — at Open-Meteo's 1-2km
+// grid resolution that is 2-3 grid cells, which can meaningfully
+// differ in wind speed/direction near coastal Southern California.
+// Exact GPS gives the best possible forecast for each course.
+// ============================================================
+
+const COURSE_COORDS:Record<string,{lat:number,lon:number}>={
+  "Strawberry Farms GC":{lat:33.6695,lon:-117.8228},
+  "Oak Creek GC"       :{lat:33.6541,lon:-117.7993},
+};
+const FALLBACK_COORDS={lat:33.6459,lon:-117.8428}; // ZIP 92612 centroid
+
+function wmoToDesc(code:number):{label:string,emoji:string}{
+  if(code===0)return{label:"Clear sky",emoji:"☀️"};
+  if(code<=2) return{label:"Partly cloudy",emoji:"⛅"};
+  if(code===3)return{label:"Overcast",emoji:"☁️"};
+  if(code<=49)return{label:"Foggy",emoji:"🌫️"};
+  if(code<=59)return{label:"Drizzle",emoji:"🌦️"};
+  if(code<=69)return{label:"Rain",emoji:"🌧️"};
+  if(code<=79)return{label:"Snow",emoji:"❄️"};
+  if(code<=82)return{label:"Showers",emoji:"🌧️"};
+  if(code<=86)return{label:"Snow showers",emoji:"🌨️"};
+  if(code<=99)return{label:"Thunderstorm",emoji:"⛈️"};
+  return{label:"Unknown",emoji:"🌡️"};
+}
+function degToCompass(d:number):string{
+  const a=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+  return a[Math.round(d/22.5)%16];
+}
+function cloudText(pct:number):string{
+  if(pct<=10)return"Clear";
+  if(pct<=30)return"Mostly clear";
+  if(pct<=60)return"Partly cloudy";
+  if(pct<=85)return"Mostly cloudy";
+  return"Overcast";
+}
+
+// useWeather: fetches forecast for a course on a date,
+// returns {wx, loading} where wx has temp/code/wind/windDeg fields.
+// RSVPTab renders this inline inside the existing event card.
+function useWeather(courseName:string, eventDate:string){
+  const [wx,setWx]=useState<any>(null);
+  const [loading,setLoading]=useState(false);
+  useEffect(()=>{
+    if(!eventDate||!courseName){setWx(null);return;}
+    const msPerDay=86400000;
+    const daysOut=Math.round((new Date(eventDate+"T12:00:00").getTime()-Date.now())/msPerDay);
+    if(daysOut<0||daysOut>15){setWx(null);return;}
+    const coords=COURSE_COORDS[courseName]||FALLBACK_COORDS;
+    setLoading(true);
+    fetch("https://api.open-meteo.com/v1/forecast"
+      +"?latitude="+coords.lat+"&longitude="+coords.lon
+      +"&hourly=temperature_2m,windspeed_10m,winddirection_10m,weathercode"
+      +"&temperature_unit=fahrenheit&windspeed_unit=mph"
+      +"&forecast_days=16&timezone=America%2FLos_Angeles")
+      .then(r=>r.json())
+      .then(data=>{
+        const times:string[]=data.hourly.time;
+        const idxs=times.map((t:string,i:number)=>({t,i}))
+          .filter(({t}:any)=>t.startsWith(eventDate)&&parseInt(t.slice(11,13))>=7&&parseInt(t.slice(11,13))<=12)
+          .map(({i}:any)=>i);
+        if(!idxs.length){setWx(null);setLoading(false);return;}
+        const avg=(k:string)=>{
+          const v=idxs.map((i:number)=>data.hourly[k][i]).filter((x:any)=>x!=null);
+          return v.length?Math.round(v.reduce((a:number,b:number)=>a+b,0)/v.length):0;
+        };
+        const codes:number[]=idxs.map((i:number)=>data.hourly.weathercode[i]);
+        const freq:Record<number,number>={};
+        codes.forEach((c:number)=>{freq[c]=(freq[c]||0)+1;});
+        const dominant=parseInt(Object.entries(freq).sort((a:any,b:any)=>b[1]-a[1])[0][0]);
+        setWx({temp:avg("temperature_2m"),wind:avg("windspeed_10m"),windDeg:avg("winddirection_10m"),code:dominant});
+        setLoading(false);
+      })
+      .catch(()=>setLoading(false));
+  },[eventDate,courseName]);
+  return{wx,loading};
+}
+
 // ============================================================
 // SIGN-UP TAB  (#3a show all tee times, #3b two sub-tabs)
 // ============================================================
@@ -1515,6 +1599,7 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
 
   const selEvent=events.find((e:any)=>e.event_id===selEventId);
   const eventSignups=signups.filter((s:any)=>s.event_id===selEventId);
+  const {wx:forecastWx}=useWeather(selEvent?.course_name||"",selEvent?.date||"");
   const yesCount=eventSignups.filter((s:any)=>s.attending==="Yes").length;
   const noCount=eventSignups.filter((s:any)=>s.attending==="No").length;
   const unconfCount=eventSignups.filter((s:any)=>s.attending==="Unconfirmed").length;
@@ -1569,7 +1654,7 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
         </select>
       </div>
 
-      {/* Event summary card – #3a show ALL tee times */}
+      {/* Event summary card — status, tee times, and inline weather row */}
       {selEvent&&(
         <div className="card" style={{padding:"12px 16px",marginBottom:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
@@ -1589,6 +1674,20 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
               ))}
             </span>
           </div>
+          {forecastWx&&(()=>{
+            const d=wmoToDesc(forecastWx.code);
+            return(
+              <div className="info-row" style={{marginTop:2,borderTop:"1px solid var(--border)",paddingTop:8}}>
+                <span className="info-key">Forecast</span>
+                <span className="info-val" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                  <span style={{fontSize:18,lineHeight:1}}>{d.emoji}</span>
+                  <span style={{fontWeight:600,fontSize:14,color:"var(--text-primary)"}}>{forecastWx.temp}°F</span>
+                  <span style={{fontSize:13,color:"var(--text-secondary)"}}>{d.label}</span>
+                  <span style={{fontSize:13,color:"var(--text-muted)"}}>{forecastWx.wind} mph {degToCompass(forecastWx.windDeg)}</span>
+                </span>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -1694,7 +1793,7 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
 // ============================================================
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false});
 
-function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,showSuccess}:any){
+function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,showSuccess}:any){
   const [mode,setMode]=useState("total");
   const [selEventId,setSelEventId]=useState("");
   const [scorers,setScorers]=useState([emptyScorer()]);
@@ -1738,12 +1837,6 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       const alreadyIn=leaderboard.some((r:any)=>r.event_id===eid&&r.golfer_id===gid);
       if(alreadyIn){setLeaderboard((p:any)=>p.map((r:any)=>r.event_id===eid&&r.golfer_id===gid?newEntry:r));}
       else{setLeaderboard((p:any)=>[...p,newEntry]);}
-      // Write tee_box_course_id and playing_handicap back to the signup row
-      setSignups((p:any)=>p.map((s:any)=>
-        s.event_id===eid&&s.golfer_id===gid
-          ?{...s,tee_box_course_id:parseInt(scorer.courseId),playing_handicap:phcp}
-          :s
-      ));
       if(mode==="hole"){
         const newScores=scorer.grossScores.map((gv:string,i:number)=>{
           if(!gv)return null;
@@ -1937,7 +2030,7 @@ function AdminTab({golfers,setGolfers,courses,setCourses,events,setEvents,signup
       {subTab==="pairings"&&<PairingDashboard golfers={golfers} courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} showSuccess={showSuccess}/>}
       {subTab==="hcp"&&<HandicapManager golfers={golfers} setGolfers={setGolfers} showSuccess={showSuccess}/>}
       {subTab==="coursehcp"&&<CourseHcpSheet golfers={golfers} courses={courses} showSuccess={showSuccess}/>}
-      {subTab==="scores"&&<ScoreCorrection golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignups} leaderboard={leaderboard} setLeaderboard={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScores} showSuccess={showSuccess}/>}
+      {subTab==="scores"&&<ScoreCorrection golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} setLeaderboard={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScores} showSuccess={showSuccess}/>}
       {subTab==="payouts"&&<FinanceView golfers={golfers} leaderboard={leaderboard} events={[...events].filter((e:any)=>e.status==="Completed").sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime())} charityDonations={charityDonations} setCharityDonations={setCharityDonations} showSuccess={showSuccess}/>}
       {subTab==="courses"&&<CourseManager courses={courses} setCourses={setCourses} showSuccess={showSuccess}/>}
       {subTab==="roster"&&<GolferRoster golfers={golfers} setGolfers={setGolfers} showSuccess={showSuccess}/>}
@@ -2092,7 +2185,7 @@ function CourseManager({courses,setCourses,showSuccess}:any){
   );
 }
 
-function ScoreCorrection({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,showSuccess}:any){
+function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,holeScores,setHoleScores,showSuccess}:any){
   const [selEventId,setSelEventId]=useState("");
   const [selGolferId,setSelGolferId]=useState("");
   const [corrType,setCorrType]=useState("total");
@@ -2132,14 +2225,6 @@ function ScoreCorrection({golfers,courses,events,signups,setSignups,leaderboard,
     if(!pts)return;
     const updated={...entry,total_stableford_points:pts,entry_type:corrType==="hole"?"Hole-by-Hole":"Total Only",skins_paid:corrType==="hole"};
     setLeaderboard((p:any)=>p.map((r:any)=>r.summary_id===entry.summary_id?updated:r));
-    // Update signup with the corrected tee box and playing handicap
-    if(corrCourse&&corrPhcp!=null){
-      setSignups((p:any)=>p.map((s:any)=>
-        s.event_id===entry.event_id&&s.golfer_id===entry.golfer_id
-          ?{...s,tee_box_course_id:corrCourse.course_id,playing_handicap:corrPhcp}
-          :s
-      ));
-    }
     if(corrType==="hole"&&corrCourse&&corrPhcp!=null){
       setHoleScores((p:any)=>{
         const without=p.filter((hs:any)=>hs.summary_id!==entry.summary_id);
@@ -2273,61 +2358,48 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
   const [selCourseName,setSelCourseName]=useState(courseNames[0]||"");
   const [showModal,setShowModal]=useState(false);
   const [copied,setCopied]=useState(false);
-  const [htmlPreview,setHtmlPreview]=useState("");
   const tees=teeBoxesForCourse(courses,selCourseName);
   const members=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").sort((a:any,b:any)=>a.first_name.localeCompare(b.first_name));
-  const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
 
-  // Build HTML table as a plain function — no escaped quotes, uses single quotes throughout
-  const buildHtmlTable=():string=>{
-    if(!tees.length||!members.length)return "";
-    const th="padding:8px 14px;text-align:center;background:#1a4a28;color:#f5d97a;font-size:14px;font-weight:700;";
-    const tdN="padding:8px 14px;font-size:14px;border-bottom:1px solid #e0d4c4;white-space:nowrap;";
-    const tdS="padding:2px 0;font-size:11px;color:#888;";
-    const tdV="padding:8px 14px;text-align:center;font-size:16px;font-weight:700;color:#1a6b3a;border-bottom:1px solid #e0d4c4;";
-    const heads=tees.map((t:any)=>[
-      '<th style="',th,'">',t.tee_box_name,
-      '<br><span style="font-weight:400;font-size:11px;opacity:0.85;">Sl ',t.tee_slope,' / Rt ',t.tee_rating,'</span></th>'
-    ].join("")).join("");
-    const body=members.map((g:any)=>{
-      const cells=tees.map((t:any)=>[
-        '<td style="',tdV,'">',calcPlayingHandicap(g.current_handicap_index,t.tee_slope,t.tee_rating,t.par),'</td>'
-      ].join("")).join("");
-      return ['<tr><td style="',tdN,'">',g.first_name," ",g.last_name,
-        '<div style="',tdS,'">HCP ',g.current_handicap_index.toFixed(1),'</div></td>',cells,'</tr>'
-      ].join("");
+  // Build a rich HTML table suitable for pasting into Gmail / Outlook
+  const buildHtmlTable=()=>{
+    const thStyle="padding:8px 14px;text-align:center;background:#1a4a28;color:#f5d97a;font-size:14px;font-weight:700;";
+    const tdNameStyle="padding:8px 14px;font-size:14px;border-bottom:1px solid #e0d4c4;white-space:nowrap;";
+    const tdHcpStyle="padding:2px 0;font-size:11px;color:#888;";
+    const tdValStyle="padding:8px 14px;text-align:center;font-size:16px;font-weight:700;color:#1a6b3a;border-bottom:1px solid #e0d4c4;";
+    let rows=members.map((g:any)=>{
+      const cells=tees.map((t:any)=>"<td style=\""+tdValStyle+"\">"+calcPlayingHandicap(g.current_handicap_index,t.tee_slope,t.tee_rating,t.par)+"</td>").join("");
+      return "<tr><td style=\""+tdNameStyle+"\">"+g.first_name+" "+g.last_name+"<div style=\""+tdHcpStyle+"\">HCP "+g.current_handicap_index.toFixed(1)+"</div></td>"+cells+"</tr>";
     }).join("");
-    return [
-      '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">',
-      '<h2 style="background:#1a4a28;color:#f5d97a;margin:0;padding:14px 18px;font-size:18px;">&#x26F3; Saturday School</h2>',
-      '<h3 style="background:#2d6e45;color:white;margin:0;padding:10px 18px;font-size:15px;font-weight:400;">Playing Handicaps &mdash; ',selCourseName,'</h3>',
-      '<table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;">',
-      '<thead><tr><th style="',th,'text-align:left;">Golfer</th>',heads,'</tr></thead>',
-      '<tbody>',body,'</tbody></table>',
-      '<p style="font-size:12px;color:#888;padding:10px 18px;">Generated by Saturday School App</p></div>'
-    ].join("");
-  };
-
-  const handleOpenModal=()=>{
-    // Build HTML once when modal opens, store in state to avoid re-running on every render
-    try{ setHtmlPreview(buildHtmlTable()); }catch(e){ setHtmlPreview(""); }
-    setShowModal(true);
+    const headers=tees.map((t:any)=>"<th style=\""+thStyle+"\">"+t.tee_box_name+"<br/><span style=\"font-weight:400;font-size:11px;opacity:0.85;\">Sl "+t.tee_slope+" / Rt "+t.tee_rating+"</span></th>").join("");
+    return (
+      "<div style=\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;\">" +
+      "<h2 style=\"background:#1a4a28;color:#f5d97a;margin:0;padding:14px 18px;font-size:18px;\">⛳ Saturday School</h2>" +
+      "<h3 style=\"background:#2d6e45;color:white;margin:0;padding:10px 18px;font-size:15px;font-weight:400;\">Playing Handicaps — "+selCourseName+"</h3>" +
+      "<table style=\"width:100%;border-collapse:collapse;font-family:Arial,sans-serif;\">" +
+      "<thead><tr><th style=\""+thStyle+"text-align:left;\">Golfer</th>"+headers+"</tr></thead>" +
+      "<tbody>"+rows+"</tbody></table>" +
+      "<p style=\"font-size:12px;color:#888;padding:10px 18px;\">Generated by Saturday School App</p></div>"
+    );
   };
 
   const handleCopy=async()=>{
-    const html=htmlPreview||buildHtmlTable();
-    if(!html)return;
+    const html=buildHtmlTable();
     try{
+      // Try rich HTML copy first (works in Chrome/Edge, pastes as formatted table)
       await navigator.clipboard.write([
         new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([html],{type:"text/plain"})})
       ]);
-      setCopied(true); setTimeout(()=>setCopied(false),3000);
+      setCopied(true);
+      setTimeout(()=>setCopied(false),3000);
     }catch{
+      // Fallback: copy plain HTML string
       try{
         await navigator.clipboard.writeText(html);
-        setCopied(true); setTimeout(()=>setCopied(false),3000);
+        setCopied(true);
+        setTimeout(()=>setCopied(false),3000);
       }catch{
-        showSuccess("Clipboard not available — try Chrome or Safari");
+        showSuccess("Could not access clipboard — try on a different browser");
       }
     }
   };
@@ -2348,7 +2420,7 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
 
           {/* Email buttons */}
           <div style={{display:"flex",gap:10,marginTop:14,flexWrap:"wrap"}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={handleOpenModal}>✉ Email Handicaps</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={()=>setShowModal(true)}>✉ Email Handicaps</button>
           </div>
 
           {/* Email modal */}
@@ -2374,17 +2446,10 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
 
                   {/* Step 2: Open email */}
                   <div style={{background:"var(--surface2)",borderRadius:"var(--radius-md)",padding:16,border:"1px solid var(--border)"}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 2 — Open mail &amp; paste</div>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 2 — Compose &amp; paste</div>
                     <p style={{fontSize:14,color:"var(--text-primary)",marginBottom:12,lineHeight:1.5}}>
-                      Tap below to open a new email pre-addressed to the group, then paste (<strong>Ctrl+V</strong> or <strong>Cmd+V</strong>) the table into the body.
+                      Open your email app, start a new message to the group, then paste (<strong>Ctrl+V</strong> / <strong>⌘V</strong>) into the body. The table will appear with full formatting.
                     </p>
-                    <a
-                      href={"mailto:?bcc="+allEmails.join(",")+"&subject=Saturday+School+%E2%80%93+Playing+Handicaps+%28"+encodeURIComponent(selCourseName)+"%29"}
-                      className="btn btn-outline btn-full"
-                      style={{textDecoration:"none",display:"flex",justifyContent:"center",marginBottom:10}}
-                    >
-                      ✉ Open Mail App (pre-addressed)
-                    </a>
                     <div style={{background:"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:"var(--radius-md)",padding:"10px 12px",fontSize:13,color:"var(--green-800)"}}>
                       <strong>Suggested subject:</strong> Saturday School – Playing Handicaps ({selCourseName})
                     </div>
@@ -2393,7 +2458,7 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
                   {/* Preview */}
                   <div style={{background:"var(--surface2)",borderRadius:"var(--radius-md)",padding:16,border:"1px solid var(--border)"}}>
                     <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>Preview</div>
-                    <div style={{overflowX:"auto",fontSize:13}} dangerouslySetInnerHTML={{__html:htmlPreview}}/>
+                    <div style={{overflowX:"auto",fontSize:13}} dangerouslySetInnerHTML={{__html:buildHtmlTable()}}/>
                   </div>
                 </div>
 
@@ -2704,7 +2769,7 @@ function calcSeasonLeaderData(golfers:any[],leaderboard:any[],events:any[],seaso
   }).filter(Boolean);
 }
 
-function AnalyticsTab({golfers,courses,events,leaderboard}:any){
+function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:any){
   const [subTab,setSubTab]=useState("overview");
   const [selGolfer,setSelGolfer]=useState("");
   const allSeasons=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
@@ -2749,7 +2814,7 @@ function AnalyticsTab({golfers,courses,events,leaderboard}:any){
       return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned};
     }).filter(Boolean):[];
 
-  const SUBTABS=[{id:"overview",label:"Overview"},{id:"course",label:"By Course"},{id:"consistency",label:"Consistency"},{id:"scatter",label:"HCP vs Pts"},{id:"golfer",label:"My Rounds"}];
+  const SUBTABS=[{id:"overview",label:"Overview"},{id:"course",label:"By Course"},{id:"consistency",label:"Consistency"},{id:"scatter",label:"HCP vs Pts"},{id:"golfer",label:"My Rounds"},{id:"odds",label:"Odds"}];
 
   return(
     <div>
@@ -2784,6 +2849,862 @@ function AnalyticsTab({golfers,courses,events,leaderboard}:any){
           {selG&&golferRounds.length>0&&<GolferHistoryChart golfer={selG} rounds={golferRounds} seasonData={selGData}/>}
           {selG&&golferRounds.length===0&&<div className="empty-state"><div className="empty-text">No rounds recorded this season</div></div>}
         </>
+      )}
+      {subTab==="odds"&&<OddsTab golfers={golfers} leaderboard={leaderboard} events={events} signups={signups} courses={courses} holeScores={holeScores} season={selSeason}/>}
+    </div>
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// ODDS ENGINE
+// ══════════════════════════════════════════════════════════════════
+//
+// FORMULAS USED (documented here for transparency)
+//
+// ── Per-golfer profile ──────────────────────────────────────────
+//
+// 1. WEIGHTED AVERAGE (decay factor d=0.88 per round going back)
+//    weightedAvg = Σ(score_i × d^i) / Σ(d^i)
+//    where i=0 is the most recent round. d=0.88 means each prior
+//    round is worth 88% of the next more-recent round.
+//
+// 2. STANDARD DEVIATION (consistency)
+//    σ = sqrt( Σ(score_i - mean)² / n )
+//    Lower σ = more consistent = lower variance in projection.
+//
+// 3. TREND (slope of linear regression over last N rounds)
+//    Using least-squares slope: b = (n·Σxy - Σx·Σy) / (n·Σx² - (Σx)²)
+//    Positive slope = improving. Negative = declining.
+//    Trend used to nudge weightedAvg: projectedScore += trend * 0.5
+//
+// 4. COURSE ADJUSTMENT
+//    For each course the golfer has played, compute
+//    courseAdj = golferAvgAtCourse - golferOverallAvg
+//    Applied as a signed delta to projectedScore.
+//    If no history at this course, adjustment = 0.
+//
+// 5. HCP TREND ADJUSTMENT
+//    Compare average HCP from first half vs second half of signups
+//    where playing_handicap is recorded. Rising HCP → harder to score
+//    → subtract up to 1.0 pt from projection. Falling HCP → easier.
+//    hcpTrendAdj = (hcpTrendSlope * -0.3), clamped to [-1.0, +1.0]
+//
+// 6. PROJECTED SCORE
+//    proj = weightedAvg + (trend × 0.5) + courseAdj + hcpTrendAdj
+//    Clamped to [max(0, globalMin-2), globalMax+2]
+//
+// ── Win probability ─────────────────────────────────────────────
+//
+// 7. RAW WIN PROBABILITY via Monte Carlo simulation (N=5000 trials)
+//    Each trial: draw a score for every playing golfer from
+//    Normal(proj_i, σ_i). Winner = highest draw.
+//    rawWinProb_i = wins_i / N
+//
+// 8. HOUSE EDGE (3% vigorish)
+//    The sum of all raw win probs = 1.0 (zero-sum).
+//    We apply vig by scaling: adjProb_i = rawWinProb_i / (1 + VIG)
+//    This creates a ~3% book margin.
+//
+// 9. AMERICAN ODDS from probability p
+//    If p >= 0.5:  odds = round(-(p / (1-p)) × 100)   → negative (favorite)
+//    If p < 0.5:   odds = round(((1-p) / p) × 100)    → positive (underdog)
+//
+// ── Head-to-head ────────────────────────────────────────────────
+//
+// 10. H2H WIN PROBABILITY
+//     When both golfers have played the same event, track who scored higher.
+//     h2hRecord = { wins_A, wins_B, ties }
+//     h2hAdj: weight recent matchups (d=0.85 per prior event)
+//     h2hBaseProb_A = weightedH2HWins_A / (weightedH2HWins_A + weightedH2HWins_B)
+//     Blend 60% Monte Carlo projection, 40% historical H2H:
+//     finalProb_A = 0.60 × monteCarloProb_A + 0.40 × h2hBaseProb_A
+//     (Falls back to 100% Monte Carlo if <3 shared events)
+//
+// 11. SPREAD (point differential projection)
+//     spread = projA - projB  (positive = A favored by that margin)
+//     spreadSigma = sqrt(σA² + σB²)   (combined uncertainty)
+//     Spread odds: favorite at -110, underdog at +100 (standard -10 vig line)
+//     For ties/pushes: if |spread| < 0.5, display "Pick'em"
+//
+// ══════════════════════════════════════════════════════════════════
+
+const DECAY=0.88;     // recency weight per round
+const H2H_DECAY=0.85; // recency weight per shared event
+const VIG=0.03;       // house edge (3%)
+const MC_TRIALS=5000; // Monte Carlo sample count
+
+// Gaussian sample via Box-Muller
+function randNorm(mean:number,sd:number):number{
+  const u=1-Math.random(),v=Math.random();
+  return mean+sd*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+// Least-squares slope over an array (index = x, value = y)
+function lsSlope(arr:number[]):number{
+  const n=arr.length; if(n<2)return 0;
+  let sx=0,sy=0,sxy=0,sx2=0;
+  arr.forEach((y,i)=>{sx+=i;sy+=y;sxy+=i*y;sx2+=i*i;});
+  const denom=n*sx2-sx*sx;
+  return denom===0?0:(n*sxy-sx*sy)/denom;
+}
+
+// Decay-weighted average (index 0 = most recent)
+function weightedAvg(arr:number[]):number{
+  if(!arr.length)return 0;
+  let num=0,den=0;
+  arr.forEach((v,i)=>{const w=Math.pow(DECAY,i);num+=v*w;den+=w;});
+  return num/den;
+}
+
+// Standard deviation
+function stdDev(arr:number[],mean:number):number{
+  if(arr.length<2)return 3.0; // fallback uncertainty
+  const v=arr.reduce((s,x)=>s+(x-mean)**2,0)/arr.length;
+  return Math.max(1.5,Math.sqrt(v)); // floor at 1.5 to prevent degenerate odds
+}
+
+// Build a golfer's scoring history from leaderboard, sorted newest-first
+function golferHistory(leaderboard:any[],events:any[],gid:number){
+  const evMap:Record<number,string>={};
+  events.forEach((e:any)=>{evMap[e.event_id]=e.date;});
+  const rows=leaderboard
+    .filter((r:any)=>r.golfer_id===gid&&!r.is_guest_entry)
+    .map((r:any)=>({pts:r.total_stableford_points,eid:r.event_id,date:evMap[r.event_id]||"",course:""}))
+    .filter(r=>r.date);
+  // Sort newest first
+  rows.sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+  // Attach course name
+  events.forEach((e:any)=>{rows.forEach((r:any)=>{if(r.eid===e.event_id)r.course=e.course_name;});});
+  return rows;
+}
+
+// Course adjustment: how does this golfer perform at this course vs overall?
+function courseAdj(history:any[],courseName:string):number{
+  const all=history.map((r:any)=>r.pts);
+  if(!all.length)return 0;
+  const overall=all.reduce((a:number,b:number)=>a+b,0)/all.length;
+  const atCourse=history.filter((r:any)=>r.course===courseName).map((r:any)=>r.pts);
+  if(atCourse.length<2)return 0;
+  const courseAvg=atCourse.reduce((a:number,b:number)=>a+b,0)/atCourse.length;
+  return courseAvg-overall;
+}
+
+// HCP trend adjustment from signups: rising HCP = penalty, falling = bonus
+function hcpTrendAdj(signups:any[],events:any[],gid:number):number{
+  const evMap:Record<number,string>={};
+  events.forEach((e:any)=>{evMap[e.event_id]=e.date;});
+  const hcpData=signups
+    .filter((s:any)=>s.golfer_id===gid&&s.playing_handicap!=null)
+    .map((s:any)=>({hcp:s.playing_handicap,date:evMap[s.event_id]||""}))
+    .filter(s=>s.date)
+    .sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
+  if(hcpData.length<3)return 0;
+  const slope=lsSlope(hcpData.map((h:any)=>h.hcp));
+  // Rising HCP = harder to score = negative adjustment (capped ±1.0)
+  return Math.max(-1.0,Math.min(1.0,-slope*0.3));
+}
+
+// Build a projection profile for one golfer
+function buildProfile(g:any,leaderboard:any[],events:any[],signups:any[],courseName:string,playingIds:Set<number>){
+  const hist=golferHistory(leaderboard,events,g.golfer_id);
+  // Only use rounds when this golfer was in the paid field
+  const scored=hist.filter((r:any)=>{
+    const ev=events.find((e:any)=>e.event_id===r.eid);
+    return ev!=null;
+  });
+  if(!scored.length)return null;
+  const pts=scored.map((r:any)=>r.pts);
+  const wAvg=weightedAvg(pts);
+  const mean=pts.reduce((a:number,b:number)=>a+b,0)/pts.length;
+  const sd=stdDev(pts,mean);
+  const trend=lsSlope([...pts].reverse()); // oldest-first for slope
+  const cAdj=courseAdj(scored,courseName);
+  const hAdj=hcpTrendAdj(signups,events,g.golfer_id);
+  const proj=wAvg+(trend*0.5)+cAdj+hAdj;
+  return{
+    golfer:g,
+    proj:Math.round(proj*10)/10,
+    wAvg:Math.round(wAvg*10)/10,
+    sd:Math.round(sd*100)/100,
+    trend:Math.round(trend*100)/100,
+    cAdj:Math.round(cAdj*10)/10,
+    hAdj:Math.round(hAdj*10)/10,
+    rounds:pts.length,
+    hist:scored.slice(0,8) // last 8 for display
+  };
+}
+
+// American odds string from probability
+function toAmericanOdds(p:number):string{
+  if(p<=0||p>=1)return "N/A";
+  if(p>=0.5)return String(Math.round(-(p/(1-p))*100));
+  return "+"+Math.round(((1-p)/p)*100);
+}
+
+// Full field Monte Carlo win probability
+function calcFieldOdds(profiles:any[]){
+  if(!profiles.length)return[];
+  const wins=new Array(profiles.length).fill(0);
+  for(let t=0;t<MC_TRIALS;t++){
+    const draws=profiles.map(p=>randNorm(p.proj,p.sd));
+    const max=Math.max(...draws);
+    // Ties: all winners share
+    const winIdx=draws.map((d,i)=>d===max?i:-1).filter(i=>i>=0);
+    winIdx.forEach(i=>{wins[i]+=1/winIdx.length;});
+  }
+  const rawProbs=wins.map(w=>w/MC_TRIALS);
+  // Apply vig
+  const adjProbs=rawProbs.map(p=>p/(1+VIG));
+  return adjProbs;
+}
+
+// H2H shared event history (newest-first weighted)
+function h2hHistory(leaderboard:any[],events:any[],gidA:number,gidB:number){
+  const evMap:Record<number,string>={};
+  events.forEach((e:any)=>{evMap[e.event_id]=e.date;});
+  const sharedEids=[...new Set(
+    leaderboard.filter((r:any)=>r.golfer_id===gidA||r.golfer_id===gidB).map((r:any)=>r.event_id)
+  )].filter(eid=>{
+    const hasA=leaderboard.some((r:any)=>r.event_id===eid&&r.golfer_id===gidA);
+    const hasB=leaderboard.some((r:any)=>r.event_id===eid&&r.golfer_id===gidB);
+    return hasA&&hasB;
+  });
+  return sharedEids
+    .map(eid=>{
+      const rA=leaderboard.filter((r:any)=>r.event_id===eid&&r.golfer_id===gidA).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)[0];
+      const rB=leaderboard.filter((r:any)=>r.event_id===eid&&r.golfer_id===gidB).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)[0];
+      return{eid,date:evMap[eid]||"",ptsA:rA?.total_stableford_points,ptsB:rB?.total_stableford_points};
+    })
+    .filter(r=>r.ptsA!=null&&r.ptsB!=null)
+    .sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+}
+
+function h2hWinProb(shared:any[],projProbA:number){
+  if(shared.length<3)return projProbA; // not enough H2H — use projection only
+  let wA=0,wB=0;
+  shared.forEach((r:any,i:number)=>{
+    const w=Math.pow(H2H_DECAY,i);
+    if(r.ptsA>r.ptsB)wA+=w;
+    else if(r.ptsB>r.ptsA)wB+=w;
+    else{wA+=w/2;wB+=w/2;}
+  });
+  const h2hProb=wA/(wA+wB);
+  // 60% Monte Carlo, 40% H2H record
+  return 0.60*projProbA+0.40*h2hProb;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ODDS TAB COMPONENT
+// ══════════════════════════════════════════════════════════════════
+
+// ── H2H Hole-by-Hole helpers ──────────────────────────────────
+
+// Estimate per-hole Stableford pts from a total when no HxH data exists.
+// Uses difficulty weighting: stroke index determines stroke allocation,
+// which drives how many pts each hole is likely worth.
+function estimateHolePts(totalPts:number, course:any):number[]{
+  if(!course||!course.hole_stroke_indices||!course.hole_pars)
+    return Array(18).fill(totalPts/18);
+  const si:number[]=course.hole_stroke_indices;
+  // Weight = ease factor: lower stroke index = harder = likely fewer pts
+  // We use (19 - SI) so hole SI=1 (hardest) gets weight 18, SI=18 (easiest) gets weight 1
+  const weights=si.map((s:number)=>19-s);
+  const wSum=weights.reduce((a:number,b:number)=>a+b,0);
+  const raw=weights.map((w:number)=>totalPts*(w/wSum));
+  // Round preserving total: greedy rounding
+  const floored=raw.map(Math.floor);
+  let remainder=totalPts-floored.reduce((a:number,b:number)=>a+b,0);
+  const diffs=raw.map((r:number,i:number)=>r-floored[i]);
+  const order=[...diffs.map((_:number,i:number)=>i)].sort((a:number,b:number)=>diffs[b]-diffs[a]);
+  order.forEach((i:number)=>{if(remainder>0){floored[i]++;remainder--;}});
+  return floored;
+}
+
+// Build per-hole history for one golfer across a list of shared events.
+// Returns array of 18 arrays, each containing {pts, weight} objects.
+function buildHoleHistory(
+  gid:number,
+  sharedEvents:any[], // [{eid, date}] sorted newest-first
+  leaderboard:any[],
+  holeScores:any[],
+  courses:any[],
+  events:any[]
+):{pts:number,weight:number}[][]{
+  const perHole:Array<{pts:number,weight:number}[]>=Array.from({length:18},()=>[]);
+  sharedEvents.forEach((ev:any,idx:number)=>{
+    const weight=Math.pow(0.85,idx);
+    const entry=leaderboard.filter((r:any)=>r.event_id===ev.eid&&r.golfer_id===gid)
+      .sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)[0];
+    if(!entry)return;
+    // Try actual hole scores first
+    const hs=holeScores.filter((h:any)=>h.summary_id===entry.summary_id)
+      .sort((a:any,b:any)=>a.hole_number-b.hole_number);
+    if(hs.length>=18){
+      hs.slice(0,18).forEach((h:any,i:number)=>{
+        perHole[i].push({pts:h.stableford_points??0,weight});
+      });
+    } else {
+      // Fall back to estimation using course for this event
+      const evObj=events.find((e:any)=>e.event_id===ev.eid);
+      // Find the course this golfer played (use any tee of the event course)
+      const eventCourse=evObj?courses.find((c:any)=>c.course_name===evObj.course_name):null;
+      if(!eventCourse)return;
+      const est=estimateHolePts(entry.total_stableford_points,eventCourse);
+      est.forEach((p:number,i:number)=>{perHole[i].push({pts:p,weight});});
+    }
+  });
+  return perHole;
+}
+
+// Compute weighted average per hole
+function holeWeightedAvg(holePts:{pts:number,weight:number}[]):number{
+  if(!holePts.length)return 0;
+  const num=holePts.reduce((s,x)=>s+x.pts*x.weight,0);
+  const den=holePts.reduce((s,x)=>s+x.weight,0);
+  return den>0?num/den:0;
+}
+
+function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:any){
+  const [oddsMode,setOddsMode]=useState<"field"|"h2h">("field");
+  // Field odds state
+  const completedAndUpcoming=events.filter((e:any)=>e.status!=="Cancelled");
+  const upcomingEvents=events.filter((e:any)=>e.status==="Upcoming"||e.status==="Pairings Set"||e.status==="In-Progress");
+  const allEventsSorted=[...completedAndUpcoming].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+  const [selEventId,setSelEventId]=useState<string>(String(upcomingEvents[0]?.event_id||allEventsSorted[0]?.event_id||""));
+
+  // Default-exclude golfers who haven't played in the last 60 days.
+  // Computed once at mount via the lazy useState initializer.
+  const [excludedIds,setExcludedIds]=useState<Set<number>>(()=>{
+    const cutoff=Date.now()-60*24*60*60*1000; // 60 days ago in ms
+    // Build a map: golfer_id → date of most recent leaderboard entry
+    const lastPlayed:Record<number,number>={};
+    const evDateMap:Record<number,number>={};
+    events.forEach((e:any)=>{evDateMap[e.event_id]=new Date(e.date+"T00:00:00").getTime();});
+    leaderboard.forEach((r:any)=>{
+      const evMs=evDateMap[r.event_id];
+      if(!evMs)return;
+      if(!lastPlayed[r.golfer_id]||evMs>lastPlayed[r.golfer_id])
+        lastPlayed[r.golfer_id]=evMs;
+    });
+    const inactive=new Set<number>();
+    golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").forEach((g:any)=>{
+      const last=lastPlayed[g.golfer_id];
+      if(!last||last<cutoff)inactive.add(g.golfer_id);
+    });
+    return inactive;
+  });
+
+  // H2H state
+  const [h2hA,setH2hA]=useState("");
+  const [h2hB,setH2hB]=useState("");
+
+  const selEvent=events.find((e:any)=>e.event_id===parseInt(selEventId));
+  const members=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").sort((a:any,b:any)=>a.first_name.localeCompare(b.first_name));
+
+  // Get signups for the selected event to know default playing field
+  const eventSignupIds=new Set(
+    signups.filter((s:any)=>s.event_id===parseInt(selEventId)&&s.attending==="Yes").map((s:any)=>s.golfer_id)
+  );
+  // If no signups, treat all members as playing
+  const defaultField=eventSignupIds.size>0
+    ?members.filter((g:any)=>eventSignupIds.has(g.golfer_id))
+    :members;
+
+  const playingField=defaultField.filter((g:any)=>!excludedIds.has(g.golfer_id));
+  const playingIds=new Set(playingField.map((g:any)=>g.golfer_id));
+
+  const courseName=selEvent?.course_name||"";
+
+  // Build profiles for all playing golfers
+  const profiles=playingField
+    .map((g:any)=>buildProfile(g,leaderboard,events,signups,courseName,playingIds))
+    .filter(Boolean) as any[];
+
+  // Golfers in the field who have no history (can't model them)
+  const noHistoryGolfers=playingField.filter((g:any)=>!profiles.find((p:any)=>p.golfer.golfer_id===g.golfer_id));
+
+  // Run Monte Carlo
+  const adjProbs=profiles.length>=2?calcFieldOdds(profiles):profiles.map(()=>1/profiles.length);
+
+  // Sort by probability desc
+  const ranked=[...profiles.map((p:any,i:number)=>({...p,prob:adjProbs[i]}))].sort((a:any,b:any)=>b.prob-a.prob);
+
+  // Toggle exclude
+  const toggleExclude=(gid:number)=>{
+    setExcludedIds(prev=>{const n=new Set(prev);n.has(gid)?n.delete(gid):n.add(gid);return n;});
+  };
+
+  // H2H computation
+  const gA=golfers.find((g:any)=>g.golfer_id===parseInt(h2hA));
+  const gB=golfers.find((g:any)=>g.golfer_id===parseInt(h2hB));
+  const h2hSelEvent=selEvent;
+  const profA=gA?buildProfile(gA,leaderboard,events,signups,courseName,new Set([gA?.golfer_id,gB?.golfer_id].filter(Boolean))):null;
+  const profB=gB?buildProfile(gB,leaderboard,events,signups,courseName,new Set([gA?.golfer_id,gB?.golfer_id].filter(Boolean))):null;
+
+  const h2hShared=gA&&gB?h2hHistory(leaderboard,events,gA.golfer_id,gB.golfer_id):[];
+
+  // H2H Hole-by-Hole: build per-hole weighted averages for each golfer
+  const sharedForHoles=h2hShared.map((r:any)=>({eid:r.eid,date:r.date}));
+  const holeHistA=gA&&sharedForHoles.length?buildHoleHistory(gA.golfer_id,sharedForHoles,leaderboard,holeScores||[],courses,events):null;
+  const holeHistB=gB&&sharedForHoles.length?buildHoleHistory(gB.golfer_id,sharedForHoles,leaderboard,holeScores||[],courses,events):null;
+  // Per-hole weighted averages
+  const holeAvgA=holeHistA?holeHistA.map(holeWeightedAvg):null;
+  const holeAvgB=holeHistB?holeHistB.map(holeWeightedAvg):null;
+  // Determine data source label: any actual hole scores used?
+  const hasRealHbh=gA&&gB&&h2hShared.some((r:any)=>{
+    const eA=leaderboard.find((lb:any)=>lb.event_id===r.eid&&lb.golfer_id===gA.golfer_id);
+    const eB=leaderboard.find((lb:any)=>lb.event_id===r.eid&&lb.golfer_id===gB.golfer_id);
+    return (eA&&(holeScores||[]).filter((h:any)=>h.summary_id===eA.summary_id).length>=18) ||
+           (eB&&(holeScores||[]).filter((h:any)=>h.summary_id===eB.summary_id).length>=18);
+  });
+  // Find the course for the selected event to get par info
+  const h2hCourse=selEvent?courses.find((c:any)=>c.course_name===selEvent.course_name):null;
+
+  // H2H Monte Carlo (1v1)
+  let rawH2hProbA=0.5;
+  if(profA&&profB){
+    let winsA=0;
+    for(let t=0;t<MC_TRIALS;t++){
+      const dA=randNorm(profA.proj,profA.sd);
+      const dB=randNorm(profB.proj,profB.sd);
+      if(dA>dB)winsA++;
+      else if(dA===dB)winsA+=0.5;
+    }
+    rawH2hProbA=winsA/MC_TRIALS;
+  }
+  const finalProbA=profA&&profB?h2hWinProb(h2hShared,rawH2hProbA):0.5;
+  const finalProbB=1-finalProbA;
+  // Vig on H2H
+  const h2hAdjA=finalProbA/(1+VIG);
+  const h2hAdjB=finalProbB/(1+VIG);
+
+  // Spread
+  const spread=profA&&profB?Math.round((profA.proj-profB.proj)*10)/10:0;
+  const spreadSigma=profA&&profB?Math.round(Math.sqrt(profA.sd**2+profB.sd**2)*10)/10:0;
+
+  return(
+    <div>
+      <div className="section-title">Odds</div>
+      <div className="section-sub">Projected win probabilities · powered by Monte Carlo simulation</div>
+
+      {/* Mode toggle */}
+      <div className="toggle-group" style={{marginBottom:16}}>
+        <button className={"toggle-btn"+(oddsMode==="field"?" active":"")} onClick={()=>setOddsMode("field")}>Field Odds</button>
+        <button className={"toggle-btn"+(oddsMode==="h2h"?" active":"")} onClick={()=>setOddsMode("h2h")}>Head-to-Head</button>
+      </div>
+
+      {/* Event selector (shared) */}
+      <div className="form-group">
+        <label className="form-label">Event</label>
+        <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setExcludedIds(new Set());}}>
+          {allEventsSorted.map((ev:any)=>(
+            <option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name} {ev.status==="Completed"?"(final)":""}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* ── FIELD ODDS ── */}
+      {oddsMode==="field"&&(
+        <div>
+          {/* Playing field toggle */}
+          <div className="card-title" style={{marginBottom:6}}>Playing Field ({playingField.length} golfers)</div>
+          <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:10}}>Tap a name to exclude from the field. Odds recalculate instantly.</p>
+          <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:18}}>
+            {defaultField.map((g:any)=>{
+              const excl=excludedIds.has(g.golfer_id);
+              return(
+                <button key={g.golfer_id}
+                  onClick={()=>toggleExclude(g.golfer_id)}
+                  style={{
+                    padding:"5px 11px",borderRadius:20,fontSize:13,fontWeight:600,cursor:"pointer",
+                    border:"1.5px solid "+(excl?"var(--border)":"var(--green-600)"),
+                    background:excl?"var(--surface2)":"var(--green-50)",
+                    color:excl?"var(--text-muted)":"var(--green-800)",
+                    textDecoration:excl?"line-through":"none",
+                    transition:"all 0.15s"
+                  }}
+                >{g.first_name}</button>
+              );
+            })}
+          </div>
+
+          {profiles.length<2&&(
+            <div className="empty-state"><div className="empty-text">Need at least 2 golfers with scoring history to calculate odds.</div></div>
+          )}
+
+          {profiles.length>=2&&(
+            <>
+              {/* Odds board */}
+              <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",overflow:"hidden",marginBottom:4}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 60px 65px 60px",padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase"}}>Golfer</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"center"}}>Proj</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"center"}}>Win %</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"right"}}>Odds</div>
+                </div>
+                {ranked.map((r:any,i:number)=>{
+                  const odds=toAmericanOdds(r.prob);
+                  const isFav=i===0;
+                  return(
+                    <div key={r.golfer.golfer_id} style={{display:"grid",gridTemplateColumns:"1fr 60px 65px 60px",padding:"11px 12px",borderBottom:"1px solid rgba(255,255,255,0.06)",background:isFav?"rgba(196,120,0,0.12)":"transparent",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontSize:15,fontWeight:isFav?700:500,color:isFav?"var(--gold-300)":"rgba(255,255,255,0.88)"}}>{r.golfer.first_name} {r.golfer.last_name}{isFav?" 🏆":""}</div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:1}}>
+                          {r.rounds} rds · σ{r.sd} {r.trend>0.05?"↑ hot":r.trend<-0.05?"↓ cooling":"→ steady"}
+                        </div>
+                      </div>
+                      <div style={{textAlign:"center",fontSize:17,fontWeight:700,color:"var(--green-300)"}}>{r.proj}</div>
+                      <div style={{textAlign:"center"}}>
+                        <div style={{fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>{(r.prob*100).toFixed(1)}%</div>
+                        <div style={{height:4,background:"rgba(255,255,255,0.15)",borderRadius:2,marginTop:3}}>
+                          <div style={{height:4,borderRadius:2,background:"var(--gold-400)",width:(r.prob*100)+"%"}}/>
+                        </div>
+                      </div>
+                      <div style={{textAlign:"right",fontSize:15,fontWeight:700,color:parseFloat(odds)<0?"var(--gold-300)":"var(--green-300)"}}>{odds}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {noHistoryGolfers.length>0&&(
+                <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:10,padding:"8px 12px",background:"var(--surface2)",borderRadius:"var(--radius-md)"}}>
+                  ⚠ No scoring history: {noHistoryGolfers.map((g:any)=>g.first_name).join(", ")} — excluded from odds calculation
+                </div>
+              )}
+
+              
+
+              {/* Methodology note */}
+              <div style={{marginTop:16,padding:"12px 14px",background:"var(--surface2)",borderRadius:"var(--radius-md)",fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
+                <strong style={{color:"var(--text-secondary)"}}>How odds are calculated:</strong> Projected score uses decay-weighted average (d=0.88/round), linear trend, course history, and HCP trajectory. {MC_TRIALS.toLocaleString()}-trial Monte Carlo simulation determines win probabilities. A {(VIG*100).toFixed(0)}% house edge is applied. Past performance does not guarantee future results.
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── HEAD-TO-HEAD ── */}
+      {oddsMode==="h2h"&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+            <div className="form-group" style={{marginBottom:0}}>
+              <label className="form-label">Golfer A</label>
+              <select className="form-select" value={h2hA} onChange={e=>setH2hA(e.target.value)}>
+                <option value="">Select…</option>
+                {members.filter((g:any)=>g.golfer_id!==parseInt(h2hB)).map((g:any)=>(
+                  <option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group" style={{marginBottom:0}}>
+              <label className="form-label">Golfer B</label>
+              <select className="form-select" value={h2hB} onChange={e=>setH2hB(e.target.value)}>
+                <option value="">Select…</option>
+                {members.filter((g:any)=>g.golfer_id!==parseInt(h2hA)).map((g:any)=>(
+                  <option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {gA&&gB&&profA&&profB&&(()=>{
+            const favIsA=finalProbA>=0.5;
+            const favProb=favIsA?h2hAdjA:h2hAdjB;
+            const dogProb=favIsA?h2hAdjB:h2hAdjA;
+            const favG=favIsA?gA:gB;
+            const dogG=favIsA?gB:gA;
+            const favProf=favIsA?profA:profB;
+            const dogProf=favIsA?profB:profA;
+            const favSpread=favIsA?spread:(-spread);
+            const isPick=Math.abs(spread)<0.5;
+
+            return(
+              <div>
+                {/* H2H matchup card */}
+                <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",overflow:"hidden",marginBottom:16}}>
+                  <div style={{padding:"12px 16px",textAlign:"center",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
+                    <div style={{fontSize:12,color:"var(--gold-300)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4}}>Head-to-Head · {selEvent?formatDate(selEvent.date):"All Time"}</div>
+                    <div style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>{h2hShared.length} shared events · {courseName}</div>
+                  </div>
+
+                  {/* Win probability bar */}
+                  <div style={{padding:"16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                      <div style={{textAlign:"left"}}>
+                        <div style={{fontSize:16,fontWeight:700,color:"var(--gold-300)"}}>{gA.first_name}</div>
+                        <div style={{fontSize:22,fontWeight:700,color:"white"}}>{(h2hAdjA*100).toFixed(1)}%</div>
+                        <div style={{fontSize:16,fontWeight:700,color:parseFloat(toAmericanOdds(h2hAdjA))<0?"var(--gold-300)":"var(--green-300)"}}>{toAmericanOdds(h2hAdjA)}</div>
+                      </div>
+                      <div style={{fontSize:24,fontWeight:700,color:"rgba(255,255,255,0.3)",alignSelf:"center"}}>vs</div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:16,fontWeight:700,color:"var(--gold-300)"}}>{gB.first_name}</div>
+                        <div style={{fontSize:22,fontWeight:700,color:"white"}}>{(h2hAdjB*100).toFixed(1)}%</div>
+                        <div style={{fontSize:16,fontWeight:700,color:parseFloat(toAmericanOdds(h2hAdjB))<0?"var(--gold-300)":"var(--green-300)"}}>{toAmericanOdds(h2hAdjB)}</div>
+                      </div>
+                    </div>
+                    {/* Probability bar */}
+                    <div style={{height:8,borderRadius:4,background:"rgba(255,255,255,0.15)",overflow:"hidden",margin:"10px 0"}}>
+                      <div style={{height:"100%",borderRadius:4,background:"linear-gradient(90deg,var(--gold-400),var(--green-400))",width:(h2hAdjA*100)+"%",transition:"width 0.4s ease"}}/>
+                    </div>
+                  </div>
+
+                  {/* Spread */}
+                  <div style={{padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,0.1)",display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:4}}>Point Spread</div>
+                      {isPick?(
+                        <div style={{fontSize:20,fontWeight:700,color:"var(--gold-300)"}}>Pick'em</div>
+                      ):(
+                        <>
+                          <div style={{fontSize:20,fontWeight:700,color:"white"}}>{favG.first_name} -{favSpread}</div>
+                          <div style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>±{spreadSigma} pts uncertainty</div>
+                        </>
+                      )}
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:4}}>Spread Odds</div>
+                      <div style={{display:"flex",justifyContent:"center",gap:10,marginTop:4}}>
+                        <div>
+                          <div style={{fontSize:13,color:"var(--gold-300)",fontWeight:600}}>{favG.first_name}</div>
+                          <div style={{fontSize:16,fontWeight:700,color:"white"}}>-110</div>
+                        </div>
+                        <div>
+                          <div style={{fontSize:13,color:"var(--green-300)",fontWeight:600}}>{dogG.first_name}</div>
+                          <div style={{fontSize:16,fontWeight:700,color:"white"}}>+100</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Side-by-side stat comparison */}
+                <div className="card-title" style={{marginBottom:8}}>Stat Comparison</div>
+                <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",overflow:"hidden",marginBottom:16}}>
+                  {[
+                    {label:"Projected Score",a:profA.proj,b:profB.proj,hi:"high"},
+                    {label:"Weighted Avg",a:profA.wAvg,b:profB.wAvg,hi:"high"},
+                    {label:"Std Dev (lower=better)",a:profA.sd,b:profB.sd,hi:"low"},
+                    {label:"Trend (pts/rd)",a:profA.trend,b:profB.trend,hi:"high"},
+                    {label:"Course Adj",a:profA.cAdj,b:profB.cAdj,hi:"high"},
+                    {label:"HCP Trend Adj",a:profA.hAdj,b:profB.hAdj,hi:"high"},
+                    {label:"Rounds Played",a:profA.rounds,b:profB.rounds,hi:"any"},
+                  ].map((row:any)=>{
+                    const aWins=row.hi==="high"?(row.a>row.b):row.hi==="low"?(row.a<row.b):false;
+                    const bWins=row.hi==="high"?(row.b>row.a):row.hi==="low"?(row.b<row.a):false;
+                    return(
+                      <div key={row.label} style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",padding:"9px 14px",borderBottom:"1px solid var(--border)"}}>
+                        <div style={{fontWeight:aWins?700:400,fontSize:15,color:aWins?"var(--green-700)":"var(--text-primary)"}}>{row.a}</div>
+                        <div style={{fontSize:11,color:"var(--text-muted)",textAlign:"center",padding:"0 8px",letterSpacing:"0.04em"}}>{row.label}</div>
+                        <div style={{fontWeight:bWins?700:400,fontSize:15,color:bWins?"var(--green-700)":"var(--text-primary)",textAlign:"right"}}>{row.b}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* H2H history */}
+                {h2hShared.length>0&&(
+                  <>
+                    <div className="card-title" style={{marginBottom:8}}>Head-to-Head History</div>
+                    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",overflow:"hidden",marginBottom:12}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 40px 40px 40px",padding:"7px 12px",background:"var(--green-900)",gap:4}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Date</div>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",textAlign:"center"}}>{gA.first_name}</div>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",textAlign:"center"}}>{gB.first_name}</div>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",textAlign:"center",letterSpacing:"0.06em",textTransform:"uppercase"}}>W</div>
+                      </div>
+                      {h2hShared.slice(0,10).map((r:any,i:number)=>{
+                        const winner=r.ptsA>r.ptsB?"A":r.ptsB>r.ptsA?"B":"T";
+                        return(
+                          <div key={r.eid} style={{display:"grid",gridTemplateColumns:"1fr 40px 40px 40px",padding:"8px 12px",borderBottom:"1px solid var(--border)",background:i===0?"var(--green-50)":"transparent",gap:4,alignItems:"center"}}>
+                            <div style={{fontSize:13}}>{formatDate(r.date)}</div>
+                            <div style={{textAlign:"center",fontWeight:winner==="A"?700:400,fontSize:14,color:winner==="A"?"var(--green-700)":"var(--text-muted)"}}>{r.ptsA}</div>
+                            <div style={{textAlign:"center",fontWeight:winner==="B"?700:400,fontSize:14,color:winner==="B"?"var(--green-700)":"var(--text-muted)"}}>{r.ptsB}</div>
+                            <div style={{textAlign:"center",fontSize:13,fontWeight:600,color:winner==="T"?"var(--text-muted)":winner==="A"?"var(--green-700)":"var(--gold-700)"}}>
+                              {winner==="T"?"TIE":winner==="A"?gA.first_name[0]:gB.first_name[0]}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {(() => {
+                      let wA=0,wB=0,ties=0;
+                      h2hShared.forEach((r:any)=>{if(r.ptsA>r.ptsB)wA++;else if(r.ptsB>r.ptsA)wB++;else ties++;});
+                      return(
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
+                          <div className="stat-card"><div className="stat-value" style={{color:"var(--green-700)"}}>{wA}</div><div className="stat-label">{gA.first_name} wins</div></div>
+                          <div className="stat-card"><div className="stat-value" style={{color:"var(--gold-600)"}}>{wB}</div><div className="stat-label">{gB.first_name} wins</div></div>
+                          <div className="stat-card"><div className="stat-value">{ties}</div><div className="stat-label">Ties</div></div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+                {h2hShared.length<3&&(
+                  <div style={{fontSize:13,color:"var(--text-muted)",padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--radius-md)",marginBottom:12}}>
+                    ℹ️ {h2hShared.length} shared event{h2hShared.length!==1?"s":""} on record. H2H blending activates at 3+ shared events — using projection model only.
+                  </div>
+                )}
+
+                {/* ── Hole-by-Hole Odds ── */}
+                {holeAvgA&&holeAvgB&&holeAvgA.length===18&&(
+                  <div style={{marginBottom:16}}>
+                    <div className="card-title" style={{marginBottom:4}}>
+                      Hole-by-Hole Edge
+                    </div>
+                    <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:10}}>
+                      {hasRealHbh
+                        ?"Uses actual hole-by-hole scores where available, estimated from totals otherwise."
+                        :"Estimated from total Stableford scores — weighted by hole difficulty (stroke index)."
+                      } Decay weight d=0.85/event, most recent first.
+                    </div>
+
+                    {/* Front 9 */}
+                    <div style={{marginBottom:8}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>Front 9</div>
+                      <div style={{overflowX:"auto"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",minWidth:340}}>
+                          <thead>
+                            <tr style={{background:"var(--green-900)"}}>
+                              <th style={{padding:"6px 8px",fontSize:11,fontWeight:700,color:"var(--gold-300)",textAlign:"left",width:70}}>Hole</th>
+                              {[0,1,2,3,4,5,6,7,8].map(h=>(
+                                <th key={h} style={{padding:"6px 4px",fontSize:12,fontWeight:700,color:"var(--gold-300)",textAlign:"center",minWidth:32}}>
+                                  {h+1}
+                                  {h2hCourse&&<div style={{fontSize:9,opacity:0.7,fontWeight:400}}>P{h2hCourse.hole_pars[h]}</div>}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[{label:gA?.first_name,avgs:holeAvgA,color:"var(--gold-700)"},{label:gB?.first_name,avgs:holeAvgB,color:"var(--green-700)"}].map((row:any)=>(
+                              <tr key={row.label} style={{borderBottom:"1px solid var(--border)"}}>
+                                <td style={{padding:"7px 8px",fontWeight:700,fontSize:13,color:row.color}}>{row.label}</td>
+                                {[0,1,2,3,4,5,6,7,8].map((h:number)=>{
+                                  const mine=row.avgs[h];
+                                  const other=row.label===gA?.first_name?holeAvgB[h]:holeAvgA[h];
+                                  const edge=mine-other;
+                                  const bg=edge>0.15?"rgba(26,115,64,0.15)":edge<-0.15?"rgba(192,32,32,0.08)":"transparent";
+                                  return(
+                                    <td key={h} style={{padding:"7px 4px",textAlign:"center",background:bg,fontSize:13,fontWeight:edge>0.15||edge<-0.15?700:400,color:edge>0.15?"var(--green-700)":edge<-0.15?"var(--red-600)":"var(--text-primary)"}}>
+                                      {mine.toFixed(1)}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                            <tr style={{background:"var(--surface2)"}}>
+                              <td style={{padding:"5px 8px",fontSize:11,fontWeight:700,color:"var(--text-muted)"}}>Edge</td>
+                              {[0,1,2,3,4,5,6,7,8].map((h:number)=>{
+                                const diff=holeAvgA[h]-holeAvgB[h];
+                                const favA=diff>0.05;
+                                const favB=diff<-0.05;
+                                return(
+                                  <td key={h} style={{padding:"5px 4px",textAlign:"center",fontSize:11,fontWeight:700,color:favA?"var(--green-700)":favB?"var(--gold-700)":"var(--text-muted)"}}>
+                                    {Math.abs(diff)<0.05?"—":favA?gA?.first_name[0]:gB?.first_name[0]}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Back 9 */}
+                    <div style={{marginBottom:12}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>Back 9</div>
+                      <div style={{overflowX:"auto"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",minWidth:340}}>
+                          <thead>
+                            <tr style={{background:"var(--green-900)"}}>
+                              <th style={{padding:"6px 8px",fontSize:11,fontWeight:700,color:"var(--gold-300)",textAlign:"left",width:70}}>Hole</th>
+                              {[9,10,11,12,13,14,15,16,17].map(h=>(
+                                <th key={h} style={{padding:"6px 4px",fontSize:12,fontWeight:700,color:"var(--gold-300)",textAlign:"center",minWidth:32}}>
+                                  {h+1}
+                                  {h2hCourse&&<div style={{fontSize:9,opacity:0.7,fontWeight:400}}>P{h2hCourse.hole_pars[h]}</div>}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[{label:gA?.first_name,avgs:holeAvgA,color:"var(--gold-700)"},{label:gB?.first_name,avgs:holeAvgB,color:"var(--green-700)"}].map((row:any)=>(
+                              <tr key={row.label} style={{borderBottom:"1px solid var(--border)"}}>
+                                <td style={{padding:"7px 8px",fontWeight:700,fontSize:13,color:row.color}}>{row.label}</td>
+                                {[9,10,11,12,13,14,15,16,17].map((h:number)=>{
+                                  const mine=row.avgs[h];
+                                  const other=row.label===gA?.first_name?holeAvgB[h]:holeAvgA[h];
+                                  const edge=mine-other;
+                                  const bg=edge>0.15?"rgba(26,115,64,0.15)":edge<-0.15?"rgba(192,32,32,0.08)":"transparent";
+                                  return(
+                                    <td key={h} style={{padding:"7px 4px",textAlign:"center",background:bg,fontSize:13,fontWeight:edge>0.15||edge<-0.15?700:400,color:edge>0.15?"var(--green-700)":edge<-0.15?"var(--red-600)":"var(--text-primary)"}}>
+                                      {mine.toFixed(1)}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                            <tr style={{background:"var(--surface2)"}}>
+                              <td style={{padding:"5px 8px",fontSize:11,fontWeight:700,color:"var(--text-muted)"}}>Edge</td>
+                              {[9,10,11,12,13,14,15,16,17].map((h:number)=>{
+                                const diff=holeAvgA[h]-holeAvgB[h];
+                                const favA=diff>0.05;
+                                const favB=diff<-0.05;
+                                return(
+                                  <td key={h} style={{padding:"5px 4px",textAlign:"center",fontSize:11,fontWeight:700,color:favA?"var(--green-700)":favB?"var(--gold-700)":"var(--text-muted)"}}>
+                                    {Math.abs(diff)<0.05?"—":favA?gA?.first_name[0]:gB?.first_name[0]}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Summary: holes won each */}
+                    {(()=>{
+                      const aWins=holeAvgA.filter((_:number,i:number)=>holeAvgA[i]-holeAvgB[i]>0.05).length;
+                      const bWins=holeAvgA.filter((_:number,i:number)=>holeAvgB[i]-holeAvgA[i]>0.05).length;
+                      const even=18-aWins-bWins;
+                      return(
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+                          <div style={{background:"var(--gold-50)",border:"1px solid var(--gold-200)",borderRadius:"var(--radius-md)",padding:"10px",textAlign:"center"}}>
+                            <div style={{fontSize:22,fontWeight:700,color:"var(--gold-700)"}}>{aWins}</div>
+                            <div style={{fontSize:12,color:"var(--text-muted)"}}>{gA?.first_name} holes</div>
+                          </div>
+                          <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",padding:"10px",textAlign:"center"}}>
+                            <div style={{fontSize:22,fontWeight:700,color:"var(--text-muted)"}}>{even}</div>
+                            <div style={{fontSize:12,color:"var(--text-muted)"}}>Even</div>
+                          </div>
+                          <div style={{background:"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:"var(--radius-md)",padding:"10px",textAlign:"center"}}>
+                            <div style={{fontSize:22,fontWeight:700,color:"var(--green-700)"}}>{bWins}</div>
+                            <div style={{fontSize:12,color:"var(--text-muted)"}}>{gB?.first_name} holes</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+                {(!holeAvgA||!holeAvgB)&&h2hShared.length===0&&(
+                  <div style={{fontSize:13,color:"var(--text-muted)",padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--radius-md)",marginBottom:12}}>
+                    No shared events yet — hole-by-hole breakdown requires at least 1 shared event.
+                  </div>
+                )}
+
+                <div style={{padding:"12px 14px",background:"var(--surface2)",borderRadius:"var(--radius-md)",fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
+                  <strong style={{color:"var(--text-secondary)"}}>H2H methodology:</strong> Win probability blends {MC_TRIALS.toLocaleString()}-trial Monte Carlo (60%) with decay-weighted head-to-head record (40%, d=0.85/event). Spread = projected score differential. Spread line uses standard -110 vig. {(VIG*100).toFixed(0)}% house edge applied throughout. Hole-by-hole: actual HxH data used where available, otherwise estimates pts distribution via stroke-index difficulty weighting.
+                </div>
+              </div>
+            );
+          })()}
+
+          {(!gA||!gB)&&(
+            <div className="empty-state"><div className="empty-text">Select two golfers to see head-to-head odds</div></div>
+          )}
+          {gA&&gB&&(!profA||!profB)&&(
+            <div className="empty-state"><div className="empty-text">One or both golfers have no scoring history — can't calculate odds yet</div></div>
+          )}
+        </div>
       )}
     </div>
   );
