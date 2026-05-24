@@ -387,6 +387,10 @@ const CSS = `
 
   /* skins warning */
   .skins-warning{background:var(--gold-50);border:1.5px solid var(--gold-300);border-radius:var(--radius-md);padding:12px 14px;font-size:14px;color:var(--gold-800);margin-bottom:12px;display:flex;gap:9px;align-items:flex-start;}
+  @keyframes livePulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.3;transform:scale(0.75);}}
+  .live-dot{display:inline-block;width:8px;height:8px;background:#e84040;border-radius:50%;margin-right:5px;animation:livePulse 1.3s ease-in-out infinite;vertical-align:middle;}
+  .lb-live-row{display:grid;grid-template-columns:44px 1fr 56px 52px;align-items:center;padding:12px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
+  .lb-live-row:active{background:var(--green-50);}
 `;
 
 // ============================================================
@@ -545,6 +549,11 @@ export default function App(){
   const [successMsg,setSuccessMsg]=useState("");
   const [errorMsg,setErrorMsg]=useState("");
 
+  // Lifted score-entry state — survives tab navigation
+  const [scoreMode,setScoreMode]=useState("total");
+  const [scoreEventId,setScoreEventId]=useState("");
+  const [scorers,setScorers]=useState<any[]>([{golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false}]);
+
   const showSuccess=useCallback((msg:string)=>{setSuccessMsg(msg);setTimeout(()=>setSuccessMsg(""),3500);},[]);
   const showError=useCallback((msg:string)=>{setErrorMsg(msg);setTimeout(()=>setErrorMsg(""),5000);},[]);
 
@@ -582,6 +591,47 @@ export default function App(){
 
   // ── guest golfer listener ───────────────────────────────────
   useEffect(()=>{const h=(e:any)=>setGolfers(p=>[...p,e.detail]);window.addEventListener("addGolfer",h);return()=>window.removeEventListener("addGolfer",h);},[]);
+
+  // Auto-restore in-progress scoring session after data loads.
+  // Runs once after loading completes.  Restores:
+  //   - event selection + hole-by-hole mode
+  //   - golfer + tee box (from signup.tee_box_course_id)
+  //   - gross scores (from hole_scores rows already in DB)
+  useEffect(()=>{
+    if(loading||scoreEventId)return;
+    const inProgress=events.find((e:any)=>e.status==="In-Progress");
+    if(!inProgress)return;
+    setScoreEventId(String(inProgress.event_id));
+    setScoreMode("hole");
+    // Collect all signups for this event that have a tee box assigned
+    // (written by updateGross on first hole entered)
+    // Any signup with a tee_box_course_id set means scoring started for that golfer
+    const eventSignups=signups.filter((s:any)=>
+      s.event_id===inProgress.event_id&&s.tee_box_course_id
+    );
+    if(!eventSignups.length)return;
+    const restored=eventSignups.map((signup:any)=>{
+      // Find the leaderboard entry to get the summary_id for hole score lookup
+      const entry=leaderboard.find((r:any)=>
+        r.event_id===inProgress.event_id&&r.golfer_id===signup.golfer_id
+      );
+      const gross=Array(18).fill("");
+      if(entry){
+        const hs=holeScores
+          .filter((h:any)=>h.summary_id===entry.summary_id)
+          .sort((a:any,b:any)=>a.hole_number-b.hole_number);
+        hs.forEach((h:any)=>{gross[h.hole_number-1]=String(h.gross_score);});
+      }
+      return{
+        golferId:String(signup.golfer_id),
+        courseId:String(signup.tee_box_course_id),
+        totalPts:"",
+        grossScores:gross,
+        submitted:false
+      };
+    });
+    if(restored.length)setScorers(restored);
+  },[loading]);
 
   // ── DB write helpers ────────────────────────────────────────
   // Each write: optimistically update local state, then sync to Supabase.
@@ -694,6 +744,16 @@ export default function App(){
     catch(e:any){showError(`Hole scores save failed: ${e.message}`);}
   },[showError]);
 
+  // Per-hole upsert used during live entry — on_conflict(summary_id,hole_number)
+  // means re-entering the same hole just updates it, no duplicate rows ever created.
+  const dbUpsertHoleScore=useCallback(async(row:any)=>{
+    try{
+      const {score_id:_,...payload}=row; // strip client-side temp id
+      await supabase.from("hole_scores").upsert(payload,"summary_id,hole_number");
+    }
+    catch(e:any){showError(`Live hole save failed: ${e.message}`);}
+  },[showError]);
+
   const dbDeleteHoleScores=useCallback(async(summary_id:number)=>{
     try{await supabase.from("hole_scores").delete({summary_id});}
     catch(e:any){showError(`Delete failed: ${e.message}`);}
@@ -741,7 +801,12 @@ export default function App(){
     });
   },[dbUpsertCourse,dbDeleteCourse]);
 
+  // Ref to track event inserts in-flight — prevents double-insert from
+  // React Strict Mode double-invoking updaters.
+  const pendingEventInsert=useRef<Set<number>>(new Set());
+
   const setEventsDB=useCallback((updater:any)=>{
+    // Compute next state without triggering any DB writes inside setState
     setEvents(prev=>{
       const next=typeof updater==="function"?updater(prev):updater;
       const changed=next.filter((n:any)=>{
@@ -750,32 +815,42 @@ export default function App(){
       });
       const removed=prev.filter((o:any)=>!next.find((n:any)=>n.event_id===o.event_id));
 
-      // For new events: insert first, get real ID, then patch signups
-      changed.forEach(async(e:any)=>{
+      // Schedule DB writes OUTSIDE the updater using setTimeout(0)
+      // so they run after state has settled and are never double-called.
+      changed.forEach((e:any)=>{
         const isNew=!e.event_id||e.event_id>1e12;
         if(isNew){
           const tempId=e.event_id;
-          const realId=await dbUpsertEvent(e);
-          if(realId&&realId!==tempId){
-            // Patch the temp event_id in both local state and pending signups
-            setEvents(p=>p.map(ev=>ev.event_id===tempId?{...ev,event_id:realId}:ev));
-            setSignups(prev=>{
-              const signupsToInsert=prev.filter((s:any)=>s.event_id===tempId);
-              const patched=prev.map((s:any)=>s.event_id===tempId?{...s,event_id:realId}:s);
-              // Insert each signup now that they have the real event_id
-              signupsToInsert.forEach((s:any)=>dbUpsertSignup({...s,event_id:realId}));
-              return patched;
-            });
-          }
+          if(pendingEventInsert.current.has(tempId))return; // already inserting
+          pendingEventInsert.current.add(tempId);
+          setTimeout(async()=>{
+            try{
+              const realId=await dbUpsertEvent(e);
+              if(realId&&realId!==tempId){
+                setEvents(p=>p.map(ev=>ev.event_id===tempId?{...ev,event_id:realId}:ev));
+                // Get current signups snapshot and insert with real event_id
+                setSignups(su=>{
+                  const toInsert=su.filter((s:any)=>s.event_id===tempId);
+                  const patched=su.map((s:any)=>s.event_id===tempId?{...s,event_id:realId}:s);
+                  toInsert.forEach((s:any)=>dbUpsertSignup({...s,event_id:realId}));
+                  return patched;
+                });
+              }
+            } finally {
+              pendingEventInsert.current.delete(tempId);
+            }
+          },0);
         }else{
-          dbUpsertEvent(e);
+          setTimeout(()=>dbUpsertEvent(e),0);
         }
       });
 
-      removed.forEach((e:any)=>{ if(e.event_id&&e.event_id<1e12) dbDeleteEvent(e.event_id); });
+      removed.forEach((e:any)=>{
+        if(e.event_id&&e.event_id<1e12) setTimeout(()=>dbDeleteEvent(e.event_id),0);
+      });
       return next;
     });
-  },[dbUpsertEvent,dbDeleteEvent]);
+  },[dbUpsertEvent,dbDeleteEvent,dbUpsertSignup]);
 
   const setSignupsDB=useCallback((updater:any)=>{
     setSignups(prev=>{
@@ -872,7 +947,7 @@ export default function App(){
           {errorMsg&&<div style={{background:"var(--red-100)",border:"1px solid var(--red-400)",borderRadius:"var(--radius-md)",padding:"12px 16px",color:"var(--red-600)",fontSize:14,marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>⚠</span>{errorMsg}</div>}
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} showSuccess={showSuccess}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} adminMode={adminMode}/>}
-          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} showSuccess={showSuccess}/>}
+          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} charityDonations={charityDonations} setCharityDonations={setCharityDB} showSuccess={showSuccess}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores}/>}
         </main>
@@ -960,6 +1035,8 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
   const [subTab,setSubTab]=useState("season");
   const [selEventId,setSelEventId]=useState<number|null>(null);
   const [expandedId,setExpandedId]=useState<number|null>(null);
+  const [liveExpandedId,setLiveExpandedId]=useState<number|null>(null);
+  const [showKappy,setShowKappy]=useState(false);
 
   // 1) Season selector — dropdown only, no "all time"
   const allSeasons=[...new Set([...events.map((e:any)=>e.season),...leaderboard.map((r:any)=>r.season)])].sort((a:any,b:any)=>b-a) as number[];
@@ -1017,8 +1094,36 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
   const liveSkinPayouts=calcLiveSkins();
   const hasLiveSkins=Object.keys(liveSkinPayouts).length>0;
 
-  // 1a) Show ALL golfers — flag <15 rounds as unqualified
-  const byG=buildSeasonRounds(golfers,leaderboard,selSeason);
+  // Per-hole skin winner map: hole_number (1-based) → winning golfer_id
+  // Used to highlight skin-winning holes on the scorecard
+  const calcSkinHoleWinners:(()=>Record<number,number>)=()=>{
+    if(!skinsEligible||!displayEvent)return{};
+    const skinsPaid=eventEntries.filter((e:any)=>e.skins_paid);
+    if(!skinsPaid.length)return{};
+    const playerHoles:Record<number,{net:number}[]>={};
+    skinsPaid.forEach((entry:any)=>{
+      const hs=holeScores.filter((h:any)=>h.summary_id===entry.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number);
+      if(hs.length<18)return;
+      playerHoles[entry.golfer_id]=hs.map((h:any)=>({net:h.net_score??h.gross_score}));
+    });
+    const playerIds=Object.keys(playerHoles).map(Number);
+    if(playerIds.length<2)return{};
+    const holeWinners:Record<number,number>={};
+    for(let h=0;h<18;h++){
+      const nets=playerIds.map(id=>({id,net:playerHoles[id][h]?.net})).filter(x=>x.net!=null);
+      if(!nets.length)continue;
+      const minNet=Math.min(...nets.map(x=>x.net));
+      const winners=nets.filter(x=>x.net===minNet);
+      if(winners.length===1) holeWinners[h+1]=winners[0].id; // 1-based hole number
+    }
+    return holeWinners;
+  };
+  const skinHoleWinners=calcSkinHoleWinners();
+
+  // 1a) Show ALL golfers — exclude In-Progress rounds, flag <15 as unqualified
+  const completedEventIds=new Set(events.filter((e:any)=>e.status==="Completed").map((e:any)=>e.event_id));
+  const leaderboardCompleted=leaderboard.filter((r:any)=>completedEventIds.has(r.event_id));
+  const byG=buildSeasonRounds(golfers,leaderboardCompleted,selSeason);
   const seasonAvg=Object.entries(byG)
     .map(([gid,r])=>({golfer_id:parseInt(gid),avg:r.reduce((a,b)=>a+b,0)/r.length,rounds:r.length,qualified:r.length>=15}))
     .sort((a,b)=>b.avg-a.avg);
@@ -1027,8 +1132,20 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
     .map(([gid,r])=>{const top=[...r].sort((a,b)=>b-a).slice(0,15);return{golfer_id:parseInt(gid),avg:top.reduce((a,b)=>a+b,0)/top.length,rounds:r.length,qualified:r.length>=15};})
     .sort((a,b)=>b.avg-a.avg);
 
-  // 3) Remove Payouts from leaderboard — now in Admin
-  const tabs=[{id:"season",label:"Season Avg"},{id:"top15",label:"Top 15 Avg"},{id:"weekly",label:"Weekly"}];
+  // Live event: any event currently In-Progress
+  const liveEvent=events.find((e:any)=>e.status==="In-Progress");
+
+  // Auto-switch to LIVE tab when an in-progress event appears
+  useEffect(()=>{
+    if(liveEvent&&subTab!=="live") setSubTab("live");
+  },[liveEvent?.event_id]);
+
+  const tabs=[
+    ...(liveEvent?[{id:"live",label:"live"}]:[]),
+    {id:"season",label:"Season Avg"},
+    {id:"top15",label:"Top 15 Avg"},
+    {id:"weekly",label:"Weekly"},
+  ];
 
   // Helper: assign tie positions to a sorted array
   // Both players in a tie get marked tied:true so they both show "T1", "T2", etc.
@@ -1068,7 +1185,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
     const gid=row.golfer_id;
     const g=golfers.find((x:any)=>x.golfer_id===gid);
     const isExpanded=expandedId===gid;
-    const stats=golferStats(golfers,leaderboard,gid,selSeason);
+    const stats=golferStats(golfers,leaderboardCompleted,gid,selSeason);
     // 4: tie display
     const posLabel=row.tied?`T${row.pos}`:String(row.pos);
     const rankClass=row.pos===1?"r1":row.pos===2?"r2":row.pos===3?"r3":"";
@@ -1102,10 +1219,26 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
 
     return(
       <div key={gid}>
-        <div className={`lb-row${isExpanded?" expanded":""}`} onClick={()=>setExpandedId(isExpanded?null:gid)}>
+        <div className={`lb-row${isExpanded?" expanded":""}`} onClick={()=>{
+          const willExpand=!isExpanded;
+          setExpandedId(willExpand?gid:null);
+          const isErrolClick=g&&g.first_name==="Errol"&&g.last_name==="Kaplan";
+          const isWinnerClick=mode==="weekly"&&row.pos===1&&!row.tied;
+          if(isErrolClick&&isWinnerClick&&willExpand){
+            setShowKappy(true);
+            setTimeout(()=>setShowKappy(false),3200);
+          }
+        }}>
           <div className={`lb-rank-cell ${rankClass}`} style={{fontSize:row.tied?16:22,fontWeight:700}}>{posLabel}</div>
           <div className="lb-name-cell">
-            <div className="lb-name-main">{g?`${g.first_name} ${g.last_name}`:"Unknown"}</div>
+            <div className="lb-name-main">{(()=>{
+              if(!g)return"Unknown";
+              // Easter egg: Errol Kaplan wins the weekly event → "Happy Kappy 😊" when expanded
+              const isErrol=g.first_name==="Errol"&&g.last_name==="Kaplan";
+              const isWeeklyWinner=mode==="weekly"&&row.pos===1&&!row.tied;
+              if(isErrol&&isWeeklyWinner&&isExpanded)return"Happy Kappy 😊";
+              return g.first_name+" "+g.last_name;
+            })()}</div>
           </div>
           <div className="lb-score-cell">
             {/* 4b: 2 decimal places on season avg */}
@@ -1170,27 +1303,41 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                           <thead>
                             <tr>
                               <th className="label-col">Hole</th>
-                              {holes.map((_:any,i:number)=><th key={i}>{startIdx+i+1}</th>)}
+                              {holes.map((_:any,i:number)=>{
+                                const hNum=startIdx+i+1;
+                                const wonSkin=skinHoleWinners[hNum]===gid;
+                                return<th key={i} style={wonSkin?{background:"var(--gold-100,#fef3cd)",color:"var(--gold-700)"}:{}}>{hNum}{wonSkin?" 💰":""}</th>;
+                              })}
                               <th className="total-col">{outIn}</th>
                             </tr>
                           </thead>
                           <tbody>
                             <tr>
                               <td className="label-col">Par</td>
-                              {holes.map((h:any,i:number)=><td key={i} style={{color:"var(--text-muted)",fontSize:11}}>{course?.hole_pars?.[startIdx+i]??""}</td>)}
+                              {holes.map((h:any,i:number)=>{
+                                const hNum=startIdx+i+1;
+                                const wonSkin=skinHoleWinners[hNum]===gid;
+                                return<td key={i} style={{color:"var(--text-muted)",fontSize:11,...(wonSkin?{background:"var(--gold-50,#fffbeb)"}:{})}}>{course?.hole_pars?.[startIdx+i]??""}</td>;
+                              })}
                               <td className="total-col">{course?.hole_pars?.slice(startIdx,startIdx+9).reduce((a:number,b:number)=>a+b,0)??""}</td>
                             </tr>
                             <tr>
                               <td className="label-col">Score</td>
                               {holes.map((h:any,i:number)=>{
                                 const par=course?.hole_pars?.[startIdx+i];
-                                return<td key={i}>{h.gross_score&&par!=null?<ScoreSymbol gross={h.gross_score} par={par}/>:""}</td>;
+                                const hNum=startIdx+i+1;
+                                const wonSkin=skinHoleWinners[hNum]===gid;
+                                return<td key={i} style={wonSkin?{background:"var(--gold-50,#fffbeb)"}:{}}>{h.gross_score&&par!=null?<ScoreSymbol gross={h.gross_score} par={par}/>:""}</td>;
                               })}
                               <td className="total-col">{grossTotal||""}</td>
                             </tr>
                             <tr>
                               <td className="label-col" style={{color:"var(--text-muted)",fontSize:10}}>Pts</td>
-                              {holes.map((h:any,i:number)=><td key={i} style={{fontSize:10,color:"var(--text-muted)"}}>{h.stableford_points!=null?h.stableford_points:""}</td>)}
+                              {holes.map((h:any,i:number)=>{
+                                const hNum=startIdx+i+1;
+                                const wonSkin=skinHoleWinners[hNum]===gid;
+                                return<td key={i} style={{fontSize:10,...(wonSkin?{background:"var(--gold-50,#fffbeb)",fontWeight:700,color:"var(--gold-700)"}:{color:"var(--text-muted)"})}}>{h.stableford_points!=null?h.stableford_points:""}</td>;
+                              })}
                               <td className="total-col" style={{color:"var(--green-700)"}}>{ptsTotal}</td>
                             </tr>
                           </tbody>
@@ -1231,8 +1378,169 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
       </div>
 
       <div className="tab-sub">
-        {tabs.map(t=><button key={t.id} className={`tab-sub-btn${subTab===t.id?" active":""}`} onClick={()=>{setSubTab(t.id);setExpandedId(null);}}>{t.label}</button>)}
+        {tabs.map(t=>(
+          <button key={t.id} className={"tab-sub-btn"+(subTab===t.id?" active":"")} onClick={()=>{setSubTab(t.id);setExpandedId(null);}}>
+            {t.id==="live"?<><span className="live-dot"/><span style={{fontWeight:700,letterSpacing:"0.05em"}}>LIVE</span></>:t.label}
+          </button>
+        ))}
       </div>
+
+      {subTab==="live"&&liveEvent&&(()=>{
+        const liveEntries=[...leaderboard.filter((r:any)=>r.event_id===liveEvent.event_id)]
+          .sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
+        const liveCourse=courses.find((c:any)=>c.course_name===liveEvent.course_name);
+
+        // Build rows with THRU count from holeScores + fire streak detection
+        const liveRows=liveEntries.map((entry:any)=>{
+          const hs=holeScores
+            .filter((h:any)=>h.summary_id===entry.summary_id)
+            .sort((a:any,b:any)=>a.hole_number-b.hole_number);
+          // Fire emoji: last hole >= 3 pts AND at least the 2 most recent holes both >= 3 pts
+          let isOnFire=false;
+          if(hs.length>=2){
+            const last=hs[hs.length-1];
+            const prev=hs[hs.length-2];
+            isOnFire=(last.stableford_points>=3)&&(prev.stableford_points>=3);
+          }
+          return{...entry,thru:hs.length,hs,isOnFire};
+        });
+
+        // Assign tie positions
+        let cp=1;
+        const withPos=liveRows.map((r:any,i:number)=>{
+          if(i>0&&liveRows[i].total_stableford_points===liveRows[i-1].total_stableford_points)
+            return{...r,pos:cp,tied:true};
+          cp=i+1; return{...r,pos:cp,tied:false};
+        });
+        const tiedSet=new Set(withPos.filter((r:any)=>r.tied).map((r:any)=>r.pos));
+        const finalRows=withPos.map((r:any)=>tiedSet.has(r.pos)?{...r,tied:true}:r);
+
+        const ScoreSymbolLive=({gross,par}:{gross:number,par:number})=>{
+          const d=gross-par;
+          const cls=d<=-2?"sc-eagle":d===-1?"sc-birdie":d===0?"sc-par":d===1?"sc-bogey":d===2?"sc-dbl":"sc-triple";
+          return <span className={"sc-score "+cls}>{gross}</span>;
+        };
+
+        const renderLiveHalf=(hs:any[],startHole:number,label:string,pars:number[])=>{
+          const cells=Array.from({length:9},(_,i)=>hs.find((h:any)=>h.hole_number===startHole+i+1)||null);
+          const halfGross=cells.reduce((s:number,h:any)=>s+(h?.gross_score||0),0);
+          const halfPts=cells.reduce((s:number,h:any)=>s+(h?.stableford_points||0),0);
+          return(
+            <div style={{overflowX:"auto",marginBottom:8}}>
+              <table className="scorecard-table">
+                <thead>
+                  <tr><th>Hole</th>{cells.map((_,i)=><th key={i}>{startHole+i+1}</th>)}<th>{label}</th></tr>
+                  <tr className="par-row"><th>Par</th>{cells.map((_,i)=><th key={i}>{pars[startHole+i]||"-"}</th>)}<th>{pars.slice(startHole,startHole+9).reduce((a:number,b:number)=>a+b,0)}</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{fontWeight:600,fontSize:12}}>Gross</td>
+                    {cells.map((h:any,i:number)=>(
+                      <td key={i}>{h?<ScoreSymbolLive gross={h.gross_score} par={pars[startHole+i]||4}/>:<span style={{color:"var(--border)"}}>·</span>}</td>
+                    ))}
+                    <td style={{fontWeight:700}}>{halfGross||""}</td>
+                  </tr>
+                  <tr>
+                    <td style={{fontWeight:600,fontSize:12}}>Pts</td>
+                    {cells.map((h:any,i:number)=>{
+                      const p=h?.stableford_points;
+                      const cls=p===4?"pts-eagle":p===3?"pts-birdie":p===2?"pts-par":p===1?"pts-bogey":p===0?"pts-zero":"";
+                      return<td key={i} className={cls}>{h!=null?p:<span style={{color:"var(--border)"}}>·</span>}</td>;
+                    })}
+                    <td style={{fontWeight:700,color:"var(--green-700)"}}>{halfPts||""}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          );
+        };
+
+        return(
+          <div>
+            {/* Event header */}
+            <div style={{background:"linear-gradient(135deg,var(--green-900),var(--green-700))",borderRadius:"var(--radius-md)",padding:"12px 16px",color:"white",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:11,letterSpacing:"0.1em",textTransform:"uppercase",opacity:0.8,display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                  <span className="live-dot" style={{background:"#ff6b6b"}}/>Scoring in Progress
+                </div>
+                <div style={{fontSize:16,fontWeight:700}}>{liveEvent.course_name}</div>
+                <div style={{fontSize:13,opacity:0.7,marginTop:2}}>{formatDate(liveEvent.date)}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:28,fontWeight:700,color:"var(--gold-300)"}}>{liveEntries.length}</div>
+                <div style={{fontSize:11,opacity:0.65,letterSpacing:"0.06em",textTransform:"uppercase"}}>Scoring</div>
+              </div>
+            </div>
+
+            {liveRows.length===0&&(
+              <div className="empty-state">
+                <div className="empty-text">No scores entered yet</div>
+                <div className="empty-sub">Scores will appear here hole by hole as they are entered</div>
+              </div>
+            )}
+
+            {finalRows.length>0&&(
+              <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
+                <div style={{display:"grid",gridTemplateColumns:"44px 1fr 56px 52px",padding:"8px 12px",background:"var(--green-900)"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase"}}>POS</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textAlign:"left",marginLeft:5,textTransform:"uppercase"}}>Golfer</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"right"}}>PTS</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"right"}}>THRU</div>
+                </div>
+
+                {finalRows.map((row:any)=>{
+                  const g=golfers.find((x:any)=>x.golfer_id===row.golfer_id);
+                  const isExp=liveExpandedId===row.golfer_id;
+                  const rankColor=row.pos===1?"var(--gold-500)":row.pos===2?"var(--text-secondary)":row.pos===3?"var(--earth-400,#9c7c65)":"var(--text-muted)";
+                  const posLabel=(row.tied?"T":"")+row.pos;
+                  const signup=signups.find((s:any)=>s.event_id===liveEvent.event_id&&s.golfer_id===row.golfer_id);
+                  const playerCourse=signup?.tee_box_course_id
+                    ?courses.find((c:any)=>c.course_id===signup.tee_box_course_id)
+                    :liveCourse;
+                  const pars:number[]=playerCourse?.hole_pars||[];
+                  const front=row.hs.filter((h:any)=>h.hole_number<=9);
+                  const back=row.hs.filter((h:any)=>h.hole_number>9);
+
+                  return(
+                    <div key={row.golfer_id}>
+                      <div className="lb-live-row" onClick={()=>setLiveExpandedId(isExp?null:row.golfer_id)}>
+                        <div style={{fontSize:18,fontWeight:700,color:rankColor}}>{posLabel}</div>
+                        <div>
+                          <div style={{fontSize:18,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}{row.isOnFire&&<span style={{marginLeft:5,fontSize:16}} title="On fire — 2+ consecutive holes of 3+ pts">🔥</span>}</div>
+                          
+                        </div>
+                        <div style={{fontSize:20,fontWeight:700,color:"var(--green-700)",textAlign:"right"}}>{row.total_stableford_points||"—"}</div>
+                        <div style={{fontSize:18,fontWeight:600,color:row.thru===18?"var(--green-600)":"var(--text-muted)",textAlign:"right"}}>
+                          {row.thru===18?"F":row.thru||"—"}
+                        </div>
+                      </div>
+
+                      {isExp&&(
+                        <div className="lb-detail">
+                          {row.hs.length>0&&playerCourse?(
+                            <div>
+                              <div style={{fontSize:12,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>
+                                Live Scorecard · {playerCourse.tee_box_name} tees
+                              </div>
+                              {front.length>0&&renderLiveHalf(front,0,"OUT",pars)}
+                              {back.length>0&&renderLiveHalf(back,9,"IN",pars)}
+                            </div>
+                          ):(
+                            <div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic"}}>No hole-by-hole data yet</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div style={{fontSize:12,color:"var(--text-muted)",marginTop:10,textAlign:"center",paddingBottom:4}}>
+              Updates as scores are entered · pull to refresh for latest
+            </div>
+          </div>
+        );
+      })()}
 
       {subTab==="season"&&(()=>{
         const isPastSeason=selSeason!==new Date().getFullYear();
@@ -1388,6 +1696,52 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
           )}
         </>
       )}
+
+    {/* ── Happy Kappy cascade ── */}
+    {showKappy&&(()=>{
+      const count=28;
+      const items=Array.from({length:count},(_,i)=>{
+        const left=2+Math.round(Math.random()*96);
+        const delay=parseFloat((Math.random()*1.6).toFixed(2));
+        const dur=parseFloat((1.4+Math.random()*0.9).toFixed(2));
+        const size=20+Math.round(Math.random()*26);
+        const rotate=Math.round((Math.random()-0.5)*40);
+        return{i,left,delay,dur,size,rotate};
+      });
+      return(
+        <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999,overflow:"hidden"}}>
+          <style>{`
+            @keyframes kappyFloat{
+              0%  {transform:translateY(0px) rotate(var(--kr)) scale(0.6);opacity:0;}
+              8%  {opacity:1;}
+              85% {opacity:1;}
+              100%{transform:translateY(-110vh) rotate(var(--kr)) scale(1.15);opacity:0;}
+            }
+            .kappy-e{
+              position:absolute;
+              bottom:-40px;
+              line-height:1;
+              animation:kappyFloat var(--kd)s ease-out var(--kdl)s both;
+              pointer-events:none;
+              user-select:none;
+            }
+          `}</style>
+          {items.map(e=>(
+            <span
+              key={e.i}
+              className="kappy-e"
+              style={{
+                left:e.left+"%",
+                fontSize:e.size+"px",
+                ["--kr" as any]:e.rotate+"deg",
+                ["--kd" as any]:e.dur,
+                ["--kdl" as any]:e.delay,
+              }}
+            >😊</span>
+          ))}
+        </div>
+      );
+    })()}
     </div>
   );
 }
@@ -1793,10 +2147,17 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
 // ============================================================
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false});
 
-function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,showSuccess}:any){
-  const [mode,setMode]=useState("total");
-  const [selEventId,setSelEventId]=useState("");
-  const [scorers,setScorers]=useState([emptyScorer()]);
+function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,dbUpsertHoleScore,scoreMode,setScoreMode,scoreEventId,setScoreEventId,scorers,setScorers,showSuccess}:any){
+  // State is lifted to App so it survives tab navigation
+  const mode=scoreMode;
+  const setMode=setScoreMode;
+  const selEventId=scoreEventId;
+  const setSelEventId=setScoreEventId;
+  // scorers/setScorers are passed directly from App
+
+  // Track in-flight leaderboard inserts per "eid:gid" key.
+  // Prevents duplicate INSERT when user types quickly on first hole.
+  const pendingLbInsert=useRef<Record<string,Array<(id:number)=>void>>>({});
 
   const activeEvents=events.filter((e:any)=>e.status==="Pairings Set"||e.status==="In-Progress");
   const selEvent=events.find((e:any)=>e.event_id===parseInt(selEventId));
@@ -1810,13 +2171,165 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
   const removeScorer=(idx:number)=>setScorers(p=>p.filter((_,i)=>i!==idx));
 
   const updateScorer=(idx:number,field:string,val:any)=>{
-    setScorers(p=>p.map((s,i)=>i===idx?{...s,[field]:val}:s));
+    setScorers(p=>{
+      const updated=p.map((s,i)=>i===idx?{...s,[field]:val}:s);
+
+      // When a golfer is selected in H×H mode, auto-restore their in-progress round
+      if(field==="golferId"&&val&&mode==="hole"&&selEventId){
+        const eid=parseInt(selEventId);
+        const gid=parseInt(val);
+        const existing=leaderboard.find((r:any)=>r.event_id===eid&&r.golfer_id===gid&&r.entry_type==="Hole-by-Hole");
+        if(existing){
+          // Restore tee box from signup
+          const signup=signups.find((s:any)=>s.event_id===eid&&s.golfer_id===gid&&s.tee_box_course_id);
+          const courseId=signup?.tee_box_course_id?String(signup.tee_box_course_id):"";
+          // Restore gross scores from hole_scores
+          const hs=holeScores.filter((h:any)=>h.summary_id===existing.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number);
+          const gross=Array(18).fill("");
+          hs.forEach((h:any)=>{gross[h.hole_number-1]=String(h.gross_score);});
+          return updated.map((s,i)=>i===idx?{...s,golferId:val,courseId,grossScores:gross}:s);
+        }
+      }
+      return updated;
+    });
   };
   const updateGross=(idx:number,hole:number,val:string)=>{
-    setScorers(p=>p.map((s,i)=>{
-      if(i!==idx)return s;
-      const gs=[...s.grossScores]; gs[hole]=val; return{...s,grossScores:gs};
-    }));
+    // ── Step 1: update React state immediately so UI is responsive ──
+    const currentScorer=scorers[idx];
+    if(!currentScorer)return;
+    const newGross=[...currentScorer.grossScores]; newGross[hole]=val;
+    const updatedScorer={...currentScorer,grossScores:newGross};
+    setScorers(scorers.map((s,i)=>i===idx?updatedScorer:s));
+
+    if(!updatedScorer.golferId||!updatedScorer.courseId)return;
+    const gid=parseInt(updatedScorer.golferId);
+    const eid=parseInt(selEventId);
+    if(!eid)return;
+    const course=courses.find((c:any)=>c.course_id===parseInt(updatedScorer.courseId));
+    const g=golfers.find((x:any)=>x.golfer_id===gid);
+    if(!g||!course)return;
+
+    const phcp=calcPlayingHandicap(g.current_handicap_index,course.tee_slope,course.tee_rating,course.par);
+    const grossVal=parseInt(val);
+
+    // Compute running total from the updated gross array
+    const holeCalcs=calcHoleScores(newGross,phcp,course);
+    const runningPts=holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
+
+    // ── Step 2: update holeScores state for LIVE scorecard ──
+    const existing=leaderboard.find((r:any)=>r.event_id===eid&&r.golfer_id===gid);
+    // Only update local holeScores state if we have a real (DB-persisted) summary_id.
+    // If no entry exists yet we'll write to DB first and patch state in the callback.
+    if(existing?.summary_id&&existing.summary_id<1e12){
+      const sid=existing.summary_id;
+      if(val&&!isNaN(grossVal)){
+        const net=calcHoleNetScore(grossVal,phcp,course.hole_stroke_indices[hole]);
+        const pts=calcStablefordPoints(net,course.hole_pars[hole]);
+        const holeRow={score_id:sid*100+hole,summary_id:sid,hole_number:hole+1,gross_score:grossVal,net_score:net,stableford_points:pts};
+        setHoleScores((hs:any)=>[...hs.filter((h:any)=>!(h.summary_id===sid&&h.hole_number===hole+1)),holeRow]);
+        if(dbUpsertHoleScore) dbUpsertHoleScore(holeRow);
+      } else if(!val){
+        setHoleScores((hs:any)=>hs.filter((h:any)=>!(h.summary_id===sid&&h.hole_number===hole+1)));
+      }
+    }
+
+    // ── Step 3: update leaderboard running total state ──
+    const tempSid:number=existing?.summary_id||(Date.now()+gid);
+    const liveEntry:any={
+      summary_id:tempSid,event_id:eid,golfer_id:gid,
+      season:selEvent?.season||new Date().getFullYear(),
+      entry_type:"Hole-by-Hole",total_stableford_points:runningPts,
+      buy_in_paid:true,skins_paid:true,charity_paid:true,
+      weekly_payout_won:0,skins_payout_won:0
+    };
+    setLeaderboard((prev:any)=>[
+      ...prev.filter((r:any)=>!(r.event_id===eid&&r.golfer_id===gid)),
+      liveEntry
+    ]);
+
+    // ── Step 4: flip event to In-Progress ──
+    setEvents((evs:any)=>evs.map((ev:any)=>
+      ev.event_id===eid&&ev.status==="Pairings Set"?{...ev,status:"In-Progress"}:ev
+    ));
+
+    // ── Step 5: DB writes — correct sequence ──
+    const doHoleWrite=async(realSid:number)=>{
+      if(!val||isNaN(grossVal))return;
+      const net=calcHoleNetScore(grossVal,phcp,course.hole_stroke_indices[hole]);
+      const pts=calcStablefordPoints(net,course.hole_pars[hole]);
+      const payload={summary_id:realSid,hole_number:hole+1,gross_score:grossVal,net_score:net,stableford_points:pts};
+      await supabase.from("hole_scores").upsert(payload,"summary_id,hole_number");
+      // Also update local holeScores with confirmed real sid
+      const holeRow={score_id:realSid*100+hole,...payload};
+      setHoleScores((hs:any)=>[...hs.filter((h:any)=>!(h.summary_id===realSid&&h.hole_number===hole+1)),holeRow]);
+    };
+
+    const doSignupWrite=(realSid:number)=>{
+      // Persist tee box + playing HCP on the signup row so auto-restore works
+      setSignups((su:any)=>{
+        const su2=su.map((s:any)=>
+          s.event_id===eid&&s.golfer_id===gid
+            ?{...s,tee_box_course_id:parseInt(updatedScorer.courseId),playing_handicap:phcp}
+            :s
+        );
+        const mySu=su2.find((s:any)=>s.event_id===eid&&s.golfer_id===gid);
+        if(mySu&&mySu.signup_id&&mySu.signup_id<1e12){
+          supabase.from("event_signups").update(
+            {tee_box_course_id:parseInt(updatedScorer.courseId),playing_handicap:phcp},
+            {signup_id:mySu.signup_id}
+          ).catch(()=>{});
+        }
+        return su2;
+      });
+    };
+
+    const pendingKey=eid+":"+gid;
+
+    if(!existing||existing.summary_id>=1e12){
+      // ── No real DB row yet ──
+      if(pendingLbInsert.current[pendingKey]){
+        // Insert already in-flight — queue this hole for when it resolves
+        const capturedGross=[...newGross];
+        pendingLbInsert.current[pendingKey].push(async(realId:number)=>{
+          const net=val&&!isNaN(grossVal)?calcHoleNetScore(grossVal,phcp,course.hole_stroke_indices[hole]):null;
+          const pts=net!=null?calcStablefordPoints(net,course.hole_pars[hole]):null;
+          if(net!=null&&pts!=null){
+            const payload={summary_id:realId,hole_number:hole+1,gross_score:grossVal,net_score:net,stableford_points:pts};
+            await supabase.from("hole_scores").upsert(payload,"summary_id,hole_number");
+          }
+          // Also update the running total now that we have all holes
+          const finalCalcs=calcHoleScores(capturedGross,phcp,course);
+          const finalPts=finalCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
+          const {summary_id:__,created_at:___,...lbUpd}={...liveEntry,total_stableford_points:finalPts};
+          supabase.from("event_leaderboard").update({...lbUpd,summary_id:realId},{summary_id:realId}).catch(()=>{});
+        });
+        return;
+      }
+      // Mark insert as in-flight
+      pendingLbInsert.current[pendingKey]=[];
+      const {summary_id:_,...lbRest}=liveEntry;
+      supabase.from("event_leaderboard").insert(lbRest)
+        .then(async(rows:any)=>{
+          if(!rows||!rows[0])return;
+          const realId:number=rows[0].summary_id;
+          setLeaderboard((p:any)=>p.map((r:any)=>r.summary_id===tempSid?{...r,summary_id:realId}:r));
+          setHoleScores((p:any)=>p.map((h:any)=>h.summary_id===tempSid?{...h,summary_id:realId}:h));
+          await doHoleWrite(realId);
+          doSignupWrite(realId);
+          // Flush queued hole writes that arrived while insert was in-flight
+          const queued=[...(pendingLbInsert.current[pendingKey]||[])];
+          delete pendingLbInsert.current[pendingKey];
+          for(const fn of queued) await fn(realId);
+        })
+        .catch(()=>{ delete pendingLbInsert.current[pendingKey]; });
+    } else {
+      // ── Leaderboard row already in DB — update and write hole directly ──
+      const realSid=existing.summary_id;
+      const {summary_id,created_at,...lbRest}=liveEntry;
+      supabase.from("event_leaderboard").update({...lbRest,summary_id:realSid},{summary_id:realSid}).catch(()=>{});
+      doHoleWrite(realSid).catch(()=>{});
+      doSignupWrite(realSid);
+    }
   };
 
   const handleSubmitAll=()=>{
@@ -1872,6 +2385,17 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
       </div>
 
       {/* Skins warning */}
+      {/* Resume banner — shown when a prior H×H session is restored */}
+      {selEventId&&mode==="hole"&&scorers.some((s:any)=>s.grossScores.some((v:string)=>!!v))&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--green-50)",border:"1.5px solid var(--green-200)",borderRadius:"var(--radius-md)",marginBottom:12}}>
+          <span style={{fontSize:18}}>↩</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:"var(--green-800)"}}>Session restored</div>
+            <div style={{fontSize:12,color:"var(--green-700)"}}>Scores from your last session have been reloaded. Continue entering from where you left off.</div>
+          </div>
+        </div>
+      )}
+
       {selEvent&&hasMixedEntry&&mode==="total"&&(
         <div className="skins-warning"><span>⚠</span><span>This event already has hole-by-hole entries. Submitting total-only scores will prevent skins from being calculated.</span></div>
       )}
@@ -1885,11 +2409,18 @@ function ScoreEntryTab({golfers,courses,events,signups,leaderboard,setLeaderboar
         const calcTotal=holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
         const alreadyIn=selEvent&&scorer.golferId?leaderboard.some((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===parseInt(scorer.golferId)):false;
 
+        const isResuming=mode==="hole"&&scorer.golferId&&scorer.grossScores.some((v:string)=>!!v)&&
+          selEvent&&leaderboard.some((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===parseInt(scorer.golferId)&&r.entry_type==="Hole-by-Hole");
+        const holesIn=scorer.grossScores.filter((v:string)=>!!v).length;
+
         return(
           <div key={idx} className={`scorer-card${scorer.golferId?" active-scorer":""}`}>
             <div className="scorer-header">
               <span className="scorer-num">Golfer {idx+1}</span>
-              {idx>0&&<button className="btn btn-sm btn-danger" onClick={()=>removeScorer(idx)}>Remove</button>}
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {isResuming&&<span style={{fontSize:11,fontWeight:700,background:"var(--gold-100)",color:"var(--gold-800)",border:"1px solid var(--gold-300)",borderRadius:12,padding:"2px 9px",letterSpacing:"0.04em"}}>↩ Resuming · {holesIn}/18</span>}
+                {idx>0&&<button className="btn btn-sm btn-danger" onClick={()=>removeScorer(idx)}>Remove</button>}
+              </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               <div className="form-group" style={{marginBottom:0}}>
@@ -2475,7 +3006,7 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
 function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showSuccess}:any){
   const [date,setDate]=useState("");
   const [courseName,setCourseName]=useState("");
-  const [teeTimes,setTeeTimes]=useState("08:00\n08:10\n08:20\n08:30");
+  const [teeTimes,setTeeTimes]=useState("09:10\n09:20\n09:30");
   const [season,setSeason]=useState(new Date().getFullYear());
   const [editId,setEditId]=useState<number|null>(null);
   const courseNames=uniqueCourseNames(courses);
@@ -2814,7 +3345,7 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
       return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned};
     }).filter(Boolean):[];
 
-  const SUBTABS=[{id:"overview",label:"Overview"},{id:"course",label:"By Course"},{id:"consistency",label:"Consistency"},{id:"scatter",label:"HCP vs Pts"},{id:"golfer",label:"My Rounds"},{id:"odds",label:"Odds"}];
+  const SUBTABS=[{id:"overview",label:"Overview"},{id:"odds",label:"Odds"},{id:"consistency",label:"Consistency"},{id:"golfer",label:"My Rounds"},{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"}];
 
   return(
     <div>
