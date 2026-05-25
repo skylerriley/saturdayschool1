@@ -16,7 +16,7 @@ ChartJS.register(
 // ============================================================
 // SUPABASE CLIENT
 // Paste your project URL and anon key here (or use env vars).
-// Get these from: Supabase dashboard → Settings → API
+// Get these from: Supabase dashboard -> Settings -> API
 // ============================================================
 const SUPABASE_URL  = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL)  || "https://YOUR_PROJECT_ID.supabase.co";
 const SUPABASE_KEY  = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_ANON_KEY) || "YOUR_ANON_KEY_HERE";
@@ -44,7 +44,7 @@ const supabase = (() => {
 
   // Fetch ALL rows by paginating in chunks of 1000 (Supabase default limit)
   const fetchAll = async (table: string, cols = "*", orderCol = "created_at") => {
-    // Primary key per table — used as a stable tiebreaker for pagination
+    // Primary key per table -- used as a stable tiebreaker for pagination
     const PK_MAP: Record<string, string> = {
       event_leaderboard: "summary_id",
       events: "event_id",
@@ -94,7 +94,7 @@ const supabase = (() => {
 })();
 
 // ============================================================
-// CSS – DM Sans / DM Serif, larger accessible fonts
+// CSS - DM Sans / DM Serif, larger accessible fonts
 // ============================================================
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap');
@@ -259,7 +259,7 @@ const CSS = `
   .hbh-cell.dbl{background:var(--red-100);color:var(--red-600);}
   .hbh-cell.header{background:var(--green-900);color:var(--gold-300);font-size:11px;}
 
-  /* Golf scorecard — score symbols */
+  /* Golf scorecard -- score symbols */
   .sc-score{display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;width:24px;height:24px;line-height:1;}
   .sc-eagle{border-radius:50%;border:2px solid var(--gold-500);outline:2px solid var(--gold-500);outline-offset:2px;background:var(--gold-50);color:var(--gold-800);}
   .sc-birdie{border-radius:50%;border:2px solid var(--green-500);background:var(--green-50);color:var(--green-700);}
@@ -387,6 +387,7 @@ const CSS = `
 
   /* skins warning */
   .skins-warning{background:var(--gold-50);border:1.5px solid var(--gold-300);border-radius:var(--radius-md);padding:12px 14px;font-size:14px;color:var(--gold-800);margin-bottom:12px;display:flex;gap:9px;align-items:flex-start;}
+  @keyframes spin{to{transform:rotate(360deg);}}
   @keyframes livePulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.3;transform:scale(0.75);}}
   .live-dot{display:inline-block;width:8px;height:8px;background:#e84040;border-radius:50%;margin-right:5px;animation:livePulse 1.3s ease-in-out infinite;vertical-align:middle;}
   .lb-live-row{display:grid;grid-template-columns:44px 1fr 56px 52px;align-items:center;padding:12px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
@@ -531,10 +532,10 @@ function uniqueCourseNames(courses:any[]){return[...new Set(courses.map(c=>c.cou
 function teeBoxesForCourse(courses:any[],name:string){return courses.filter(c=>c.course_name===name);}
 
 // ============================================================
-// APP ROOT — Supabase connected
+// APP ROOT -- Supabase connected
 // ============================================================
 export default function App(){
-  // ── state ──────────────────────────────────────────────────
+  // -- state --------------------------------------------------
   const [golfers,setGolfers]=useState<any[]>([]);
   const [courses,setCourses]=useState<any[]>([]);
   const [events,setEvents]=useState<any[]>([]);
@@ -549,7 +550,7 @@ export default function App(){
   const [successMsg,setSuccessMsg]=useState("");
   const [errorMsg,setErrorMsg]=useState("");
 
-  // Lifted score-entry state — survives tab navigation
+  // Lifted score-entry state -- survives tab navigation
   const [scoreMode,setScoreMode]=useState("total");
   const [scoreEventId,setScoreEventId]=useState("");
   const [scorers,setScorers]=useState<any[]>([{golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false}]);
@@ -557,7 +558,7 @@ export default function App(){
   const showSuccess=useCallback((msg:string)=>{setSuccessMsg(msg);setTimeout(()=>setSuccessMsg(""),3500);},[]);
   const showError=useCallback((msg:string)=>{setErrorMsg(msg);setTimeout(()=>setErrorMsg(""),5000);},[]);
 
-  // ── initial load ────────────────────────────────────────────
+  // -- initial load --------------------------------------------
   useEffect(()=>{
     const load=async()=>{
       try{
@@ -571,7 +572,7 @@ export default function App(){
           supabase.from("hole_scores").select(),
           supabase.from("charity_donations").select(),
         ]);
-        // Map DB column names → app field names
+        // Map DB column names -> app field names
         setGolfers(g.map((r:any)=>({...r,golfer_id:r.golfer_id})));
         setCourses(c.map((r:any)=>({...r,course_id:r.course_id})));
         setEvents(ev.map((r:any)=>({...r,event_id:r.event_id,tee_times:r.tee_times||[]})));
@@ -589,7 +590,7 @@ export default function App(){
     load();
   },[]);
 
-  // ── guest golfer listener ───────────────────────────────────
+  // -- guest golfer listener -----------------------------------
   useEffect(()=>{const h=(e:any)=>setGolfers(p=>[...p,e.detail]);window.addEventListener("addGolfer",h);return()=>window.removeEventListener("addGolfer",h);},[]);
 
   // Auto-restore in-progress scoring session after data loads.
@@ -633,7 +634,7 @@ export default function App(){
     if(restored.length)setScorers(restored);
   },[loading]);
 
-  // ── DB write helpers ────────────────────────────────────────
+  // -- DB write helpers ----------------------------------------
   // Each write: optimistically update local state, then sync to Supabase.
   // On error, revert and show message.
 
@@ -744,7 +745,7 @@ export default function App(){
     catch(e:any){showError(`Hole scores save failed: ${e.message}`);}
   },[showError]);
 
-  // Per-hole upsert used during live entry — on_conflict(summary_id,hole_number)
+  // Per-hole upsert used during live entry -- on_conflict(summary_id,hole_number)
   // means re-entering the same hole just updates it, no duplicate rows ever created.
   const dbUpsertHoleScore=useCallback(async(row:any)=>{
     try{
@@ -768,7 +769,7 @@ export default function App(){
     }catch(e:any){setCharityDonations(prev);showError(`Save failed: ${e.message}`);}
   },[charityDonations,showError]);
 
-  // ── wrapped setters that also write to DB ──────────────────
+  // -- wrapped setters that also write to DB ------------------
   // These are passed to child components exactly like the old setState functions
   // but they also trigger a DB sync.
 
@@ -801,7 +802,7 @@ export default function App(){
     });
   },[dbUpsertCourse,dbDeleteCourse]);
 
-  // Ref to track event inserts in-flight — prevents double-insert from
+  // Ref to track event inserts in-flight -- prevents double-insert from
   // React Strict Mode double-invoking updaters.
   const pendingEventInsert=useRef<Set<number>>(new Set());
 
@@ -859,7 +860,7 @@ export default function App(){
         const old=prev.find((o:any)=>o.signup_id===n.signup_id);
         return !old||JSON.stringify(old)!==JSON.stringify(n);
       });
-      // Don't sync signups whose event_id is still a temp value — they'll be
+      // Don't sync signups whose event_id is still a temp value -- they'll be
       // patched to the real event_id by setEventsDB and re-synced then
       changed.filter((s:any)=>!(s.event_id>1e12)).forEach((s:any)=>dbUpsertSignup(s));
       return next;
@@ -899,7 +900,7 @@ export default function App(){
     });
   },[dbUpsertCharity]);
 
-  // ── loading / error screens ─────────────────────────────────
+  // -- loading / error screens ---------------------------------
   const tabs=adminMode
     ?[{id:"leaderboard",label:"Leaderboard"},{id:"rsvp",label:"Sign Up"},{id:"score",label:"Scoring"},{id:"admin",label:"⚙ Admin"},{id:"analytics",label:"Analytics"}]
     :[{id:"leaderboard",label:"Leaderboard"},{id:"rsvp",label:"Sign Up"},{id:"score",label:"Scoring"},{id:"analytics",label:"Analytics"}];
@@ -957,7 +958,7 @@ export default function App(){
 }
 
 // ============================================================
-// HELPERS – season data builder
+// HELPERS - season data builder
 // All rounds now come from Supabase via the leaderboard state.
 // EXTRA_ROUNDS_BY_GOLFER is no longer needed.
 // ============================================================
@@ -1037,7 +1038,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
   const [expandedId,setExpandedId]=useState<number|null>(null);
   const [liveExpandedId,setLiveExpandedId]=useState<number|null>(null);
 
-  // 1) Season selector — dropdown only, no "all time"
+  // 1) Season selector -- dropdown only, no "all time"
   const allSeasons=[...new Set([...events.map((e:any)=>e.season),...leaderboard.map((r:any)=>r.season)])].sort((a:any,b:any)=>b-a) as number[];
   const [selSeason,setSelSeason]=useState<number>(allSeasons[0]||2026);
 
@@ -1054,7 +1055,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
   const first1stPts=paidEntries[0]?.total_stableford_points;
   const tied1st=paidEntries.filter((e:any)=>e.total_stableford_points===first1stPts);
 
-  // Check if skins are calculable for this event (all H×H)
+  // Check if skins are calculable for this event (all H-H)
   const skinsEligible=eventEntries.length>0&&eventEntries.every((e:any)=>e.entry_type==="Hole-by-Hole");
 
   // Live skins calculation: a skin is won when one player has the lowest net score on a hole outright
@@ -1093,7 +1094,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
   const liveSkinPayouts=calcLiveSkins();
   const hasLiveSkins=Object.keys(liveSkinPayouts).length>0;
 
-  // Per-hole skin winner map: hole_number (1-based) → winning golfer_id
+  // Per-hole skin winner map: hole_number (1-based) -> winning golfer_id
   // Used to highlight skin-winning holes on the scorecard
   const calcSkinHoleWinners:(()=>Record<number,number>)=()=>{
     if(!skinsEligible||!displayEvent)return{};
@@ -1119,7 +1120,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
   };
   const skinHoleWinners=calcSkinHoleWinners();
 
-  // 1a) Show ALL golfers — exclude In-Progress rounds, flag <15 as unqualified
+  // 1a) Show ALL golfers -- exclude In-Progress rounds, flag <15 as unqualified
   const completedEventIds=new Set(events.filter((e:any)=>e.status==="Completed").map((e:any)=>e.event_id));
   const leaderboardCompleted=leaderboard.filter((r:any)=>completedEventIds.has(r.event_id));
   const byG=buildSeasonRounds(golfers,leaderboardCompleted,selSeason);
@@ -1223,7 +1224,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
           <div className="lb-name-cell">
             <div className="lb-name-main">{(()=>{
               if(!g)return"Unknown";
-              // Easter egg: Errol Kaplan wins the weekly event → "Happy Kappy 😊" when expanded
+              // Easter egg: Errol Kaplan wins the weekly event -> "Happy Kappy -" when expanded
               const isErrol=g.first_name==="Errol"&&g.last_name==="Kaplan";
               const topGidPaid=paidEntries[0]?.golfer_id;
               const topPtsPaid=paidEntries[0]?.total_stableford_points;
@@ -1240,7 +1241,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
           <div className="lb-thru-cell">
             {mode==="season"
               ?<div className="lb-thru-big">{row.rounds}{!row.qualified?"*":""}</div>
-              :<div className="lb-thru-big" style={{color:weeklyEarned>0?"var(--gold-600)":"var(--text-muted)",fontSize:15}}>{weeklyEarned>0?`$${weeklyEarned.toFixed(0)}`:"—"}</div>
+              :<div className="lb-thru-big" style={{color:weeklyEarned>0?"var(--gold-600)":"var(--text-muted)",fontSize:15}}>{weeklyEarned>0?`$${weeklyEarned.toFixed(0)}`:"--"}</div>
             }
           </div>
         </div>
@@ -1277,8 +1278,8 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                     
                     {/* 3: Total Gross only shown when H×H data exists */}
                     
-                    <div className="lb-detail-item"><div className="lb-detail-key">Playing HCP</div><div className="lb-detail-val">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&teePlayed?calcPlayingHandicap(g.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"—")}</div></div>
-                    <div className="lb-detail-item"><div className="lb-detail-key">Tees Played</div><div className="lb-detail-val">{teePlayed?.tee_box_name??"—"}</div></div>
+                    <div className="lb-detail-item"><div className="lb-detail-key">Playing HCP</div><div className="lb-detail-val">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&teePlayed?calcPlayingHandicap(g.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"--")}</div></div>
+                    <div className="lb-detail-item"><div className="lb-detail-key">Tees Played</div><div className="lb-detail-val">{teePlayed?.tee_box_name??"--"}</div></div>
                     {hbhScores.length>0&&<div className="lb-detail-item"><div className="lb-detail-key">Total Gross</div><div className="lb-detail-val" style={{fontWeight:700,fontSize:22}}>{front9Gross+back9Gross}</div></div>}
                     {/* 3: Show stableford and skins winnings as separate lines */}
                     {weeklyEntry?.weekly_payout_won>0&&<div className="lb-detail-item"><div className="lb-detail-key">Stableford Won</div><div className="lb-detail-val" style={{color:"var(--gold-600)",fontWeight:700}}>${Number(weeklyEntry.weekly_payout_won).toFixed(0)}</div></div>}
@@ -1349,7 +1350,7 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                       </div>
                     );
                   })()}
-                  {hbhScores.length===0&&<div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",marginTop:4}}>Total-only entry — no hole-by-hole data</div>}
+                  {hbhScores.length===0&&<div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",marginTop:4}}>Total-only entry -- no hole-by-hole data</div>}
                 </>
               );
             })()}
@@ -1499,12 +1500,12 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                       <div className="lb-live-row" onClick={()=>setLiveExpandedId(isExp?null:row.golfer_id)}>
                         <div style={{fontSize:18,fontWeight:700,color:rankColor}}>{posLabel}</div>
                         <div>
-                          <div style={{fontSize:18,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}{row.isOnFire&&<span style={{marginLeft:5,fontSize:16}} title="On fire — 2+ consecutive holes of 3+ pts">🔥</span>}</div>
+                          <div style={{fontSize:18,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}{row.isOnFire&&<span style={{marginLeft:5,fontSize:16}} title="On fire -- 2+ consecutive holes of 3+ pts">🔥</span>}</div>
                           
                         </div>
-                        <div style={{fontSize:20,fontWeight:700,color:"var(--green-700)",textAlign:"right"}}>{row.total_stableford_points||"—"}</div>
+                        <div style={{fontSize:20,fontWeight:700,color:"var(--green-700)",textAlign:"right"}}>{row.total_stableford_points||"--"}</div>
                         <div style={{fontSize:18,fontWeight:600,color:row.thru===18?"var(--green-600)":"var(--text-muted)",textAlign:"right"}}>
-                          {row.thru===18?"F":row.thru||"—"}
+                          {row.thru===18?"F":row.thru||"--"}
                         </div>
                       </div>
 
@@ -1614,13 +1615,13 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
           <div className="form-group">
             <label className="form-label">Event</label>
             <select className="form-select" value={displayEvent?.event_id||""} onChange={e=>{setSelEventId(parseInt(e.target.value));setExpandedId(null);}}>
-              {seasonEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
+              {seasonEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
             </select>
           </div>
           {displayEvent&&(
             <>
               {!skinsEligible&&eventEntries.some((e:any)=>e.entry_type==="Total Only")&&(
-                <div className="skins-warning"><span>⚠</span><span>Mixed entry — skins cannot be calculated until all players have hole-by-hole scores.</span></div>
+                <div className="skins-warning"><span>⚠</span><span>Mixed entry -- skins cannot be calculated until all players have hole-by-hole scores.</span></div>
               )}
               <div className="stat-grid">
                 <div className="stat-card"><div className="stat-value">{paidEntries.length}</div><div className="stat-label">Players</div></div>
@@ -1777,7 +1778,7 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
       <div className="form-group">
         <label className="form-label">Event Breakdown</label>
         <select className="form-select" value={selEventId||""} onChange={e=>setSelEventId(parseInt(e.target.value))}>
-          {[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime()).map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
+          {[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime()).map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
         </select>
       </div>
       <div className="stat-grid">
@@ -1806,11 +1807,11 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
 
 
 // ============================================================
-// WEATHER WIDGET  — Open-Meteo, free, no API key required
+// WEATHER WIDGET  -- Open-Meteo, free, no API key required
 //
 // GPS accuracy note: we use exact course coordinates rather than
 // the ZIP 92612 centroid (~33.6459,-117.8428). The ZIP centroid
-// is 2.5–3 miles from either course — at Open-Meteo's 1-2km
+// is 2.5-3 miles from either course -- at Open-Meteo's 1-2km
 // grid resolution that is 2-3 grid cells, which can meaningfully
 // differ in wind speed/direction near coastal Southern California.
 // Exact GPS gives the best possible forecast for each course.
@@ -1930,11 +1931,11 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
     const going=eventSignups.filter((s:any)=>s.attending==="Yes").map((s:any)=>golferName(golfers,s.golfer_id));
     const out=eventSignups.filter((s:any)=>s.attending==="No").map((s:any)=>golferName(golfers,s.golfer_id));
     const unconf=eventSignups.filter((s:any)=>s.attending==="Unconfirmed").map((s:any)=>golferName(golfers,s.golfer_id));
-    return`Saturday School – RSVP Reminder\n${formatDate(selEvent.date)} @ ${selEvent.course_name}\nTee times: ${selEvent.tee_times.join(", ")}\n\n✅ Going (${going.length}):\n${going.map((n:string)=>`  • ${n}`).join("\n")}\n\n❓ No response yet (${unconf.length}):\n${unconf.map((n:string)=>`  • ${n}`).join("\n")}\n\n❌ Not attending (${out.length}):\n${out.map((n:string)=>`  • ${n}`).join("\n")}\n\nPlease update your RSVP!`;
+    return`Saturday School - RSVP Reminder\n${formatDate(selEvent.date)} @ ${selEvent.course_name}\nTee times: ${selEvent.tee_times.join(", ")}\n\n✅ Going (${going.length}):\n${going.map((n:string)=>`  * ${n}`).join("\n")}\n\n❓ No response yet (${unconf.length}):\n${unconf.map((n:string)=>`  * ${n}`).join("\n")}\n\n❌ Not attending (${out.length}):\n${out.map((n:string)=>`  * ${n}`).join("\n")}\n\nPlease update your RSVP!`;
   };
 
   const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
-  const mailtoLink=`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School – RSVP Reminder ${formatDate(selEvent?.date)}&body=${encodeURIComponent(buildReminderBody())}`;
+  const mailtoLink=`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School - RSVP Reminder ${formatDate(selEvent?.date)}&body=${encodeURIComponent(buildReminderBody())}`;
 
   // Pairing view
   const pairingsByTee = selEvent?.tee_times
@@ -1952,11 +1953,11 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
       <div className="form-group">
         <label className="form-label">Select Event</label>
         <select className="form-select" value={selEventId} onChange={e=>setSelEventId(parseInt(e.target.value))}>
-          {upcomingEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
+          {upcomingEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
         </select>
       </div>
 
-      {/* Event summary card — status, tee times, and inline weather row */}
+      {/* Event summary card -- status, tee times, and inline weather row */}
       {selEvent&&(
         <div className="card" style={{padding:"12px 16px",marginBottom:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
@@ -1993,7 +1994,7 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
         </div>
       )}
 
-      {/* #3b – two sub-tabs: RSVP | View Pairings */}
+      {/* #3b - two sub-tabs: RSVP | View Pairings */}
       <div className="toggle-group">
         <button className={`toggle-btn${subTab==="rsvp"?" active":""}`} onClick={()=>setSubTab("rsvp")}>RSVP</button>
         <button className={`toggle-btn${subTab==="pairings"?" active":""}`} onClick={()=>setSubTab("pairings")}>View Pairings</button>
@@ -2050,7 +2051,7 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
             <>
               <hr className="divider"/>
               <div className="card-title" style={{marginBottom:6}}>Send Reminder</div>
-              <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:10}}>Emails the full group with current RSVP status — includes tee time schedule.</p>
+              <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:10}}>Emails the full group with current RSVP status -- includes tee time schedule.</p>
               <a href={mailtoLink} className="btn btn-outline btn-full" style={{textDecoration:"none"}}>✉ Send RSVP Reminder</a>
             </>
           )}
@@ -2122,7 +2123,7 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
     setScorers(p=>{
       const updated=p.map((s,i)=>i===idx?{...s,[field]:val}:s);
 
-      // When a golfer is selected in H×H mode, auto-restore their in-progress round
+      // When a golfer is selected in H-H mode, auto-restore their in-progress round
       if(field==="golferId"&&val&&mode==="hole"&&selEventId){
         const eid=parseInt(selEventId);
         const gid=parseInt(val);
@@ -2142,7 +2143,7 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
     });
   };
   const updateGross=(idx:number,hole:number,val:string)=>{
-    // ── Step 1: update React state immediately so UI is responsive ──
+    // -- Step 1: update React state immediately so UI is responsive --
     const currentScorer=scorers[idx];
     if(!currentScorer)return;
     const newGross=[...currentScorer.grossScores]; newGross[hole]=val;
@@ -2164,7 +2165,7 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
     const holeCalcs=calcHoleScores(newGross,phcp,course);
     const runningPts=holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
 
-    // ── Step 2: update holeScores state for LIVE scorecard ──
+    // -- Step 2: update holeScores state for LIVE scorecard --
     const existing=leaderboard.find((r:any)=>r.event_id===eid&&r.golfer_id===gid);
     // Only update local holeScores state if we have a real (DB-persisted) summary_id.
     // If no entry exists yet we'll write to DB first and patch state in the callback.
@@ -2181,7 +2182,7 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       }
     }
 
-    // ── Step 3: update leaderboard running total state ──
+    // -- Step 3: update leaderboard running total state --
     const tempSid:number=existing?.summary_id||(Date.now()+gid);
     const liveEntry:any={
       summary_id:tempSid,event_id:eid,golfer_id:gid,
@@ -2195,12 +2196,12 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       liveEntry
     ]);
 
-    // ── Step 4: flip event to In-Progress ──
+    // -- Step 4: flip event to In-Progress --
     setEvents((evs:any)=>evs.map((ev:any)=>
       ev.event_id===eid&&ev.status==="Pairings Set"?{...ev,status:"In-Progress"}:ev
     ));
 
-    // ── Step 5: DB writes — correct sequence ──
+    // -- Step 5: DB writes -- correct sequence --
     const doHoleWrite=async(realSid:number)=>{
       if(!val||isNaN(grossVal))return;
       const net=calcHoleNetScore(grossVal,phcp,course.hole_stroke_indices[hole]);
@@ -2234,9 +2235,9 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
     const pendingKey=eid+":"+gid;
 
     if(!existing||existing.summary_id>=1e12){
-      // ── No real DB row yet ──
+      // -- No real DB row yet --
       if(pendingLbInsert.current[pendingKey]){
-        // Insert already in-flight — queue this hole for when it resolves
+        // Insert already in-flight -- queue this hole for when it resolves
         const capturedGross=[...newGross];
         pendingLbInsert.current[pendingKey].push(async(realId:number)=>{
           const net=val&&!isNaN(grossVal)?calcHoleNetScore(grossVal,phcp,course.hole_stroke_indices[hole]):null;
@@ -2271,7 +2272,7 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
         })
         .catch(()=>{ delete pendingLbInsert.current[pendingKey]; });
     } else {
-      // ── Leaderboard row already in DB — update and write hole directly ──
+      // -- Leaderboard row already in DB -- update and write hole directly --
       const realSid=existing.summary_id;
       const {summary_id,created_at,...lbRest}=liveEntry;
       supabase.from("event_leaderboard").update({...lbRest,summary_id:realSid},{summary_id:realSid}).catch(()=>{});
@@ -2328,12 +2329,12 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
         <label className="form-label">Event</label>
         <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setScorers([emptyScorer()]);}}>
           <option value="">Select event…</option>
-          {activeEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
+          {activeEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
         </select>
       </div>
 
       {/* Skins warning */}
-      {/* Resume banner — shown when a prior H×H session is restored */}
+      {/* Resume banner -- shown when a prior H×H session is restored */}
       {selEventId&&mode==="hole"&&scorers.some((s:any)=>s.grossScores.some((v:string)=>!!v))&&(
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--green-50)",border:"1.5px solid var(--green-200)",borderRadius:"var(--radius-md)",marginBottom:12}}>
           <span style={{fontSize:18}}>↩</span>
@@ -2403,7 +2404,7 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
         );
       })}
 
-      {/* 3: Unified stacked H×H table — one row per hole, one column per golfer */}
+      {/* 3: Unified stacked H×H table -- one row per hole, one column per golfer */}
       {mode==="hole"&&selEvent&&scorers.some(s=>s.golferId&&s.courseId)&&(()=>{
         const activeScorersFull=scorers
           .map((s,origIdx)=>({...s,origIdx}))
@@ -2517,7 +2518,7 @@ function AdminTab({golfers,setGolfers,courses,setCourses,events,setEvents,signup
   );
 }
 
-// ── 3a) GOLFER ROSTER ────────────────────────────────────────
+// -- 3a) GOLFER ROSTER ----------------------------------------
 function GolferRoster({golfers,setGolfers,showSuccess}:any){
   const blank={first_name:"",last_name:"",email_address:"",current_handicap_index:"18",season_fee_paid:false};
   const [form,setForm]=useState<any>(blank);
@@ -2587,7 +2588,7 @@ function GolferRoster({golfers,setGolfers,showSuccess}:any){
   );
 }
 
-// ── 3b) COURSE MANAGER ───────────────────────────────────────
+// -- 3b) COURSE MANAGER ---------------------------------------
 function CourseManager({courses,setCourses,showSuccess}:any){
   const blank:any={course_id:0,course_name:"",tee_box_name:"",tee_slope:113,tee_rating:72.0,par:72};
   const [editing,setEditing]=useState<any|null>(null);
@@ -2715,7 +2716,7 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
         return[...without,...newScores];
       });
     }
-    showSuccess(`Score corrected: ${golferName(golfers,parseInt(selGolferId))} → ${pts} pts`);
+    showSuccess(`Score corrected: ${golferName(golfers,parseInt(selGolferId))} -> ${pts} pts`);
   };
 
   const deleteEntry=()=>{
@@ -2732,7 +2733,7 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
       <div className="card-title" style={{marginBottom:8}}>Score Correction</div>
       <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:14}}>Select an event and golfer to correct their score. Only the current season is editable.</p>
 
-      {/* 2b: Year filter — only current year is editable */}
+      {/* 2b: Year filter -- only current year is editable */}
       <div className="form-group">
         <label className="form-label">Season</label>
         <select className="form-select" value={filterYear} onChange={e=>{setFilterYear(parseInt(e.target.value));setSelEventId("");setSelGolferId("");}}>
@@ -2748,7 +2749,7 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
       <div className="form-group"><label className="form-label">Event</label>
         <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setSelGolferId("");}}>
           <option value="">Select event…</option>
-          {filteredEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
+          {filteredEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
         </select>
       </div>
       {selEventId&&(
@@ -2757,7 +2758,7 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
             <option value="">Select golfer…</option>
             {leaderboard.filter((r:any)=>r.event_id===parseInt(selEventId)).map((r:any)=>{
               const g=golfers.find((x:any)=>x.golfer_id===r.golfer_id);
-              return<option key={r.golfer_id} value={r.golfer_id}>{g?`${g.first_name} ${g.last_name}`:"Unknown"} — {r.total_stableford_points} pts ({r.entry_type})</option>;
+              return<option key={r.golfer_id} value={r.golfer_id}>{g?`${g.first_name} ${g.last_name}`:"Unknown"} -- {r.total_stableford_points} pts ({r.entry_type})</option>;
             })}
           </select>
         </div>
@@ -2776,7 +2777,7 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
             <div className="form-group"><label className="form-label">Tee Box (for recalc)</label>
               <select className="form-select" value={corrCourseId} onChange={e=>setCorrCourseId(e.target.value)}>
                 <option value="">Select tee…</option>
-                {availTees.map((t:any)=><option key={t.course_id} value={t.course_id}>{t.tee_box_name} — Slope {t.tee_slope}</option>)}
+                {availTees.map((t:any)=><option key={t.course_id} value={t.course_id}>{t.tee_box_name} -- Slope {t.tee_slope}</option>)}
               </select>
             </div>
           )}
@@ -2854,7 +2855,7 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
     return (
       "<div style=\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;\">" +
       "<h2 style=\"background:#1a4a28;color:#f5d97a;margin:0;padding:14px 18px;font-size:18px;\">⛳ Saturday School</h2>" +
-      "<h3 style=\"background:#2d6e45;color:white;margin:0;padding:10px 18px;font-size:15px;font-weight:400;\">Playing Handicaps — "+selCourseName+"</h3>" +
+      "<h3 style=\"background:#2d6e45;color:white;margin:0;padding:10px 18px;font-size:15px;font-weight:400;\">Playing Handicaps -- "+selCourseName+"</h3>" +
       "<table style=\"width:100%;border-collapse:collapse;font-family:Arial,sans-serif;\">" +
       "<thead><tr><th style=\""+thStyle+"text-align:left;\">Golfer</th>"+headers+"</tr></thead>" +
       "<tbody>"+rows+"</tbody></table>" +
@@ -2878,7 +2879,7 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
         setCopied(true);
         setTimeout(()=>setCopied(false),3000);
       }catch{
-        showSuccess("Could not access clipboard — try on a different browser");
+        showSuccess("Could not access clipboard -- try on a different browser");
       }
     }
   };
@@ -2914,7 +2915,7 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
 
                   {/* Step 1: Copy */}
                   <div style={{background:"var(--surface2)",borderRadius:"var(--radius-md)",padding:16,border:"1px solid var(--border)"}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 1 — Copy the table</div>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 1 -- Copy the table</div>
                     <p style={{fontSize:14,color:"var(--text-primary)",marginBottom:12,lineHeight:1.5}}>
                       Copies a formatted HTML table to your clipboard. When you paste it into Gmail or Outlook it will look like a proper table with colors.
                     </p>
@@ -2925,12 +2926,12 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
 
                   {/* Step 2: Open email */}
                   <div style={{background:"var(--surface2)",borderRadius:"var(--radius-md)",padding:16,border:"1px solid var(--border)"}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 2 — Compose &amp; paste</div>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Step 2 -- Compose &amp; paste</div>
                     <p style={{fontSize:14,color:"var(--text-primary)",marginBottom:12,lineHeight:1.5}}>
                       Open your email app, start a new message to the group, then paste (<strong>Ctrl+V</strong> / <strong>⌘V</strong>) into the body. The table will appear with full formatting.
                     </p>
                     <div style={{background:"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:"var(--radius-md)",padding:"10px 12px",fontSize:13,color:"var(--green-800)"}}>
-                      <strong>Suggested subject:</strong> Saturday School – Playing Handicaps ({selCourseName})
+                      <strong>Suggested subject:</strong> Saturday School - Playing Handicaps ({selCourseName})
                     </div>
                   </div>
 
@@ -3012,7 +3013,7 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
       </div>
       <hr className="divider"/>
       <div className="card-title" style={{marginBottom:8}}>Invitation Email</div>
-      <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School – Upcoming Round&body=Hi all, join us for our next Saturday round. Please RSVP on the app!`} className="btn btn-outline btn-full" style={{textDecoration:"none",display:"flex",marginBottom:20}}>✉ Send Invitation</a>
+      <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School - Upcoming Round&body=Hi all, join us for our next Saturday round. Please RSVP on the app!`} className="btn btn-outline btn-full" style={{textDecoration:"none",display:"flex",marginBottom:20}}>✉ Send Invitation</a>
 
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
         <div className="card-title">All Events</div>
@@ -3090,12 +3091,12 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
 
   const buildBody=()=>{
     if(!pairings||!selEvent)return"";
-    let b=`Saturday School – Pairings\n${formatDate(selEvent.date)} @ ${selEvent.course_name}\n\n`;
+    let b=`Saturday School - Pairings\n${formatDate(selEvent.date)} @ ${selEvent.course_name}\n\n`;
     pairings.forEach((g:any,i:number)=>{
-      b+=`Group ${i+1} – Tee: ${g.teeTime}\n`;
+      b+=`Group ${i+1} - Tee: ${g.teeTime}\n`;
       g.players.forEach((gid:number)=>{
         const gl=golfers.find((x:any)=>x.golfer_id===gid);
-        b+=`  • ${gl?.first_name} ${gl?.last_name}${gl?.is_guest?" (Guest)":""}\n`;
+        b+=`  * ${gl?.first_name} ${gl?.last_name}${gl?.is_guest?" (Guest)":""}\n`;
       });b+="\n";
     });
     return b;
@@ -3109,7 +3110,7 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
       <div className="form-group"><label className="form-label">Event</label>
         <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setPairings(null);setConfirmed(false);setMoving(null);}}>
           <option value="">Select event…</option>
-          {events.filter((e:any)=>e.status!=="Completed").map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name}</option>)}
+          {events.filter((e:any)=>e.status!=="Completed").map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
         </select>
       </div>
       {selEvent&&<div className="card" style={{padding:"10px 14px",marginBottom:12}}>
@@ -3136,7 +3137,7 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
                 style={{cursor:moving&&moving.fromGroup!==i?"pointer":"default"}}
               >
                 <span className="pairing-time">⏱ {group.teeTime}</span>
-                <span className="pairing-group">Group {i+1} · {group.players.length} players{moving&&moving.fromGroup!==i?" — tap to move here":""}</span>
+                <span className="pairing-group">Group {i+1} · {group.players.length} players{moving&&moving.fromGroup!==i?" -- tap to move here":""}</span>
               </div>
               <div className="pairing-body">
                 {group.players.map((gid:number)=>{
@@ -3160,7 +3161,7 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
           ))}
           <div style={{display:"flex",gap:8,marginTop:10}}>
             <button className="btn btn-primary" style={{flex:1}} onClick={confirmPairings}>{confirmed?"✓ Update Pairings":"Confirm Pairings"}</button>
-            <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School Pairings – ${formatDate(selEvent?.date)}&body=${encodeURIComponent(buildBody())}`} className="btn btn-outline" style={{flex:1,textDecoration:"none"}}>✉ Email</a>
+            <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School Pairings - ${formatDate(selEvent?.date)}&body=${encodeURIComponent(buildBody())}`} className="btn btn-outline" style={{flex:1,textDecoration:"none"}}>✉ Email</a>
           </div>
         </div>
       )}
@@ -3169,7 +3170,7 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
 }
 
 // ============================================================
-// ANALYTICS TAB — rich dashboard
+// ANALYTICS TAB -- rich dashboard
 // ============================================================
 // ChartCanvas: mounts a canvas via ref and builds the chart.
 // Avoids getElementById race conditions entirely.
@@ -3335,25 +3336,25 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
 }
 
 
-// ══════════════════════════════════════════════════════════════════
+// ------------------------------------------------------------------
 // ODDS ENGINE
-// ══════════════════════════════════════════════════════════════════
+// ------------------------------------------------------------------
 //
 // FORMULAS USED (documented here for transparency)
 //
-// ── Per-golfer profile ──────────────────────────────────────────
+// -- Per-golfer profile ------------------------------------------
 //
 // 1. WEIGHTED AVERAGE (decay factor d=0.88 per round going back)
-//    weightedAvg = Σ(score_i × d^i) / Σ(d^i)
+//    weightedAvg = -(score_i - d^i) / -(d^i)
 //    where i=0 is the most recent round. d=0.88 means each prior
 //    round is worth 88% of the next more-recent round.
 //
 // 2. STANDARD DEVIATION (consistency)
-//    σ = sqrt( Σ(score_i - mean)² / n )
-//    Lower σ = more consistent = lower variance in projection.
+//    - = sqrt( -(score_i - mean)- / n )
+//    Lower - = more consistent = lower variance in projection.
 //
 // 3. TREND (slope of linear regression over last N rounds)
-//    Using least-squares slope: b = (n·Σxy - Σx·Σy) / (n·Σx² - (Σx)²)
+//    Using least-squares slope: b = (n--xy - -x--y) / (n--x- - (-x)-)
 //    Positive slope = improving. Negative = declining.
 //    Trend used to nudge weightedAvg: projectedScore += trend * 0.5
 //
@@ -3365,19 +3366,19 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
 //
 // 5. HCP TREND ADJUSTMENT
 //    Compare average HCP from first half vs second half of signups
-//    where playing_handicap is recorded. Rising HCP → harder to score
-//    → subtract up to 1.0 pt from projection. Falling HCP → easier.
+//    where playing_handicap is recorded. Rising HCP -> harder to score
+//    -> subtract up to 1.0 pt from projection. Falling HCP -> easier.
 //    hcpTrendAdj = (hcpTrendSlope * -0.3), clamped to [-1.0, +1.0]
 //
 // 6. PROJECTED SCORE
-//    proj = weightedAvg + (trend × 0.5) + courseAdj + hcpTrendAdj
+//    proj = weightedAvg + (trend - 0.5) + courseAdj + hcpTrendAdj
 //    Clamped to [max(0, globalMin-2), globalMax+2]
 //
-// ── Win probability ─────────────────────────────────────────────
+// -- Win probability ---------------------------------------------
 //
 // 7. RAW WIN PROBABILITY via Monte Carlo simulation (N=5000 trials)
 //    Each trial: draw a score for every playing golfer from
-//    Normal(proj_i, σ_i). Winner = highest draw.
+//    Normal(proj_i, -_i). Winner = highest draw.
 //    rawWinProb_i = wins_i / N
 //
 // 8. HOUSE EDGE (3% vigorish)
@@ -3386,10 +3387,10 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
 //    This creates a ~3% book margin.
 //
 // 9. AMERICAN ODDS from probability p
-//    If p >= 0.5:  odds = round(-(p / (1-p)) × 100)   → negative (favorite)
-//    If p < 0.5:   odds = round(((1-p) / p) × 100)    → positive (underdog)
+//    If p >= 0.5:  odds = round(-(p / (1-p)) - 100)   -> negative (favorite)
+//    If p < 0.5:   odds = round(((1-p) / p) - 100)    -> positive (underdog)
 //
-// ── Head-to-head ────────────────────────────────────────────────
+// -- Head-to-head ------------------------------------------------
 //
 // 10. H2H WIN PROBABILITY
 //     When both golfers have played the same event, track who scored higher.
@@ -3397,16 +3398,16 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
 //     h2hAdj: weight recent matchups (d=0.85 per prior event)
 //     h2hBaseProb_A = weightedH2HWins_A / (weightedH2HWins_A + weightedH2HWins_B)
 //     Blend 60% Monte Carlo projection, 40% historical H2H:
-//     finalProb_A = 0.60 × monteCarloProb_A + 0.40 × h2hBaseProb_A
+//     finalProb_A = 0.60 - monteCarloProb_A + 0.40 - h2hBaseProb_A
 //     (Falls back to 100% Monte Carlo if <3 shared events)
 //
 // 11. SPREAD (point differential projection)
 //     spread = projA - projB  (positive = A favored by that margin)
-//     spreadSigma = sqrt(σA² + σB²)   (combined uncertainty)
+//     spreadSigma = sqrt(-A- + -B-)   (combined uncertainty)
 //     Spread odds: favorite at -110, underdog at +100 (standard -10 vig line)
 //     For ties/pushes: if |spread| < 0.5, display "Pick'em"
 //
-// ══════════════════════════════════════════════════════════════════
+// ------------------------------------------------------------------
 
 const DECAY=0.88;     // recency weight per round
 const H2H_DECAY=0.85; // recency weight per shared event
@@ -3480,7 +3481,7 @@ function hcpTrendAdj(signups:any[],events:any[],gid:number):number{
     .sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
   if(hcpData.length<3)return 0;
   const slope=lsSlope(hcpData.map((h:any)=>h.hcp));
-  // Rising HCP = harder to score = negative adjustment (capped ±1.0)
+  // Rising HCP = harder to score = negative adjustment (capped -1.0)
   return Math.max(-1.0,Math.min(1.0,-slope*0.3));
 }
 
@@ -3560,7 +3561,7 @@ function h2hHistory(leaderboard:any[],events:any[],gidA:number,gidB:number){
 }
 
 function h2hWinProb(shared:any[],projProbA:number){
-  if(shared.length<3)return projProbA; // not enough H2H — use projection only
+  if(shared.length<3)return projProbA; // not enough H2H -- use projection only
   let wA=0,wB=0;
   shared.forEach((r:any,i:number)=>{
     const w=Math.pow(H2H_DECAY,i);
@@ -3573,11 +3574,11 @@ function h2hWinProb(shared:any[],projProbA:number){
   return 0.60*projProbA+0.40*h2hProb;
 }
 
-// ══════════════════════════════════════════════════════════════════
+// ------------------------------------------------------------------
 // ODDS TAB COMPONENT
-// ══════════════════════════════════════════════════════════════════
+// ------------------------------------------------------------------
 
-// ── H2H Hole-by-Hole helpers ──────────────────────────────────
+// -- H2H Hole-by-Hole helpers ----------------------------------
 
 // Estimate per-hole Stableford pts from a total when no HxH data exists.
 // Uses difficulty weighting: stroke index determines stroke allocation,
@@ -3772,15 +3773,19 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
         <button className={"toggle-btn"+(oddsMode==="h2h"?" active":"")} onClick={()=>setOddsMode("h2h")}>Head-to-Head</button>
       </div>
 
-      {/* Event selector (shared) */}
-      <div className="form-group">
-        <label className="form-label">Event</label>
-        <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setExcludedIds(new Set());}}>
-          {allEventsSorted.map((ev:any)=>(
-            <option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} — {ev.course_name} {ev.status==="Completed"?"(final)":""}</option>
-          ))}
-        </select>
-      </div>
+      {/* Event selector -- upcoming / pairings set / in-progress only */}
+      {upcomingEvents.length===0?(
+        <div className="empty-state"><div className="empty-text">No upcoming events</div><div className="empty-sub">Odds will appear once an event is scheduled</div></div>
+      ):(
+        <div className="form-group">
+          <label className="form-label">Event</label>
+          <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setExcludedIds(new Set());}}>
+            {upcomingEvents.map((ev:any)=>(
+              <option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}{ev.status==="In-Progress"?" 🟢 Live":""}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* ── FIELD ODDS ── */}
       {oddsMode==="field"&&(
@@ -3829,7 +3834,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                       <div>
                         <div style={{fontSize:15,fontWeight:isFav?700:500,color:isFav?"var(--gold-300)":"rgba(255,255,255,0.88)"}}>{r.golfer.first_name} {r.golfer.last_name}{isFav?" 🏆":""}</div>
                         <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:1}}>
-                          {r.rounds} rds · σ{r.sd} {r.trend>0.05?"↑ hot":r.trend<-0.05?"↓ cooling":"→ steady"}
+                          {r.rounds} rds · σ{r.sd} {r.trend>0.05?"↑ hot":r.trend<-0.05?"↓ cooling":"-> steady"}
                         </div>
                       </div>
                       <div style={{textAlign:"center",fontSize:17,fontWeight:700,color:"var(--green-300)"}}>{r.proj}</div>
@@ -3847,11 +3852,14 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
 
               {noHistoryGolfers.length>0&&(
                 <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:10,padding:"8px 12px",background:"var(--surface2)",borderRadius:"var(--radius-md)"}}>
-                  ⚠ No scoring history: {noHistoryGolfers.map((g:any)=>g.first_name).join(", ")} — excluded from odds calculation
+                  ⚠ No scoring history: {noHistoryGolfers.map((g:any)=>g.first_name).join(", ")} -- excluded from odds calculation
                 </div>
               )}
 
               
+
+              {/* Tony.ai insight -- auto-picks best winner + matchup from field */}
+              <TonyInsight ranked={ranked} selEventId={selEventId} selEvent={selEvent}/>
 
               {/* Methodology note */}
               <div style={{marginTop:16,padding:"12px 14px",background:"var(--surface2)",borderRadius:"var(--radius-md)",fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
@@ -4020,7 +4028,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                 )}
                 {h2hShared.length<3&&(
                   <div style={{fontSize:13,color:"var(--text-muted)",padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--radius-md)",marginBottom:12}}>
-                    ℹ️ {h2hShared.length} shared event{h2hShared.length!==1?"s":""} on record. H2H blending activates at 3+ shared events — using projection model only.
+                    ℹ️ {h2hShared.length} shared event{h2hShared.length!==1?"s":""} on record. H2H blending activates at 3+ shared events -- using projection model only.
                   </div>
                 )}
 
@@ -4033,7 +4041,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                     <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:10}}>
                       {hasRealHbh
                         ?"Uses actual hole-by-hole scores where available, estimated from totals otherwise."
-                        :"Estimated from total Stableford scores — weighted by hole difficulty (stroke index)."
+                        :"Estimated from total Stableford scores -- weighted by hole difficulty (stroke index)."
                       } Decay weight d=0.85/event, most recent first.
                     </div>
 
@@ -4078,7 +4086,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                                 const favB=diff<-0.05;
                                 return(
                                   <td key={h} style={{padding:"5px 4px",textAlign:"center",fontSize:11,fontWeight:700,color:favA?"var(--green-700)":favB?"var(--gold-700)":"var(--text-muted)"}}>
-                                    {Math.abs(diff)<0.05?"—":favA?gA?.first_name[0]:gB?.first_name[0]}
+                                    {Math.abs(diff)<0.05?"--":favA?gA?.first_name[0]:gB?.first_name[0]}
                                   </td>
                                 );
                               })}
@@ -4129,7 +4137,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                                 const favB=diff<-0.05;
                                 return(
                                   <td key={h} style={{padding:"5px 4px",textAlign:"center",fontSize:11,fontWeight:700,color:favA?"var(--green-700)":favB?"var(--gold-700)":"var(--text-muted)"}}>
-                                    {Math.abs(diff)<0.05?"—":favA?gA?.first_name[0]:gB?.first_name[0]}
+                                    {Math.abs(diff)<0.05?"--":favA?gA?.first_name[0]:gB?.first_name[0]}
                                   </td>
                                 );
                               })}
@@ -4165,7 +4173,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                 )}
                 {(!holeAvgA||!holeAvgB)&&h2hShared.length===0&&(
                   <div style={{fontSize:13,color:"var(--text-muted)",padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--radius-md)",marginBottom:12}}>
-                    No shared events yet — hole-by-hole breakdown requires at least 1 shared event.
+                    No shared events yet -- hole-by-hole breakdown requires at least 1 shared event.
                   </div>
                 )}
 
@@ -4180,7 +4188,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
             <div className="empty-state"><div className="empty-text">Select two golfers to see head-to-head odds</div></div>
           )}
           {gA&&gB&&(!profA||!profB)&&(
-            <div className="empty-state"><div className="empty-text">One or both golfers have no scoring history — can't calculate odds yet</div></div>
+            <div className="empty-state"><div className="empty-text">One or both golfers have no scoring history -- can't calculate odds yet</div></div>
           )}
         </div>
       )}
@@ -4188,7 +4196,201 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
   );
 }
 
-// ── Season Overview Dashboard ─────────────────────────────────
+
+// ============================================================
+// TONY.AI -- Golf betting savant insight component
+//
+// Uses Gemini 2.0 Flash (free tier: 1,500 req/day, 1M tok/day)
+// Requires VITE_GEMINI_KEY in Vercel environment variables.
+// Get key free at: aistudio.google.com -> Get API Key
+//
+// Cache strategy (Supabase-first, localStorage fallback):
+//   Checks tony_insights table (event_id, h2h_key, insight_date).
+//   If row exists for today -> show it. Otherwise call Gemini,
+//   store in DB, and show result. Fires at most once per day
+//   per event regardless of how many users view the page.
+//
+// Image hosting: upload tony avatar to Supabase Storage bucket
+//   "assets" and replace TONY_AVATAR with the public URL, OR
+//   put the file in /public/tony.jpg in your repo (Vercel serves it).
+// ============================================================
+
+const TONY_AVATAR = "https://zxqzxlbhuepuflpatbuh.supabase.co/storage/v1/object/public/assets/tony2.png";
+// To use self-hosted: const TONY_AVATAR = "/tony.jpg";
+
+async function fetchTonyInsight(prompt:string):Promise<string>{
+  const apiKey=(typeof import.meta!=="undefined"&&(import.meta as any).env?.VITE_GEMINI_KEY)||"";
+  if(!apiKey)return"[Tony.ai offline -- add VITE_GEMINI_KEY to Vercel env vars]";
+  const res=await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+apiKey,
+    {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        system_instruction:{parts:[{text:"You are Tony, a sharp, gritty golf betting savant. Analyze the event field odds and head-to-head matchup to deliver exactly two picks: a Winner Pick (best bet to win the event) and a Matchup Pick (best H2H value). Show the American odds for each pick. Maximum two sentences total. No greetings, no sign-off. Be punchy and data-driven."}]},
+        contents:[{parts:[{text:prompt}]}],
+        generationConfig:{maxOutputTokens:110,temperature:0.7}
+      })
+    }
+  );
+  if(!res.ok)throw new Error("Gemini "+res.status);
+  const data=await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text||"";
+}
+
+// Auto-select the most interesting H2H from the field:
+// finds the pair with the smallest probability gap among top-4 golfers
+// (tightest matchup = most interesting pick for Tony to call)
+function pickBestH2H(ranked:any[]):{nameA:string,oddsA:string,nameB:string,oddsB:string,spread:string}|null{
+  if(ranked.length<2)return null;
+  const top=ranked.slice(0,Math.min(4,ranked.length));
+  let best:{i:number,j:number,gap:number}={i:0,j:1,gap:999};
+  for(let i=0;i<top.length-1;i++){
+    for(let j=i+1;j<top.length;j++){
+      const gap=Math.abs(top[i].prob-top[j].prob);
+      if(gap<best.gap)best={i,j,gap};
+    }
+  }
+  const a=top[best.i], b=top[best.j];
+  const spreadVal=parseFloat((a.proj-b.proj).toFixed(1));
+  const spreadStr=Math.abs(spreadVal)<0.3?"Pick'em":
+    (spreadVal>0?a.golfer.first_name+" -"+Math.abs(spreadVal):b.golfer.first_name+" -"+Math.abs(spreadVal))+" pts";
+  // 1v1 win probability: use each golfer's share relative to the pair only
+  const sumProb=a.prob+b.prob;
+  const pA=a.prob/sumProb;
+  const pB=b.prob/sumProb;
+  return{
+    nameA:a.golfer.first_name+" "+a.golfer.last_name,
+    oddsA:toAmericanOdds(pA),
+    nameB:b.golfer.first_name+" "+b.golfer.last_name,
+    oddsB:toAmericanOdds(pB),
+    spread:spreadStr
+  };
+}
+
+function TonyInsight({ranked,selEventId,selEvent}:any){
+  const [insight,setInsight]=useState<string|null>(null);
+  const [loading,setLoading]=useState(false);
+  const [imgErr,setImgErr]=useState(false);
+
+  const today=new Date().toISOString().slice(0,10);
+  // h2h_key is always "field" here -- Tony auto-picks the best matchup
+  const cacheKey="field";
+
+  const buildPrompt=():string=>{
+    const eventLabel=selEvent?(selEvent.course_name+" "+selEvent.date):"Unknown event";
+    const fieldLines=ranked.slice(0,5).map((r:any)=>
+      r.golfer.first_name+" "+r.golfer.last_name+": "+toAmericanOdds(r.prob)+" (proj "+r.proj+"pts, "+r.rounds+"rds)"
+    ).join("; ");
+    const h2h=pickBestH2H(ranked);
+    const h2hLine=h2h
+      ?"Best matchup: "+h2h.nameA+" "+h2h.oddsA+" vs "+h2h.nameB+" "+h2h.oddsB+", spread "+h2h.spread
+      :"";
+    return "Event: "+eventLabel+". Field odds: "+fieldLines+". "+h2hLine+". Give your Winner Pick and Matchup Pick with odds.";
+  };
+
+  useEffect(()=>{
+    if(!ranked.length||!selEventId)return;
+    const eid=parseInt(selEventId);
+    if(!eid)return;
+
+    // 1. Check Supabase cache first
+    const checkAndGenerate=async()=>{
+      try{
+        const rows=await supabase.from("tony_insights").select("insight_text,insight_date")
+          .eq("event_id",eid).eq("h2h_key",cacheKey).eq("insight_date",today);
+        if(rows&&rows[0]){setInsight(rows[0].insight_text);return;}
+      }catch{}
+
+      // 2. Not cached -- call Gemini
+      setLoading(true);
+      try{
+        const text=await fetchTonyInsight(buildPrompt());
+        setInsight(text);
+        // 3. Persist to Supabase (upsert in case of race)
+        try{
+          await supabase.from("tony_insights").upsert(
+            {event_id:eid,h2h_key:cacheKey,insight_date:today,insight_text:text},
+            "event_id,h2h_key,insight_date"
+          );
+        }catch{}
+      }catch(_:any){
+        setInsight("Tony's off the grid right now. Check back in a bit.");
+      }finally{
+        setLoading(false);
+      }
+    };
+    checkAndGenerate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[selEventId,today]);
+
+  if(!ranked.length)return null;
+
+  // Show the auto-selected matchup beneath the insight for context
+  const bestH2H=pickBestH2H(ranked);
+
+  return(
+    <div style={{
+      marginTop:18,
+      background:"linear-gradient(135deg,#0f1f14,#1a2f1e)",
+      borderRadius:"var(--radius-md)",
+      border:"1.5px solid rgba(196,120,0,0.4)",
+      overflow:"hidden"
+    }}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid rgba(196,120,0,0.2)",background:"rgba(0,0,0,0.3)"}}>
+        <div style={{width:38,height:38,borderRadius:"50%",border:"2px solid var(--gold-500)",overflow:"hidden",flexShrink:0,background:"#1a2f1e"}}>
+          {imgErr
+            ?<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🎯</div>
+            :<img src={TONY_AVATAR} alt="Tony.ai" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={()=>setImgErr(true)}/>
+          }
+        </div>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.03em"}}>TONY.AI</div>
+          
+        </div>
+        <div style={{marginLeft:"auto",fontSize:10,color:"rgba(255,255,255,0.3)",textAlign:"right"}}>
+          {today}<br/>cached daily
+        </div>
+      </div>
+
+      {/* Insight text */}
+      <div style={{padding:"14px 16px",minHeight:56}}>
+        {loading&&(
+          <div style={{display:"flex",alignItems:"center",gap:10,color:"rgba(255,255,255,0.5)",fontSize:13}}>
+            <div style={{width:14,height:14,border:"2px solid rgba(196,120,0,0.4)",borderTopColor:"var(--gold-400)",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
+            Analyzing the field...
+          </div>
+        )}
+        {!loading&&insight&&(
+          <div style={{fontSize:14,color:"rgba(255,255,255,0.88)",lineHeight:1.65}}>
+            {insight.split("\n").filter(Boolean).map((line:string,i:number)=>(
+              <p key={i} style={{margin:i===0?"0":"8px 0 0"}}>{line}</p>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Auto-selected matchup context */}
+      {bestH2H&&!loading&&(
+        <div style={{padding:"8px 16px 12px",display:"flex",gap:16,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",letterSpacing:"0.06em",textTransform:"uppercase",paddingTop:2,flexShrink:0}}>Best matchup</div>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.7)"}}>
+            <span style={{fontWeight:700,color:"var(--gold-300)"}}>{bestH2H.nameA}</span>
+            <span style={{color:"rgba(255,255,255,0.45)",margin:"0 4px"}}>{bestH2H.oddsA}</span>
+            <span style={{color:"rgba(255,255,255,0.3)"}}>vs</span>
+            <span style={{fontWeight:700,color:"var(--green-300)",margin:"0 4px"}}>{bestH2H.nameB}</span>
+            <span style={{color:"rgba(255,255,255,0.45)"}}>{bestH2H.oddsB}</span>
+            <span style={{color:"rgba(255,255,255,0.3)",marginLeft:8,fontSize:11}}>{bestH2H.spread}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// -- Season Overview Dashboard ---------------------------------
 function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any){
   const totalRounds=seasonData.reduce((s:number,d:any)=>s+d.rounds,0);
   const allPts=seasonData.flatMap((d:any)=>d.allPts);
@@ -4197,7 +4399,7 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
   const highScorer=seasonData.find((d:any)=>d.best===highScoreEntry);
   const winLeader=seasonData.length?[...seasonData].sort((a:any,b:any)=>b.wins-a.wins)[0]:null;
 
-  // Win tally — bar chart data
+  // Win tally -- bar chart data
   const winData=[...seasonData].filter((d:any)=>d.wins>0).sort((a:any,b:any)=>b.wins-a.wins);
   
   // Most improved: compare first half vs second half of rounds
@@ -4342,7 +4544,7 @@ function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any
   );
 }
 
-// ── Consistency (Std Dev) Table ───────────────────────────────
+// -- Consistency (Std Dev) Table -------------------------------
 function ConsistencyTable({seasonData}:any){
   const rows=[...seasonData].map((d:any)=>{
     if(d.allPts.length<3)return null;
@@ -4377,7 +4579,7 @@ function ConsistencyTable({seasonData}:any){
                 <td style={{padding:"11px 8px",fontWeight:600,fontSize:16}}>{r.golfer.first_name} {r.golfer.last_name}</td>
                 <td style={{padding:"11px 6px",textAlign:"center",color:"var(--green-700)",fontWeight:700,fontSize:16}}>{r.avg.toFixed(1)}</td>
                 <td style={{padding:"11px 6px",textAlign:"center",fontWeight:700,fontSize:16,color:i===0?"var(--green-600)":"var(--text-primary)"}}>{r.stdDev.toFixed(2)}</td>
-                <td style={{padding:"11px 6px",textAlign:"center",color:"var(--text-muted)",fontSize:15}}>{r.best}–{r.worst}</td>
+                <td style={{padding:"11px 6px",textAlign:"center",color:"var(--text-muted)",fontSize:15}}>{r.best}-{r.worst}</td>
                 <td style={{padding:"11px 8px",textAlign:"center",color:"var(--text-muted)",fontSize:15}}>{r.rounds}</td>
               </tr>
             ))}
@@ -4520,9 +4722,9 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
         </div>
       )}
 
-      {/* Chart */}
+      {/* Charts */}
       <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:8}}>
-        <div style={{fontSize:15,fontWeight:700,color:"var(--green-700)"}}>{golfer.first_name} {golfer.last_name} — Round History</div>
+        <div style={{fontSize:15,fontWeight:700,color:"var(--green-700)"}}>{golfer.first_name} {golfer.last_name} -- Round History</div>
         <span style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"var(--text-muted)"}}>
           <span style={{width:14,height:3,background:"#1a7340",display:"inline-block",borderRadius:2}}></span>Pts
           <span style={{width:14,height:3,background:"#c47800",display:"inline-block",borderRadius:2,marginLeft:4}}></span>Avg
@@ -4555,7 +4757,7 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
                   </td>
                   <td style={{padding:"10px 8px",textAlign:"center",fontWeight:700,color:"var(--green-700)",fontSize:18}}>{r.pts}</td>
                   <td style={{padding:"10px 8px",textAlign:"center",fontSize:14,color:"var(--text-muted)"}}>{r.rank}<span style={{fontSize:11}}>/{r.players}</span></td>
-                  <td style={{padding:"10px 10px",textAlign:"right",fontWeight:700,fontSize:15,color:r.earned>0?"var(--gold-600)":"var(--text-muted)"}}>{r.earned>0?`$${r.earned.toFixed(0)}`:"—"}</td>
+                  <td style={{padding:"10px 10px",textAlign:"right",fontWeight:700,fontSize:15,color:r.earned>0?"var(--gold-600)":"var(--text-muted)"}}>{r.earned>0?`$${r.earned.toFixed(0)}`:"--"}</td>
                 </tr>
               );
             })}
