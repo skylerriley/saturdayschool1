@@ -43,7 +43,7 @@ const supabase = (() => {
   };
 
   // Fetch ALL rows by paginating in chunks of 1000 (Supabase default limit)
-  const fetchAll = async (table: string, cols = "*", orderCol = "created_at") => {
+  const fetchAll = async (table: string, cols = "*", orderCol = "created_at", extraQuery = "") => {
     // Primary key per table -- used as a stable tiebreaker for pagination
     const PK_MAP: Record<string, string> = {
       event_leaderboard: "summary_id",
@@ -60,7 +60,7 @@ const supabase = (() => {
     let all: any[] = [];
     let from = 0;
     while (true) {
-      const url = `${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=${orderCol}.asc,${pk}.asc&limit=${PAGE}&offset=${from}`;
+      const url = `${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=${orderCol}.asc,${pk}.asc&limit=${PAGE}&offset=${from}${extraQuery}`;
       const res = await fetch(url, { method: "GET", headers });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -76,7 +76,7 @@ const supabase = (() => {
 
   return {
     from: (table: string) => ({
-      select: (cols = "*") => fetchAll(table, cols),
+      select: (cols = "*", query = "") => fetchAll(table, cols, "created_at", query),
       insert: (data: any) => rpc(table, "POST", Array.isArray(data) ? data : [data]),
       upsert: (data: any, onConflict?: string) =>
         rpc(table, "POST", Array.isArray(data) ? data : [data],
@@ -4297,8 +4297,8 @@ function TonyInsight({ranked,selEventId,selEvent}:any){
     // 1. Check Supabase cache first
     const checkAndGenerate=async()=>{
       try{
-        const rows=await supabase.from("tony_insights").select("insight_text,insight_date")
-          .eq("event_id",eid).eq("h2h_key",cacheKey).eq("insight_date",today);
+        const q="&event_id=eq."+eid+"&h2h_key=eq."+cacheKey+"&insight_date=eq."+today;
+        const rows=await supabase.from("tony_insights").select("insight_text,insight_date",q);
         if(rows&&rows[0]){setInsight(rows[0].insight_text);return;}
       }catch{}
 
@@ -4339,10 +4339,13 @@ function TonyInsight({ranked,selEventId,selEvent}:any){
     }}>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid rgba(196,120,0,0.2)",background:"rgba(0,0,0,0.3)"}}>
-        <div style={{width:38,height:38,borderRadius:"50%",border:"2px solid var(--gold-500)",overflow:"hidden",flexShrink:0,background:"#1a2f1e"}}>
+        <div style={{flexShrink:0}}>
           {imgErr
-            ?<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🎯</div>
-            :<img src={TONY_AVATAR} alt="Tony.ai" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={()=>setImgErr(true)}/>
+            ?<div style={{width:52,height:52,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🎯</div>
+            :<img src={TONY_AVATAR} alt="Tony.ai"
+                style={{width:52,height:52,objectFit:"contain",display:"block",
+                  filter:"drop-shadow(0 0 2px white) drop-shadow(0 0 2px white)"}}
+                onError={()=>setImgErr(true)}/>
           }
         </div>
         <div>
