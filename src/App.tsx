@@ -4375,10 +4375,10 @@ function TonyInsight({ranked,selEventId,selEvent}:any){
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid rgba(196,120,0,0.2)",background:"rgba(0,0,0,0.3)"}}>
         <div style={{flexShrink:0}}>
           {imgErr
-            ?<div style={{width:52,height:52,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🎯</div>
+            ?<div style={{width:80,height:80,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🎯</div>
             :<img src={TONY_AVATAR} alt="Tony.ai"
-                style={{width:52,height:52,objectFit:"contain",display:"block",
-                  filter:"drop-shadow(1px 0 0 white) drop-shadow(-1px 0 0 white) drop-shadow(0 1px 0 white) drop-shadow(0 -1px 0 white)"}}
+                style={{width:80,height:80,objectFit:"contain",display:"block",
+                  filter:"drop-shadow(.5px 0 0 white) drop-shadow(-.5px 0 0 white) drop-shadow(0 .5px 0 white) drop-shadow(0 -.5px 0 white)"}}
                 onError={()=>setImgErr(true)}/>
           }
         </div>
