@@ -4220,22 +4220,27 @@ const TONY_AVATAR = "https://zxqzxlbhuepuflpatbuh.supabase.co/storage/v1/object/
 
 async function fetchTonyInsight(prompt:string):Promise<string>{
   const apiKey=(typeof import.meta!=="undefined"&&(import.meta as any).env?.VITE_GEMINI_KEY)||"";
-  if(!apiKey)return"[Tony.ai offline -- add VITE_GEMINI_KEY to Vercel env vars]";
+  if(!apiKey)throw new Error("No VITE_GEMINI_KEY env var set");
+  // Bake the system prompt into the user message — compatible with all Gemini models
+  const fullPrompt="You are Tony, a sharp, gritty golf betting savant. Deliver exactly two picks: a Winner Pick (best bet to win the event with American odds) and a Matchup Pick (best H2H value with American odds). Maximum two sentences. No greetings, no sign-off. Be punchy.\n\n"+prompt;
   const res=await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+apiKey,
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+apiKey,
     {
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
-        system_instruction:{parts:[{text:"You are Tony, a sharp, gritty golf betting savant. Analyze the event field odds and head-to-head matchup to deliver exactly two picks: a Winner Pick (best bet to win the event) and a Matchup Pick (best H2H value). Show the American odds for each pick. Maximum two sentences total. No greetings, no sign-off. Be punchy and data-driven."}]},
-        contents:[{parts:[{text:prompt}]}],
-        generationConfig:{maxOutputTokens:110,temperature:0.7}
+        contents:[{role:"user",parts:[{text:fullPrompt}]}],
+        generationConfig:{maxOutputTokens:120,temperature:0.7}
       })
     }
   );
-  if(!res.ok)throw new Error("Gemini "+res.status);
+  if(!res.ok){
+    let detail="";
+    try{const j=await res.json();detail=j?.error?.message||"";}catch(_:any){}
+    throw new Error("HTTP "+res.status+(detail?" -- "+detail:""));
+  }
   const data=await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text||"";
+  return(data.candidates?.[0]?.content?.parts?.[0]?.text||"").trim();
 }
 
 // Auto-select the most interesting H2H from the field:
@@ -4314,8 +4319,9 @@ function TonyInsight({ranked,selEventId,selEvent}:any){
             "event_id,h2h_key,insight_date"
           );
         }catch{}
-      }catch(_:any){
-        setInsight("Tony's off the grid right now. Check back in a bit.");
+      }catch(e:any){
+        const msg=(e?.message||String(e)||"unknown").slice(0,200);
+        setInsight("Tony.ai error: "+msg);
       }finally{
         setLoading(false);
       }
@@ -4344,7 +4350,7 @@ function TonyInsight({ranked,selEventId,selEvent}:any){
             ?<div style={{width:52,height:52,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🎯</div>
             :<img src={TONY_AVATAR} alt="Tony.ai"
                 style={{width:52,height:52,objectFit:"contain",display:"block",
-                  filter:"drop-shadow(0 0 2px white) drop-shadow(0 0 2px white)"}}
+                  filter:"drop-shadow(1px 0 0 white) drop-shadow(-1px 0 0 white) drop-shadow(0 1px 0 white) drop-shadow(0 -1px 0 white)"}}
                 onError={()=>setImgErr(true)}/>
           }
         </div>
