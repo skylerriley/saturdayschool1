@@ -3236,6 +3236,12 @@ function calcSeasonLeaderData(golfers:any[],leaderboard:any[],events:any[],seaso
     stats[g.golfer_id]={rounds:0,totalPts:0,wins:0,seconds:0,earned:0,best:0,worst:999,allPts:[]};
   });
 
+  // Sort deduped oldest-first so allPts[0] = earliest round, allPts[last] = most recent
+  // This ensures firstHalf/secondHalf splits and trend calculations are chronologically correct
+  const evDateMap2:Record<number,number>={};
+  events.forEach((e:any)=>{evDateMap2[e.event_id]=new Date(e.date+"T00:00:00").getTime();});
+  deduped.sort((a:any,b:any)=>(evDateMap2[a.event_id]||0)-(evDateMap2[b.event_id]||0));
+
   deduped.filter((r:any)=>!golfers.find((g:any)=>g.golfer_id===r.golfer_id)?.is_guest).forEach((r:any)=>{
     if(!stats[r.golfer_id])return;
     const s=stats[r.golfer_id];
@@ -3301,7 +3307,7 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
   const selGData=selG?seasonData.find((d:any)=>d.golfer.golfer_id===selG.golfer_id):null;
   // Build per-round data sorted by event date
   const golferRounds=selG?seasonEvents
-    .sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime())
+    .sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime())
     .map((ev:any)=>{
       const entry=leaderboard.filter((r:any)=>r.golfer_id===selG.golfer_id&&r.event_id===ev.event_id).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)[0];
       if(!entry)return null;
@@ -4902,7 +4908,8 @@ function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers,season
   };
 
   // Running avg line for trend arrow
-  const trend=rounds.length>2?(rounds[rounds.length-1].pts+rounds[rounds.length-2].pts)/2 - (rounds[0].pts+rounds[1].pts)/2:0;
+  // rounds is oldest-first; recent = last 2 entries, early = first 2 entries
+  const trend=rounds.length>2?(rounds[rounds.length-1].pts+rounds[rounds.length-2].pts)/2-(rounds[0].pts+rounds[1].pts)/2:0;
 
   // -- Course breakdown --
   const courseBreakdown=(()=>{
@@ -5061,7 +5068,7 @@ function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers,season
             </tr>
           </thead>
           <tbody>
-            {rounds.map((r:any,i:number)=>{
+            {[...rounds].reverse().map((r:any,i:number)=>{
               const dt=new Date(r.date+"T00:00:00");
               const shortDate=dt.toLocaleDateString("en-US",{month:"short",day:"numeric"});
               const courseShort=r.course.replace(" Golf Club","").replace(" GC","").replace("Golf Course","").split(" ").slice(0,2).join(" ");
