@@ -4218,11 +4218,26 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
 const TONY_AVATAR = "https://zxqzxlbhuepuflpatbuh.supabase.co/storage/v1/object/public/assets/tony2.png";
 // To use self-hosted: const TONY_AVATAR = "/tony.jpg";
 
-async function fetchTonyInsight(prompt:string):Promise<string>{
+async function fetchTonyInsight(prompt:string):Promise<{winner:string,winnerOdds:string,matchup:string,matchupOdds:string,reasoning:string}|null>{
   const apiKey=(typeof import.meta!=="undefined"&&(import.meta as any).env?.VITE_GEMINI_KEY)||"";
   if(!apiKey)throw new Error("No VITE_GEMINI_KEY env var set");
-  // Bake the system prompt into the user message — compatible with all Gemini models
-  const fullPrompt="You are Tony, a sharp, gritty golf betting savant. Deliver exactly two picks: a Winner Pick (best bet to win the event with American odds) and a Matchup Pick (best H2H value with American odds). Do not always pick the favorite. Maximum two sentences. No greetings, no sign-off. Be punchy.\n\n"+prompt;
+  // Ask for strict JSON — no thinking, no freeform text, no truncation risk
+  const fullPrompt=[
+    "You are Tony — mid-level mob boss turned golf bookie. You talk like Tony Soprano: blunt, street-smart, a little menacing, occasionally self-aware. You drop references to loyalty, respect, numbers, and the life. No greetings, no sign-off. Never say you are an AI.",
+    "Analyze the Stableford golf data. Do NOT always pick the favorite — find value. Low std dev means reliable, high trend means hot, course adj means they own this track.",
+    "Your reasoning must sound like Tony Soprano actually said it — rough edges, mob flavor, but always grounded in the data. One or two sentences max.",
+    "Return ONLY valid JSON, no markdown, no explanation outside the JSON.",
+    "Format exactly: {",
+    '  "winner": "First Last",',
+    '  "winnerOdds": "+210",',
+    '  "matchup": "First Last",',
+    '  "matchupOdds": "-130",',
+    '  "matchupOpponent": "First Last",',
+    '  "reasoning": "Tony Soprano voice, 1-2 sentences, data-driven."',
+    "}",
+    "",
+    prompt
+  ].join("\n");
   const res=await fetch(
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+apiKey,
     {
@@ -4230,7 +4245,12 @@ async function fetchTonyInsight(prompt:string):Promise<string>{
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
         contents:[{role:"user",parts:[{text:fullPrompt}]}],
-        generationConfig:{maxOutputTokens:300,temperature:0.7}
+        generationConfig:{
+          maxOutputTokens:400,
+          temperature:0.85,
+          responseMimeType:"application/json",
+          thinkingConfig:{thinkingBudget:0}
+        }
       })
     }
   );
@@ -4240,7 +4260,17 @@ async function fetchTonyInsight(prompt:string):Promise<string>{
     throw new Error("HTTP "+res.status+(detail?" -- "+detail:""));
   }
   const data=await res.json();
-  return(data.candidates?.[0]?.content?.parts?.[0]?.text||"").trim();
+  const raw=(data.candidates?.[0]?.content?.parts?.[0]?.text||"").trim();
+  try{
+    const clean=raw.replace(/^```json/,"").replace(/^```/,"").replace(/```$/,"").trim();
+    return JSON.parse(clean);
+  }catch(_:any){
+    // If JSON parse fails, extract fields with regex fallback
+    const g=(key:string)=>{const m=raw.match(new RegExp('"'+key+'"\\s*:\\s*"([^"]+)"'));return m?m[1]:"";};
+    const winner=g("winner"),winnerOdds=g("winnerOdds"),matchup=g("matchup"),matchupOdds=g("matchupOdds"),reasoning=g("reasoning");
+    if(winner)return{winner,winnerOdds,matchup,matchupOdds,reasoning};
+    throw new Error("Bad JSON: "+raw.slice(0,80));
+  }
 }
 
 // Auto-select the most interesting H2H from the field:
@@ -4274,24 +4304,27 @@ function pickBestH2H(ranked:any[]):{nameA:string,oddsA:string,nameB:string,oddsB
 }
 
 function TonyInsight({ranked,selEventId,selEvent}:any){
-  const [insight,setInsight]=useState<string|null>(null);
+  type TonyPick={winner:string,winnerOdds:string,matchup:string,matchupOdds:string,matchupOpponent?:string,reasoning:string};
+  const [pick,setPick]=useState<TonyPick|null>(null);
+  const [errMsg,setErrMsg]=useState<string|null>(null);
   const [loading,setLoading]=useState(false);
   const [imgErr,setImgErr]=useState(false);
 
   const today=new Date().toISOString().slice(0,10);
-  // h2h_key is always "field" here -- Tony auto-picks the best matchup
   const cacheKey="field";
 
   const buildPrompt=():string=>{
     const eventLabel=selEvent?(selEvent.course_name+" "+selEvent.date):"Unknown event";
-    const fieldLines=ranked.slice(0,5).map((r:any)=>
-      r.golfer.first_name+" "+r.golfer.last_name+": "+toAmericanOdds(r.prob)+" (proj "+r.proj+"pts, "+r.rounds+"rds)"
+    const fieldLines=ranked.map((r:any)=>
+      r.golfer.first_name+" "+r.golfer.last_name+": "+toAmericanOdds(r.prob)
+      +" (proj "+r.proj+"pts, "+r.rounds+"rds, stddev "+r.sd
+      +(r.trend>0.05?" hot trend":r.trend<-0.05?" cooling":"")+")"
     ).join("; ");
     const h2h=pickBestH2H(ranked);
     const h2hLine=h2h
-      ?"Best matchup: "+h2h.nameA+" "+h2h.oddsA+" vs "+h2h.nameB+" "+h2h.oddsB+", spread "+h2h.spread
+      ?"Tightest matchup: "+h2h.nameA+" "+h2h.oddsA+" vs "+h2h.nameB+" "+h2h.oddsB+", spread "+h2h.spread
       :"";
-    return "Event: "+eventLabel+". Field odds: "+fieldLines+". "+h2hLine+". Give your Winner Pick and Matchup Pick with odds.";
+    return "Event: "+eventLabel+". All golfers: "+fieldLines+". "+h2hLine;
   };
 
   useEffect(()=>{
@@ -4299,29 +4332,31 @@ function TonyInsight({ranked,selEventId,selEvent}:any){
     const eid=parseInt(selEventId);
     if(!eid)return;
 
-    // 1. Check Supabase cache first
     const checkAndGenerate=async()=>{
+      // 1. Supabase cache
       try{
         const q="&event_id=eq."+eid+"&h2h_key=eq."+cacheKey+"&insight_date=eq."+today;
-        const rows=await supabase.from("tony_insights").select("insight_text,insight_date",q);
-        if(rows&&rows[0]){setInsight(rows[0].insight_text);return;}
-      }catch{}
+        const rows=await supabase.from("tony_insights").select("insight_text",q);
+        if(rows&&rows[0]){
+          try{setPick(JSON.parse(rows[0].insight_text));return;}catch(_:any){}
+        }
+      }catch(_:any){}
 
-      // 2. Not cached -- call Gemini
-      setLoading(true);
+      // 2. Call Gemini
+      setLoading(true); setErrMsg(null);
       try{
-        const text=await fetchTonyInsight(buildPrompt());
-        setInsight(text);
-        // 3. Persist to Supabase (upsert in case of race)
+        const result=await fetchTonyInsight(buildPrompt());
+        if(!result)throw new Error("Empty response");
+        setPick(result);
+        // 3. Cache as JSON string
         try{
           await supabase.from("tony_insights").upsert(
-            {event_id:eid,h2h_key:cacheKey,insight_date:today,insight_text:text},
+            {event_id:eid,h2h_key:cacheKey,insight_date:today,insight_text:JSON.stringify(result)},
             "event_id,h2h_key,insight_date"
           );
-        }catch{}
+        }catch(_:any){}
       }catch(e:any){
-        const msg=(e?.message||String(e)||"unknown").slice(0,200);
-        setInsight("Tony.ai error: "+msg);
+        setErrMsg((e?.message||String(e)).slice(0,200));
       }finally{
         setLoading(false);
       }
@@ -4332,17 +4367,10 @@ function TonyInsight({ranked,selEventId,selEvent}:any){
 
   if(!ranked.length)return null;
 
-  // Show the auto-selected matchup beneath the insight for context
-  const bestH2H=pickBestH2H(ranked);
+  const isFav=(odds:string)=>odds.startsWith("-");
 
   return(
-    <div style={{
-      marginTop:18,
-      background:"linear-gradient(135deg,#0f1f14,#1a2f1e)",
-      borderRadius:"var(--radius-md)",
-      border:"1.5px solid rgba(196,120,0,0.4)",
-      overflow:"hidden"
-    }}>
+    <div style={{marginTop:18,background:"linear-gradient(135deg,#0f1f14,#1a2f1e)",borderRadius:"var(--radius-md)",border:"1.5px solid rgba(196,120,0,0.4)",overflow:"hidden"}}>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid rgba(196,120,0,0.2)",background:"rgba(0,0,0,0.3)"}}>
         <div style={{flexShrink:0}}>
@@ -4355,44 +4383,71 @@ function TonyInsight({ranked,selEventId,selEvent}:any){
           }
         </div>
         <div>
-          <div style={{fontSize:14,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.03em"}}>TONY.AI</div>
+          <div style={{fontSize:16,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.05em"}}>TONY.AI</div>
           
         </div>
-        <div style={{marginLeft:"auto",fontSize:10,color:"rgba(255,255,255,0.3)",textAlign:"right"}}>
-          {today}<br/>cached daily
+        <div style={{marginLeft:"auto",fontSize:10,color:"rgba(255,255,255,0.28)",textAlign:"right"}}>
+          {today}<br/>
         </div>
       </div>
 
-      {/* Insight text */}
-      <div style={{padding:"14px 16px",minHeight:56}}>
-        {loading&&(
-          <div style={{display:"flex",alignItems:"center",gap:10,color:"rgba(255,255,255,0.5)",fontSize:13}}>
-            <div style={{width:14,height:14,border:"2px solid rgba(196,120,0,0.4)",borderTopColor:"var(--gold-400)",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
-            Analyzing the field...
-          </div>
-        )}
-        {!loading&&insight&&(
-          <div style={{fontSize:14,color:"rgba(255,255,255,0.88)",lineHeight:1.65}}>
-            {insight.split("\n").filter(Boolean).map((line:string,i:number)=>(
-              <p key={i} style={{margin:i===0?"0":"8px 0 0"}}>{line}</p>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Auto-selected matchup context */}
-      {bestH2H&&!loading&&(
-        <div style={{padding:"8px 16px 12px",display:"flex",gap:16,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",letterSpacing:"0.06em",textTransform:"uppercase",paddingTop:2,flexShrink:0}}>Best matchup</div>
-          <div style={{fontSize:13,color:"rgba(255,255,255,0.7)"}}>
-            <span style={{fontWeight:700,color:"var(--gold-300)"}}>{bestH2H.nameA}</span>
-            <span style={{color:"rgba(255,255,255,0.45)",margin:"0 4px"}}>{bestH2H.oddsA}</span>
-            <span style={{color:"rgba(255,255,255,0.3)"}}>vs</span>
-            <span style={{fontWeight:700,color:"var(--green-300)",margin:"0 4px"}}>{bestH2H.nameB}</span>
-            <span style={{color:"rgba(255,255,255,0.45)"}}>{bestH2H.oddsB}</span>
-            <span style={{color:"rgba(255,255,255,0.3)",marginLeft:8,fontSize:11}}>{bestH2H.spread}</span>
-          </div>
+      {/* Loading */}
+      {loading&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"16px",color:"rgba(255,255,255,0.5)",fontSize:13}}>
+          <div style={{width:14,height:14,border:"2px solid rgba(196,120,0,0.4)",borderTopColor:"var(--gold-400)",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
+          Analyzing the field...
         </div>
+      )}
+
+      {/* Error */}
+      {!loading&&errMsg&&(
+        <div style={{padding:"12px 16px",fontSize:12,color:"#f87171",fontFamily:"monospace",background:"rgba(255,0,0,0.07)"}}>
+          Tony.ai error: {errMsg}
+        </div>
+      )}
+
+      {/* Picks */}
+      {!loading&&pick&&(
+        <>
+          {/* Pick rows */}
+          <div style={{padding:"12px 16px 0"}}>
+            {/* Row 1 — Overall winner */}
+            <div style={{display:"grid",gridTemplateColumns:"80px 1fr auto",alignItems:"center",gap:8,padding:"10px 12px",background:"rgba(196,120,0,0.1)",borderRadius:8,marginBottom:8,border:"1px solid rgba(196,120,0,0.25)"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"var(--gold-400)",letterSpacing:"0.08em",textTransform:"uppercase"}}>
+                Overall
+              </div>
+              <div style={{fontSize:15,fontWeight:700,color:"white"}}>{pick.winner}</div>
+              <div style={{
+                fontSize:16,fontWeight:800,
+                color:isFav(pick.winnerOdds)?"var(--gold-300)":"var(--green-300)",
+                fontVariantNumeric:"tabular-nums",textAlign:"right"
+              }}>{pick.winnerOdds}</div>
+            </div>
+            {/* Row 2 — Matchup pick */}
+            <div style={{display:"grid",gridTemplateColumns:"80px 1fr auto",alignItems:"center",gap:8,padding:"10px 12px",background:"rgba(26,115,64,0.12)",borderRadius:8,marginBottom:12,border:"1px solid rgba(26,115,64,0.3)"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"var(--green-400)",letterSpacing:"0.08em",textTransform:"uppercase"}}>
+                H2H Matchup
+              </div>
+              <div>
+                <div style={{fontSize:15,fontWeight:700,color:"white"}}>{pick.matchup}</div>
+                {pick.matchupOpponent&&(
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:2,fontStyle:"italic"}}>
+                    vs. {pick.matchupOpponent}
+                  </div>
+                )}
+              </div>
+              <div style={{
+                fontSize:16,fontWeight:800,
+                color:isFav(pick.matchupOdds)?"var(--gold-300)":"var(--green-300)",
+                fontVariantNumeric:"tabular-nums",textAlign:"right"
+              }}>{pick.matchupOdds}</div>
+            </div>
+          </div>
+          {/* Reasoning */}
+          <div style={{padding:"0 16px 14px",fontSize:13,color:"rgba(255,255,255,0.7)",lineHeight:1.6,fontStyle:"italic",borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:10}}>
+            {pick.reasoning}
+          </div>
+        </>
       )}
     </div>
   );
