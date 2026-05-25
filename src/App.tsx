@@ -4230,7 +4230,7 @@ async function fetchTonyInsight(prompt:string):Promise<string>{
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
         contents:[{role:"user",parts:[{text:fullPrompt}]}],
-        generationConfig:{maxOutputTokens:120,temperature:0.7}
+        generationConfig:{maxOutputTokens:300,temperature:0.7}
       })
     }
   );
