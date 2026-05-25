@@ -4222,7 +4222,7 @@ async function fetchTonyInsight(prompt:string):Promise<string>{
   const apiKey=(typeof import.meta!=="undefined"&&(import.meta as any).env?.VITE_GEMINI_KEY)||"";
   if(!apiKey)throw new Error("No VITE_GEMINI_KEY env var set");
   // Bake the system prompt into the user message — compatible with all Gemini models
-  const fullPrompt="You are Tony, a sharp, gritty golf betting savant. Deliver exactly two picks: a Winner Pick (best bet to win the event with American odds) and a Matchup Pick (best H2H value with American odds). Maximum two sentences. No greetings, no sign-off. Be punchy.\n\n"+prompt;
+  const fullPrompt="You are Tony, a sharp, gritty golf betting savant. Deliver exactly two picks: a Winner Pick (best bet to win the event with American odds) and a Matchup Pick (best H2H value with American odds). Do not always pick the favorite. Maximum two sentences. No greetings, no sign-off. Be punchy.\n\n"+prompt;
   const res=await fetch(
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+apiKey,
     {
