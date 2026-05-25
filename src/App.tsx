@@ -4516,21 +4516,21 @@ function TonyInsight({ranked,selEventId,selEvent}:any){
   return(
     <div style={{marginTop:18,background:"linear-gradient(135deg,#0f1f14,#1a2f1e)",borderRadius:"var(--radius-md)",border:"1.5px solid rgba(196,120,0,0.4)",overflow:"hidden"}}>
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid rgba(196,120,0,0.2)",background:"rgba(0,0,0,0.3)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"0px 14px",borderBottom:"1px solid rgba(196,120,0,0.2)",background:"rgba(0,0,0,0.3)"}}>
         <div style={{flexShrink:0}}>
           {imgErr
-            ?<div style={{width:80,height:80,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🎯</div>
+            ?<div style={{width:110,height:80,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🎯</div>
             :<img src={TONY_AVATAR} alt="Tony.ai"
-                style={{width:80,height:80,objectFit:"contain",display:"block",
-                  filter:"drop-shadow(.5px 0 0 white) drop-shadow(-.5px 0 0 white) drop-shadow(0 .5px 0 white) drop-shadow(0 -.5px 0 white)"}}
+                style={{width:110,height:80,objectFit:"contain",display:"block"
+                  }}
                 onError={()=>setImgErr(true)}/>
           }
         </div>
         <div>
-          <div style={{fontSize:16,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.05em"}}>TONY.AI</div>
+          <div style={{fontSize:16,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.05em",marginLeft:-15}}>TONY.AI</div>
           
         </div>
-        <div style={{marginLeft:"auto",fontSize:10,color:"rgba(255,255,255,0.28)",textAlign:"right"}}>
+        <div style={{marginLeft:"auto",fontSize:13,color:"rgba(255,255,255,0.28)",textAlign:"right"}}>
           {today}<br/>
         </div>
       </div>
