@@ -388,6 +388,9 @@ const CSS = `
   /* skins warning */
   .skins-warning{background:var(--gold-50);border:1.5px solid var(--gold-300);border-radius:var(--radius-md);padding:12px 14px;font-size:14px;color:var(--gold-800);margin-bottom:12px;display:flex;gap:9px;align-items:flex-start;}
   @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes pinShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+  .pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--green-600);transition:background 0.15s;}
+  .pin-dot.filled{background:var(--green-600);}
   @keyframes livePulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.3;transform:scale(0.75);}}
   .live-dot{display:inline-block;width:8px;height:8px;background:#e84040;border-radius:50%;margin-right:5px;animation:livePulse 1.3s ease-in-out infinite;vertical-align:middle;}
   .lb-live-row{display:grid;grid-template-columns:44px 1fr 56px 52px;align-items:center;padding:12px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
@@ -547,6 +550,11 @@ export default function App(){
   const [dbError,setDbError]=useState<string|null>(null);
   const [activeTab,setActiveTab]=useState("leaderboard");
   const [adminMode,setAdminMode]=useState(false);
+  const [showPinModal,setShowPinModal]=useState(false);
+  const [pinInput,setPinInput]=useState("");
+  const [pinError,setPinError]=useState(false);
+  const [pinShake,setPinShake]=useState(false);
+  const [pinAttempts,setPinAttempts]=useState(0);
   const [successMsg,setSuccessMsg]=useState("");
   const [errorMsg,setErrorMsg]=useState("");
 
@@ -939,7 +947,23 @@ export default function App(){
         <header className="app-header">
           <div className="header-top">
             <div><div className="brand-name">Saturday School</div><div className="brand-tagline">Stableford Golf League</div></div>
-            <button className="header-badge" style={{background:adminMode?"#c02020":undefined}} onClick={()=>setAdminMode(v=>!v)}>{adminMode?"Exit Admin":"Admin"}</button>
+            <button
+              className="header-badge"
+              style={{background:adminMode?"#c02020":undefined}}
+              onClick={()=>{
+                if(adminMode){
+                  setAdminMode(false);
+                  sessionStorage.removeItem("ss_admin");
+                } else {
+                  if(sessionStorage.getItem("ss_admin")==="1"){
+                    setAdminMode(true);
+                  } else {
+                    setPinInput("");setPinError(false);setPinShake(false);
+                    setShowPinModal(true);
+                  }
+                }
+              }}
+            >{adminMode?"Exit Admin":"Admin"}</button>
           </div>
           <nav className="nav-tabs">{tabs.map(t=><button key={t.id} className={`nav-tab${activeTab===t.id?" active":""}`} onClick={()=>setActiveTab(t.id)}>{t.label}</button>)}</nav>
         </header>
@@ -952,6 +976,95 @@ export default function App(){
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} charityDonations={charityDonations} setCharityDonations={setCharityDB} showSuccess={showSuccess}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores}/>}
         </main>
+
+        {/* PIN Modal */}
+        {showPinModal&&(()=>{
+          const PINS=((typeof import.meta!=="undefined"&&(import.meta as any).env?.VITE_ADMIN_PINS)||"").toString().split(",").map((p:string)=>p.trim()).filter(Boolean);
+          const pinLen=(PINS[0]||"000000").length;
+          const digits=pinInput.length;
+          const handleDigit=(d:string)=>{
+            if(pinInput.length>=pinLen)return;
+            const next=pinInput+d;
+            setPinInput(next);
+            if(next.length===pinLen){
+              if(PINS.includes(next)){
+                setAdminMode(true);
+                sessionStorage.setItem("ss_admin","1");
+                setShowPinModal(false);
+                setPinInput("");
+                setPinAttempts(0);
+                setPinError(false);
+              } else {
+                const att=pinAttempts+1;
+                setPinAttempts(att);
+                setPinError(true);
+                setPinShake(true);
+                setTimeout(()=>{setPinInput("");setPinShake(false);},500);
+              }
+            }
+          };
+          const handleBack=()=>{if(pinInput.length>0){setPinInput(p=>p.slice(0,-1));setPinError(false);}};
+          return(
+            <div
+              style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+              onClick={()=>{setShowPinModal(false);setPinInput("");setPinError(false);}}
+            >
+              <div
+                style={{background:"var(--surface)",borderRadius:"var(--radius-lg) var(--radius-lg) 0 0",padding:"28px 24px 40px",width:"100%",maxWidth:360}}
+                onClick={(e:any)=>e.stopPropagation()}
+              >
+                <div style={{textAlign:"center",marginBottom:22}}>
+                  <div style={{fontSize:18,fontWeight:700,color:"var(--green-800)",marginBottom:4}}>Admin Access</div>
+                  <div style={{fontSize:13,color:"var(--text-muted)"}}>Enter your PIN to continue</div>
+                </div>
+
+                {/* PIN dots */}
+                <div style={{
+                  display:"flex",justifyContent:"center",gap:14,marginBottom:16,
+                  animation:pinShake?"pinShake 0.4s ease":undefined
+                }}>
+                  {Array.from({length:pinLen},(_,i)=>(
+                    <div key={i} className={"pin-dot"+(i<digits?" filled":"")}/>
+                  ))}
+                </div>
+
+                {pinError&&(
+                  <div style={{textAlign:"center",fontSize:13,color:"var(--red-600)",fontWeight:600,marginBottom:10}}>
+                    Incorrect PIN{pinAttempts>1?" ("+pinAttempts+" attempts)":""}
+                  </div>
+                )}
+
+                {/* Numpad */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+                  {["1","2","3","4","5","6","7","8","9","","0","back"].map((d,i)=>(
+                    <button
+                      key={i}
+                      onClick={()=>d==="back"?handleBack():d?handleDigit(d):undefined}
+                      style={{
+                        padding:"16px 0",
+                        fontSize:d==="back"?20:22,
+                        fontWeight:600,
+                        borderRadius:"var(--radius-md)",
+                        border:"1px solid var(--border)",
+                        background:d==="back"?"var(--surface2)":d===""?"transparent":"var(--surface)",
+                        color:d==="back"?"var(--text-muted)":"var(--text-primary)",
+                        cursor:d?"pointer":"default",
+                        visibility:d===""?"hidden":"visible",
+                        boxShadow:d&&d!=="back"?"var(--shadow-sm)":"none",
+                      }}
+                    >{d==="back"?"⌫":d}</button>
+                  ))}
+                </div>
+
+                <button
+                  className="btn btn-outline btn-full"
+                  style={{fontSize:15}}
+                  onClick={()=>{setShowPinModal(false);setPinInput("");setPinError(false);}}
+                >Cancel</button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </>
   );
