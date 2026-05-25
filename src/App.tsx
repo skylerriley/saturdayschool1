@@ -1853,7 +1853,7 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
       {/* 2a: Season-filtered donations view */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
         <div className="card-title">Charity by Season</div>
-        <select style={{fontSize:13,padding:"4px 8px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-sm)",fontFamily:"DM Sans,sans-serif",color:"var(--text-primary)"}} value={donationSeason} onChange={e=>setDonationSeason(e.target.value==="all"?"all":parseInt(e.target.value))}>
+        <select style={{fontSize:13,padding:"4px 8px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-sm)",fontFamily:"DM Sans,sans-serif"}} value={donationSeason} onChange={e=>setDonationSeason(e.target.value==="all"?"all":parseInt(e.target.value))}>
           <option value="all">All Seasons</option>
           {allSeasonsList.map(y=><option key={y} value={y}>{y}</option>)}
         </select>
@@ -3155,7 +3155,7 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
 
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
         <div className="card-title">All Events</div>
-        <select style={{fontSize:13,padding:"4px 8px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-sm)",fontFamily:"DM Sans,sans-serif",color:"var(--text-primary)"}} value={filterSeason} onChange={e=>setFilterSeason(e.target.value==="all"?"all":parseInt(e.target.value))}>
+        <select style={{fontSize:13,padding:"4px 8px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-sm)",fontFamily:"DM Sans,sans-serif"}} value={filterSeason} onChange={e=>setFilterSeason(e.target.value==="all"?"all":parseInt(e.target.value))}>
           <option value="all">All Seasons</option>
           {allSeasonsList.map(y=><option key={y} value={y}>{y}</option>)}
         </select>
