@@ -2479,6 +2479,31 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       <button className="btn btn-primary btn-full" disabled={!selEventId||!canSubmit} onClick={handleSubmitAll} style={{marginTop:4}}>
         Submit {scorers.filter(s=>s.golferId&&s.courseId).length>1?`${scorers.filter(s=>s.golferId&&s.courseId).length} Scores`:"Score"}
       </button>
+
+      {/* Finalize Event — shown once the event is In-Progress and has scored entries */}
+      {selEvent&&(selEvent.status==="In-Progress"||selEvent.status==="Pairings Set")&&
+       leaderboard.filter((r:any)=>r.event_id===selEvent.event_id).length>0&&(
+        <div style={{marginTop:24,borderTop:"2px solid var(--border)",paddingTop:18}}>
+          <div style={{fontSize:13,fontWeight:700,color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Finalize Event</div>
+          <p style={{fontSize:14,color:"var(--text-secondary)",marginBottom:14,lineHeight:1.5}}>
+            All scores entered? Mark this event <strong>Completed</strong> to lock it in, calculate payouts, and move it off the active scoring list.
+            <br/><span style={{fontSize:13,color:"var(--text-muted)"}}>{leaderboard.filter((r:any)=>r.event_id===selEvent.event_id).length} score{leaderboard.filter((r:any)=>r.event_id===selEvent.event_id).length!==1?"s":""} recorded.</span>
+          </p>
+          <button
+            className="btn btn-full"
+            style={{background:"var(--green-800)",color:"white",fontWeight:700,fontSize:16,padding:"14px",borderRadius:"var(--radius-md)",border:"none",cursor:"pointer",letterSpacing:"0.02em"}}
+            onClick={()=>{
+              if(!window.confirm("Finalize \""+formatDate(selEvent.date)+" - "+selEvent.course_name+"\"? This marks it Completed and locks scoring."))return;
+              setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Completed"}:e));
+              setScoreEventId("");
+              setScorers([emptyScorer()]);
+              showSuccess("Event finalized and marked Completed!");
+            }}
+          >
+            ✓ Finalize Event
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -3276,7 +3301,7 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
   const selGData=selG?seasonData.find((d:any)=>d.golfer.golfer_id===selG.golfer_id):null;
   // Build per-round data sorted by event date
   const golferRounds=selG?seasonEvents
-    .sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime())
+    .sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime())
     .map((ev:any)=>{
       const entry=leaderboard.filter((r:any)=>r.golfer_id===selG.golfer_id&&r.event_id===ev.event_id).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)[0];
       if(!entry)return null;
@@ -3294,7 +3319,7 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
       return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned};
     }).filter(Boolean):[];
 
-  const SUBTABS=[{id:"overview",label:"Overview"},{id:"odds",label:"Odds"},{id:"consistency",label:"Consistency"},{id:"golfer",label:"My Rounds"},{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"}];
+  const SUBTABS=[{id:"overview",label:"Overview"},{id:"odds",label:"Odds"},{id:"golfer",label:"My Rounds"},{id:"consistency",label:"Consistency"},{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"}];
 
   return(
     <div>
@@ -3312,7 +3337,7 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
       </div>
 
       {subTab==="overview"&&<SeasonOverview seasonData={seasonData} seasonEvents={seasonEvents} season={selSeason} leaderboard={leaderboard} golfers={golfers}/>}
-      {subTab==="course"&&<CourseChart courseAvgs={courseAvgs}/>}
+      {subTab==="course"&&<CourseChart courseAvgs={courseAvgs} holeScores={holeScores} events={events} courses={courses} leaderboard={leaderboard} golfers={golfers}/>}
       {subTab==="consistency"&&<ConsistencyTable seasonData={seasonData}/>}
       {subTab==="scatter"&&<ScatterChart scatterData={scatterData}/>}
       {subTab==="golfer"&&(
@@ -3326,7 +3351,7 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
               ))}
             </select>
           </div>
-          {selG&&golferRounds.length>0&&<GolferHistoryChart golfer={selG} rounds={golferRounds} seasonData={selGData}/>}
+          {selG&&golferRounds.length>0&&<GolferHistoryChart golfer={selG} rounds={golferRounds} seasonData={selGData} leaderboard={leaderboard} golfers={golfers} seasonEvents={seasonEvents}/>}
           {selG&&golferRounds.length===0&&<div className="empty-state"><div className="empty-text">No rounds recorded this season</div></div>}
         </>
       )}
@@ -4654,7 +4679,7 @@ function ConsistencyTable({seasonData}:any){
   );
 }
 
-function CourseChart({courseAvgs}:any){
+function CourseChart({courseAvgs,holeScores,events,courses,leaderboard,golfers}:any){
   const config = {
     type:"bar" as const,
     data:{
@@ -4674,15 +4699,142 @@ function CourseChart({courseAvgs}:any){
       }
     }
   };
+
+  // Build per-hole averages across all rounds for each course
+  const holeAvgByCourse=(()=>{
+    const map:Record<string,Record<number,number[]>>={};
+    if(!holeScores||!events||!leaderboard)return {} as Record<string,{hole:number,avgPts:number,rounds:number}[]>;
+    // Map event_id -> course_name from events
+    const evCourseMap:Record<number,string>={};
+    events.forEach((e:any)=>{evCourseMap[e.event_id]=(e.course_name||'').trim();});
+    // Map summary_id -> event_id from ALL leaderboard entries
+    const summaryEvMap:Record<number,number>={};
+    leaderboard.forEach((r:any)=>{summaryEvMap[r.summary_id]=r.event_id;});
+    // Also map course_id -> course_name via courses table so we can
+    // match tee box variants (blue/white/black) all to the same course name
+    const courseIdToName:Record<number,string>={};
+    if(courses){
+      courses.forEach((c:any)=>{courseIdToName[c.course_id]=c.course_name;});
+    }
+    holeScores.forEach((h:any)=>{
+      // Primary: look up via leaderboard summary_id -> event_id -> course_name
+      let course:string|undefined=undefined;
+      const eid=summaryEvMap[h.summary_id];
+      if(eid)course=evCourseMap[eid];
+      // Fallback: if summary_id didn't match (temp vs real ID mismatch),
+      // try finding a leaderboard entry with a matching golfer+event via
+      // the hole's summary_id being close to any leaderboard summary_id
+      // (last resort: skip, don't invent data)
+      if(!course)return;
+      if(!map[course])map[course]={};
+      if(!map[course][h.hole_number])map[course][h.hole_number]=[];
+      if(h.stableford_points!=null)map[course][h.hole_number].push(h.stableford_points);
+    });
+    const result:Record<string,{hole:number,avgPts:number,rounds:number}[]>={};
+    Object.entries(map).forEach(([course,holes])=>{
+      result[course]=Array.from({length:18},(_,i)=>{
+        const arr=holes[i+1]||[];
+        return{hole:i+1,avgPts:arr.length?arr.reduce((a:number,b:number)=>a+b,0)/arr.length:NaN,rounds:arr.length};
+      });
+    });
+    return result;
+  })();
+
   return(
     <div>
       <div className="card-title" style={{marginBottom:4}}>Stableford Averages by Course</div>
       <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:12}}>Field average stableford points per course this season.</p>
       {courseAvgs.map((c:any)=><div key={c.name} className="info-row"><span className="info-key">{c.name}</span><span className="info-val">{c.count>0?(c.avg.toFixed(1)+" pts avg ("+c.count+" rounds)"):"No data"}</span></div>)}
       <ChartCanvas config={config} deps={[courseAvgs.length,courseAvgs.map((c:any)=>c.avg).join()]} height={210} style={{marginTop:16}}/>
+
+      {/* Hole-by-hole averages per course */}
+      <div style={{marginTop:20}}>
+        <div className="card-title" style={{marginBottom:4}}>Hole-by-Hole Scoring Average</div>
+        <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:12}}>League avg Stableford pts per hole. Requires hole-by-hole entry.</p>
+        {courseAvgs.map((c:any)=>{
+          const courseHoles=holeAvgByCourse[c.name];
+          const hasSomeData=courseHoles&&courseHoles.some((h:any)=>h.rounds>0);
+          const courseRec=courses?courses.find((cr:any)=>cr.course_name===c.name):null;
+          const pars:number[]=courseRec?.hole_pars||[];
+          const sis:number[]=courseRec?.hole_stroke_indices||[];
+          return(
+            <div key={c.name} style={{marginBottom:22}}>
+              <div style={{fontWeight:700,fontSize:14,color:"var(--green-800)",marginBottom:8,paddingBottom:5,borderBottom:"2px solid var(--green-100)"}}>{c.name}</div>
+              {!hasSomeData?(
+                <div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",padding:"6px 0"}}>
+                  No hole-by-hole data recorded yet for this course.
+                </div>
+              ):(
+                <>
+                  {([{start:0,label:"Front 9"},{start:9,label:"Back 9"}] as {start:number,label:string}[]).map(({start,label})=>(
+                    <div key={label} style={{marginBottom:10}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:5}}>{label}</div>
+                      <div style={{overflowX:"auto"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",minWidth:320}}>
+                          <thead>
+                            <tr style={{background:"var(--green-900)"}}>
+                              <th style={{padding:"5px 8px",fontSize:11,color:"var(--gold-300)",fontWeight:700,textAlign:"left",width:58}}>Hole</th>
+                              {Array.from({length:9},(_,i)=>(
+                                <th key={i} style={{padding:"5px 4px",fontSize:12,color:"var(--gold-300)",fontWeight:700,textAlign:"center",minWidth:28}}>{start+i+1}</th>
+                              ))}
+                              <th style={{padding:"5px 6px",fontSize:11,color:"var(--gold-300)",fontWeight:700,textAlign:"center",minWidth:36}}>Avg</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pars.length>0&&(
+                              <tr style={{background:"var(--surface2)"}}>
+                                <td style={{padding:"5px 8px",fontSize:11,color:"var(--text-muted)",fontWeight:600}}>Par</td>
+                                {Array.from({length:9},(_,i)=>(
+                                  <td key={i} style={{padding:"5px 4px",textAlign:"center",fontSize:12,color:"var(--text-muted)"}}>{pars[start+i]||"-"}</td>
+                                ))}
+                                <td style={{padding:"5px 6px",textAlign:"center",fontSize:12,color:"var(--text-muted)"}}>{pars.slice(start,start+9).reduce((a,b)=>a+b,0)||"-"}</td>
+                              </tr>
+                            )}
+                            {sis.length>0&&(
+                              <tr>
+                                <td style={{padding:"4px 8px",fontSize:10,color:"var(--text-muted)",fontWeight:600}}>SI</td>
+                                {Array.from({length:9},(_,i)=>(
+                                  <td key={i} style={{padding:"4px 4px",textAlign:"center",fontSize:10,color:"var(--text-muted)"}}>{sis[start+i]||"-"}</td>
+                                ))}
+                                <td></td>
+                              </tr>
+                            )}
+                            <tr>
+                              <td style={{padding:"7px 8px",fontSize:11,fontWeight:700,color:"var(--text-muted)"}}>Avg Pts</td>
+                              {Array.from({length:9},(_,i)=>{
+                                const h=courseHoles?.[start+i];
+                                const val=h&&h.rounds>0?h.avgPts:NaN;
+                                const clr=isNaN(val)?"var(--border)":val>=2?"var(--green-600)":val>=1?"var(--text-secondary)":"var(--red-500)";
+                                return(
+                                  <td key={i} style={{padding:"7px 4px",textAlign:"center",fontWeight:isNaN(val)?400:700,fontSize:isNaN(val)?11:14,color:clr}}>
+                                    {isNaN(val)?"--":val.toFixed(1)}
+                                  </td>
+                                );
+                              })}
+                              <td style={{padding:"7px 6px",textAlign:"center",fontWeight:700,fontSize:13,color:"var(--green-700)"}}>
+                                {(()=>{
+                                  const half=courseHoles?courseHoles.slice(start,start+9):[];
+                                  const valid=half.filter((h:any)=>!isNaN(h.avgPts)&&h.rounds>0);
+                                  return valid.length?(valid.reduce((s:number,h:any)=>s+h.avgPts,0)/valid.length).toFixed(1):"--";
+                                })()}
+                              </td>
+                            </tr>
+                
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
+
 function ScatterChart({scatterData}:any){
   const config = {
     type:"scatter" as const,
@@ -4719,7 +4871,7 @@ function ScatterChart({scatterData}:any){
     </div>
   );
 }
-function GolferHistoryChart({golfer,rounds,seasonData}:any){
+function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers,seasonEvents}:any){
   const avg=rounds.reduce((s:number,r:any)=>s+r.pts,0)/rounds.length;
   const best=Math.max(...rounds.map((r:any)=>r.pts));
   const worst=Math.min(...rounds.map((r:any)=>r.pts));
@@ -4751,6 +4903,49 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
 
   // Running avg line for trend arrow
   const trend=rounds.length>2?(rounds[rounds.length-1].pts+rounds[rounds.length-2].pts)/2 - (rounds[0].pts+rounds[1].pts)/2:0;
+
+  // -- Course breakdown --
+  const courseBreakdown=(()=>{
+    const map2:Record<string,{pts:number[],ranks:number[],players:number[]}>={}; 
+    rounds.forEach((r:any)=>{
+      if(!map2[r.course])map2[r.course]={pts:[],ranks:[],players:[]};
+      map2[r.course].pts.push(r.pts);
+      map2[r.course].ranks.push(r.rank);
+      map2[r.course].players.push(r.players);
+    });
+    return Object.entries(map2).map(([course,d])=>({
+      course:course.replace(" Golf Club","").replace("Golf Course",""),
+      rounds:d.pts.length,
+      avgPts:d.pts.reduce((a:number,b:number)=>a+b,0)/d.pts.length,
+      avgRank:d.ranks.reduce((a:number,b:number)=>a+b,0)/d.ranks.length,
+      avgField:d.players.reduce((a:number,b:number)=>a+b,0)/d.players.length,
+    })).sort((a,b)=>b.avgPts-a.avgPts);
+  })();
+
+  // -- Rival & Twin --
+  const rivalStats=(()=>{
+    const gid=golfer.golfer_id;
+    const opp:Record<number,{beats:number,loses:number,ties:number}>={};
+    if(!leaderboard||!seasonEvents)return{rival:null,twin:null};
+    seasonEvents.forEach((ev:any)=>{
+      const mine=leaderboard.find((r:any)=>r.event_id===ev.event_id&&r.golfer_id===gid);
+      if(!mine)return;
+      leaderboard.filter((r:any)=>r.event_id===ev.event_id&&r.golfer_id!==gid&&r.buy_in_paid).forEach((o:any)=>{
+        if(!opp[o.golfer_id])opp[o.golfer_id]={beats:0,loses:0,ties:0};
+        if(o.total_stableford_points>mine.total_stableford_points)opp[o.golfer_id].beats++;
+        else if(mine.total_stableford_points>o.total_stableford_points)opp[o.golfer_id].loses++;
+        else opp[o.golfer_id].ties++;
+      });
+    });
+    const ents=Object.entries(opp)
+      .filter(([,v])=>(v.beats+v.loses+v.ties)>=2)
+      .map(([id,v])=>({id:parseInt(id),...v,total:v.beats+v.loses+v.ties}));
+    const rival=ents.length?[...ents].sort((a,b)=>(b.beats/b.total)-(a.beats/a.total))[0]:null;
+    const twin=ents.filter(e=>e.ties>0).length?[...ents].sort((a,b)=>(b.ties/b.total)-(a.ties/a.total))[0]:null;
+    const rG=rival?golfers.find((g:any)=>g.golfer_id===rival.id):null;
+    const tG=twin?golfers.find((g:any)=>g.golfer_id===twin.id):null;
+    return{rival:rG?{g:rG,...rival}:null,twin:(tG&&tG.golfer_id!==rG?.golfer_id)?{g:tG,...twin}:null};
+  })();
 
   return(
     <div>
@@ -4796,8 +4991,65 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
       </div>
       <ChartCanvas config={histConfig} deps={[golfer.golfer_id,rounds.length]} height={210} style={{marginBottom:16}}/>
 
-      {/* Per-round table */}
-      <div className="card-title" style={{marginBottom:8}}>Round-by-Round</div>
+
+
+      {/* Course Breakdown */}
+      {courseBreakdown.length>0&&(
+        <div style={{marginTop:20}}>
+          <div className="card-title" style={{marginBottom:8}}>Performance by Course</div>
+          <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 48px 64px 72px",padding:"8px 12px",background:"var(--green-900)"}}>
+              {["Course","Rds","Avg Pts","Avg Finish"].map((h:string,i:number)=>(
+                <div key={i} style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.06em",textTransform:"uppercase",textAlign:i>0?"center":"left"}}>{h}</div>
+              ))}
+            </div>
+            {courseBreakdown.map((c:any,i:number)=>(
+              <div key={c.course} style={{display:"grid",gridTemplateColumns:"1fr 48px 64px 72px",padding:"10px 12px",borderBottom:"1px solid var(--border)",background:i%2===1?"var(--surface2)":"transparent",alignItems:"center"}}>
+                <div style={{fontSize:14,fontWeight:600}}>{c.course}</div>
+                <div style={{textAlign:"center",fontSize:14,color:"var(--text-muted)"}}>{c.rounds}</div>
+                <div style={{textAlign:"center",fontWeight:700,fontSize:16,color:"var(--green-700)"}}>{c.avgPts.toFixed(1)}</div>
+                <div style={{textAlign:"center",fontSize:14}}>
+                  {c.avgRank.toFixed(1)}<span style={{fontSize:11,color:"var(--text-muted)"}}>/{c.avgField.toFixed(0)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Rival & Twin */}
+      {(rivalStats.rival||rivalStats.twin)&&(
+        <div style={{marginTop:20,marginBottom:20}}>
+          
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {rivalStats.rival&&(
+              <div style={{background:"rgba(192,32,32,0.07)",border:"1.5px solid rgba(192,32,32,0.25)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center"}}>
+                <div style={{fontSize:15,fontWeight:700,color:"var(--red-600)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Rival</div>
+                
+                <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{rivalStats.rival.g.first_name} {rivalStats.rival.g.last_name}</div>
+                <div style={{fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
+                  Beats you {rivalStats.rival.beats}/{rivalStats.rival.total} events<br/>
+                  <span style={{color:"var(--red-500)",fontWeight:600}}>{Math.round(rivalStats.rival.beats/rivalStats.rival.total*100)}% win rate vs you</span>
+                </div>
+              </div>
+            )}
+            {rivalStats.twin&&(
+              <div style={{background:"rgba(26,115,64,0.07)",border:"1.5px solid rgba(26,115,64,0.25)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center"}}>
+                <div style={{fontSize:15,fontWeight:700,color:"var(--green-700)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Twin</div>
+               
+                <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{rivalStats.twin.g.first_name} {rivalStats.twin.g.last_name}</div>
+                <div style={{fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
+                  Tied scores {rivalStats.twin.ties}/{rivalStats.twin.total} events<br/>
+                  <span style={{color:"var(--green-600)",fontWeight:600}}>{Math.round(rivalStats.twin.ties/rivalStats.twin.total*100)}% match rate</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}    
+      
+            {/* Per-round table */}
+            <div className="card-title" style={{marginBottom:8}}>Round-by-Round</div>
       <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead>
@@ -4828,6 +5080,7 @@ function GolferHistoryChart({golfer,rounds,seasonData}:any){
           </tbody>
         </table>
       </div>
-    </div>
-  );
+        </div>
+  
+  )
 }
