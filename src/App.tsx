@@ -95,7 +95,11 @@ const supabase = (() => {
       upload: async (bucket:string, path:string, file:Blob):Promise<{url:string}|null>=>{
         const url=SUPABASE_URL+"/storage/v1/object/"+bucket+"/"+path;
         const res=await fetch(url,{method:"POST",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":file.type,"x-upsert":"true"},body:file});
-        if(!res.ok)return null;
+        if(!res.ok){
+          const err=await res.text().catch(()=>"");
+          console.error("Storage upload failed:",res.status,err);
+          throw new Error("Upload failed: "+res.status+" "+err.slice(0,120));
+        }
         return{url:SUPABASE_URL+"/storage/v1/object/public/"+bucket+"/"+path};
       },
       remove: async (bucket:string, paths:string[]):Promise<boolean>=>{
@@ -1828,39 +1832,47 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
               {/* View Scorecards button */}
               {displayEvent&&(()=>{
                 const imgs=(eventImages||[]).filter((img:any)=>img.event_id===displayEvent.event_id);
-                const compressAndUpload=async(file:File)=>{
-                  // Compress to max ~600px wide using Canvas, targeting ~200-400KB
-                  return new Promise<string|null>((resolve)=>{
-                    const img=new Image();
+                const compressAndUpload=async(file:File):Promise<string|null>=>{
+                  return new Promise((resolve,reject)=>{
+                    const imgEl=new Image();
                     const reader=new FileReader();
                     reader.onload=(e:any)=>{
-                      img.onload=async()=>{
-                        const MAX=1200;
-                        const scale=Math.min(1,MAX/Math.max(img.width,img.height));
-                        const canvas=document.createElement("canvas");
-                        canvas.width=Math.round(img.width*scale);
-                        canvas.height=Math.round(img.height*scale);
-                        canvas.getContext("2d")?.drawImage(img,0,0,canvas.width,canvas.height);
-                        canvas.toBlob(async(blob:Blob|null)=>{
-                          if(!blob){resolve(null);return;}
-                          const path="event_"+displayEvent.event_id+"_"+Date.now()+".jpg";
-                          const result=await supabase.storage.upload("scorecards",path,blob);
-                          if(!result){resolve(null);return;}
-                          // Save to event_images table
-                          const newImg={event_id:displayEvent.event_id,storage_path:path,public_url:result.url};
-                          const inserted=await supabase.from("event_images").insert(newImg);
-                          if(inserted&&inserted[0]){
-                            setEventImages((p:any)=>[...p,inserted[0]]);
-                            resolve(result.url);
-                          } else {
-                            // Fallback: use URL directly
-                            setEventImages((p:any)=>[...p,{...newImg,id:Date.now()}]);
-                            resolve(result.url);
-                          }
-                        },"image/jpeg",0.82);
+                      imgEl.onload=async()=>{
+                        try{
+                          const MAX=1200;
+                          const scale=Math.min(1,MAX/Math.max(imgEl.width,imgEl.height));
+                          const canvas=document.createElement("canvas");
+                          canvas.width=Math.round(imgEl.width*scale);
+                          canvas.height=Math.round(imgEl.height*scale);
+                          canvas.getContext("2d")?.drawImage(imgEl,0,0,canvas.width,canvas.height);
+                          canvas.toBlob(async(blob:Blob|null)=>{
+                            if(!blob){reject(new Error("Canvas toBlob failed"));return;}
+                            // Path has no subfolder so the simple policy (bucket_id = 'scorecards') works
+                            const path="event_"+displayEvent.event_id+"_"+Date.now()+".jpg";
+                            try{
+                              const result=await supabase.storage.upload("scorecards",path,blob);
+                              if(!result){reject(new Error("Upload returned null"));return;}
+                              // Insert metadata row — don't depend on the returned row having an id
+                              const newImg={event_id:displayEvent.event_id,storage_path:path,public_url:result.url};
+                              try{
+                                const rows=await supabase.from("event_images").insert(newImg);
+                                const savedImg=rows&&rows[0]?rows[0]:{...newImg,id:Date.now()};
+                                setEventImages((p:any)=>[...p,savedImg]);
+                              }catch(_:any){
+                                // Insert failed but file is uploaded — still show it
+                                setEventImages((p:any)=>[...p,{...newImg,id:Date.now()}]);
+                              }
+                              resolve(result.url);
+                            }catch(uploadErr:any){
+                              reject(uploadErr);
+                            }
+                          },"image/jpeg",0.82);
+                        }catch(err:any){reject(err);}
                       };
-                      img.src=e.target.result;
+                      imgEl.onerror=()=>reject(new Error("Image load failed"));
+                      imgEl.src=e.target.result;
                     };
+                    reader.onerror=()=>reject(new Error("FileReader failed"));
                     reader.readAsDataURL(file);
                   });
                 };
@@ -1895,10 +1907,20 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                                   const files=Array.from(e.target.files||[]) as File[];
                                   if(!files.length)return;
                                   setScorecardUploading(true);
-                                  for(const f of files) await compressAndUpload(f);
+                                  let ok=0,fail=0;
+                                  for(const f of files){
+                                    try{
+                                      await compressAndUpload(f);
+                                      ok++;
+                                    }catch(err:any){
+                                      fail++;
+                                      console.error("Upload error:",err);
+                                      alert("Upload failed: "+( err?.message||String(err)));
+                                    }
+                                  }
                                   setScorecardUploading(false);
                                   e.target.value="";
-                                  showSuccess("Scorecard"+(files.length>1?"s":"")+" uploaded!");
+                                  if(ok>0)showSuccess("Scorecard"+(ok>1?"s":"")+" uploaded!");
                                 }}/>
                                 <span className="btn btn-primary" style={{fontSize:13,padding:"8px 14px"}}>
                                   {scorecardUploading?"Uploading...":"+ Add Photo"}
