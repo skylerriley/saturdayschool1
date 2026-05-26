@@ -90,6 +90,20 @@ const supabase = (() => {
         return rpc(table, "DELETE", undefined, `?${q}`);
       },
     }),
+    // Storage helpers for scorecard image uploads
+    storage: {
+      upload: async (bucket:string, path:string, file:Blob):Promise<{url:string}|null>=>{
+        const url=SUPABASE_URL+"/storage/v1/object/"+bucket+"/"+path;
+        const res=await fetch(url,{method:"POST",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":file.type,"x-upsert":"true"},body:file});
+        if(!res.ok)return null;
+        return{url:SUPABASE_URL+"/storage/v1/object/public/"+bucket+"/"+path};
+      },
+      remove: async (bucket:string, paths:string[]):Promise<boolean>=>{
+        const url=SUPABASE_URL+"/storage/v1/object/"+bucket;
+        const res=await fetch(url,{method:"DELETE",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({prefixes:paths})});
+        return res.ok;
+      },
+    },
   };
 })();
 
@@ -550,6 +564,7 @@ export default function App(){
   const [dbError,setDbError]=useState<string|null>(null);
   const [activeTab,setActiveTab]=useState("leaderboard");
   const [adminMode,setAdminMode]=useState(false);
+  const [eventImages,setEventImages]=useState<any[]>([]);
   const [showPinModal,setShowPinModal]=useState(false);
   const [pinInput,setPinInput]=useState("");
   const [pinError,setPinError]=useState(false);
@@ -600,6 +615,13 @@ export default function App(){
 
   // -- guest golfer listener -----------------------------------
   useEffect(()=>{const h=(e:any)=>setGolfers(p=>[...p,e.detail]);window.addEventListener("addGolfer",h);return()=>window.removeEventListener("addGolfer",h);},[]);
+
+  // Load event images (scorecard photos)
+  useEffect(()=>{
+    supabase.from("event_images").select("*").then((rows:any)=>{
+      if(rows)setEventImages(rows);
+    }).catch(()=>{});
+  },[]);
 
   // Auto-restore in-progress scoring session after data loads.
   // Runs once after loading completes.  Restores:
@@ -970,7 +992,7 @@ export default function App(){
         <main className="main-content">
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
           {errorMsg&&<div style={{background:"var(--red-100)",border:"1px solid var(--red-400)",borderRadius:"var(--radius-md)",padding:"12px 16px",color:"var(--red-600)",fontSize:14,marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>⚠</span>{errorMsg}</div>}
-          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} showSuccess={showSuccess}/>}
+          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} eventImages={eventImages} setEventImages={setEventImages} showSuccess={showSuccess}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} adminMode={adminMode}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} charityDonations={charityDonations} setCharityDonations={setCharityDB} showSuccess={showSuccess}/>}
@@ -1145,10 +1167,13 @@ function golferStats(golfers:any[],leaderboard:any[],gid:number,season:number){
 // ============================================================
 // LEADERBOARD TAB
 // ============================================================
-function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,showSuccess}:any){
+function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,showSuccess}:any){
   const [subTab,setSubTab]=useState("season");
   const [selEventId,setSelEventId]=useState<number|null>(null);
   const [expandedId,setExpandedId]=useState<number|null>(null);
+  const [showScorecardModal,setShowScorecardModal]=useState(false);
+  const [scorecardUploading,setScorecardUploading]=useState(false);
+  const [lightboxImg,setLightboxImg]=useState<string|null>(null);
   const [liveExpandedId,setLiveExpandedId]=useState<number|null>(null);
 
   // 1) Season selector -- dropdown only, no "all time"
@@ -1799,6 +1824,143 @@ function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,a
                 </div>
                 {eventEntriesWithTies.map((entry:any)=>renderLbRow(entry,"weekly"))}
               </div>
+
+              {/* View Scorecards button */}
+              {displayEvent&&(()=>{
+                const imgs=(eventImages||[]).filter((img:any)=>img.event_id===displayEvent.event_id);
+                const compressAndUpload=async(file:File)=>{
+                  // Compress to max ~600px wide using Canvas, targeting ~200-400KB
+                  return new Promise<string|null>((resolve)=>{
+                    const img=new Image();
+                    const reader=new FileReader();
+                    reader.onload=(e:any)=>{
+                      img.onload=async()=>{
+                        const MAX=1200;
+                        const scale=Math.min(1,MAX/Math.max(img.width,img.height));
+                        const canvas=document.createElement("canvas");
+                        canvas.width=Math.round(img.width*scale);
+                        canvas.height=Math.round(img.height*scale);
+                        canvas.getContext("2d")?.drawImage(img,0,0,canvas.width,canvas.height);
+                        canvas.toBlob(async(blob:Blob|null)=>{
+                          if(!blob){resolve(null);return;}
+                          const path="event_"+displayEvent.event_id+"_"+Date.now()+".jpg";
+                          const result=await supabase.storage.upload("scorecards",path,blob);
+                          if(!result){resolve(null);return;}
+                          // Save to event_images table
+                          const newImg={event_id:displayEvent.event_id,storage_path:path,public_url:result.url};
+                          const inserted=await supabase.from("event_images").insert(newImg);
+                          if(inserted&&inserted[0]){
+                            setEventImages((p:any)=>[...p,inserted[0]]);
+                            resolve(result.url);
+                          } else {
+                            // Fallback: use URL directly
+                            setEventImages((p:any)=>[...p,{...newImg,id:Date.now()}]);
+                            resolve(result.url);
+                          }
+                        },"image/jpeg",0.82);
+                      };
+                      img.src=e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                  });
+                };
+                return(
+                  <div style={{marginTop:18}}>
+                    <button
+                      className="btn btn-outline btn-full"
+                      style={{fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}
+                      onClick={()=>setShowScorecardModal(true)}
+                    >
+                      📷 View Scorecards{imgs.length>0?" ("+imgs.length+")":""}
+                    </button>
+
+                    {/* Scorecard modal */}
+                    {showScorecardModal&&(
+                      <div
+                        style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+                        onClick={()=>{setShowScorecardModal(false);setLightboxImg(null);}}
+                      >
+                        <div
+                          style={{background:"var(--surface)",borderRadius:"var(--radius-lg) var(--radius-lg) 0 0",padding:"20px 16px 36px",width:"100%",maxWidth:520,maxHeight:"88vh",overflowY:"auto"}}
+                          onClick={(e:any)=>e.stopPropagation()}
+                        >
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                            <div>
+                              <div style={{fontSize:17,fontWeight:700,color:"var(--green-800)"}}>Scorecards</div>
+                              <div style={{fontSize:13,color:"var(--text-muted)"}}>{formatDate(displayEvent.date)} -- {displayEvent.course_name}</div>
+                            </div>
+                            {adminMode&&(
+                              <label style={{cursor:"pointer"}}>
+                                <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={async(e:any)=>{
+                                  const files=Array.from(e.target.files||[]) as File[];
+                                  if(!files.length)return;
+                                  setScorecardUploading(true);
+                                  for(const f of files) await compressAndUpload(f);
+                                  setScorecardUploading(false);
+                                  e.target.value="";
+                                  showSuccess("Scorecard"+(files.length>1?"s":"")+" uploaded!");
+                                }}/>
+                                <span className="btn btn-primary" style={{fontSize:13,padding:"8px 14px"}}>
+                                  {scorecardUploading?"Uploading...":"+ Add Photo"}
+                                </span>
+                              </label>
+                            )}
+                          </div>
+
+                          {imgs.length===0&&!scorecardUploading&&(
+                            <div style={{textAlign:"center",padding:"32px 0",color:"var(--text-muted)"}}>
+                              <div style={{fontSize:32,marginBottom:8}}>📋</div>
+                              <div style={{fontSize:14}}>No scorecards uploaded yet</div>
+                              {adminMode&&<div style={{fontSize:12,marginTop:4}}>Tap "+ Add Photo" to upload</div>}
+                            </div>
+                          )}
+
+                          {scorecardUploading&&(
+                            <div style={{textAlign:"center",padding:"20px 0",color:"var(--text-muted)",fontSize:14}}>
+                              <div style={{width:32,height:32,border:"3px solid var(--green-100)",borderTop:"3px solid var(--green-600)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 10px"}}/>
+                              Compressing and uploading...
+                            </div>
+                          )}
+
+                          {/* Image grid */}
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
+                            {imgs.map((img:any)=>(
+                              <div key={img.id||img.storage_path} style={{position:"relative",borderRadius:"var(--radius-md)",overflow:"hidden",aspectRatio:"4/3",background:"var(--surface2)",cursor:"pointer"}} onClick={()=>setLightboxImg(img.public_url)}>
+                                <img src={img.public_url} alt="Scorecard" style={{width:"100%",height:"100%",objectFit:"cover"}} loading="lazy"/>
+                                {adminMode&&(
+                                  <button
+                                    onClick={async(e:any)=>{
+                                      e.stopPropagation();
+                                      if(!window.confirm("Delete this scorecard photo?"))return;
+                                      await supabase.storage.remove("scorecards",[img.storage_path]);
+                                      await supabase.from("event_images").delete({id:img.id});
+                                      setEventImages((p:any)=>p.filter((x:any)=>x.id!==img.id));
+                                    }}
+                                    style={{position:"absolute",top:4,right:4,background:"rgba(192,32,32,0.9)",color:"white",border:"none",borderRadius:6,padding:"4px 8px",fontSize:12,fontWeight:700,cursor:"pointer"}}
+                                  >Delete</button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          <button className="btn btn-outline btn-full" style={{marginTop:8}} onClick={()=>setShowScorecardModal(false)}>Close</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Lightbox */}
+                    {lightboxImg&&(
+                      <div
+                        style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:9100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+                        onClick={()=>setLightboxImg(null)}
+                      >
+                        <img src={lightboxImg} alt="Scorecard" style={{maxWidth:"100%",maxHeight:"90vh",borderRadius:"var(--radius-md)",objectFit:"contain"}}/>
+                        <button onClick={()=>setLightboxImg(null)} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.15)",color:"white",border:"none",borderRadius:"50%",width:36,height:36,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </>
           )}
         </>
