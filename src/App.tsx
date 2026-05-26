@@ -1015,6 +1015,7 @@ export default function App(){
             if(next.length===pinLen){
               if(PINS.includes(next)){
                 setAdminMode(true);
+                setActiveTab("admin");
                 sessionStorage.setItem("ss_admin","1");
                 setShowPinModal(false);
                 setPinInput("");
@@ -2001,6 +2002,11 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
   const [selEventId,setSelEventId]=useState(events[0]?.event_id||null);
   const [newDonationAmt,setNewDonationAmt]=useState("");
   const [newDonationNote,setNewDonationNote]=useState("");
+  const [newDonationDate,setNewDonationDate]=useState(new Date().toISOString().split("T")[0]);
+  const [editDonationId,setEditDonationId]=useState<number|null>(null);
+  const [editDonationAmt,setEditDonationAmt]=useState("");
+  const [editDonationNote,setEditDonationNote]=useState("");
+  const [editDonationDate,setEditDonationDate]=useState("");
 
   const entries=leaderboard.filter((e:any)=>e.event_id===selEventId);
   const paidIn=entries.filter((e:any)=>e.buy_in_paid).length;
@@ -2021,9 +2027,18 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
 
   const addDonation=()=>{
     if(!newDonationAmt)return;
-    setCharityDonations((p:any)=>[...p,{id:Date.now(),amount:parseFloat(newDonationAmt),note:newDonationNote||"Donation",date:new Date().toISOString().split("T")[0]}]);
-    setNewDonationAmt(""); setNewDonationNote("");
+    setCharityDonations((p:any)=>[...p,{id:Date.now(),amount:parseFloat(newDonationAmt),note:newDonationNote||"Donation",date:newDonationDate||new Date().toISOString().split("T")[0]}]);
+    setNewDonationAmt(""); setNewDonationNote(""); setNewDonationDate(new Date().toISOString().split("T")[0]);
     showSuccess("Charity donation recorded");
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);
+  };
+  const startEditDonation=(d:any)=>{setEditDonationId(d.id);setEditDonationAmt(String(d.amount));setEditDonationNote(d.note||"");setEditDonationDate(d.date||"");};
+  const saveEditDonation=()=>{
+    if(!editDonationAmt)return;
+    setCharityDonations((p:any)=>p.map((d:any)=>d.id===editDonationId?{...d,amount:parseFloat(editDonationAmt),note:editDonationNote||"Donation",date:editDonationDate}:d));
+    setEditDonationId(null);setEditDonationAmt("");setEditDonationNote("");setEditDonationDate("");
+    showSuccess("Donation updated");
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);
   };
 
   return(
@@ -2054,20 +2069,39 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
       <div className="card-title" style={{marginBottom:8}}>Donations ({donationSeason==="all"?"All":donationSeason})</div>
       {filteredDonations.length===0&&<div style={{fontSize:13,color:"var(--text-muted)",marginBottom:10}}>No donations recorded for this period.</div>}
       {filteredDonations.map((d:any)=>(
-        <div key={d.id} className="info-row">
-          <span className="info-key">{d.note}</span>
-          <span style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,color:"var(--text-muted)"}}>{d.date}</span>
-            <span className="money">${Number(d.amount).toFixed(0)}</span>
-          </span>
+        <div key={d.id}>
+          {editDonationId===d.id?(
+            <div className="card" style={{padding:"12px 14px",marginBottom:8}}>
+              <div style={{fontSize:13,fontWeight:700,color:"var(--green-800)",marginBottom:8}}>Edit Donation</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                <div className="form-group" style={{marginBottom:0}}><label className="form-label">Amount ($)</label><input className="form-input" type="number" value={editDonationAmt} onChange={e=>setEditDonationAmt(e.target.value)}/></div>
+                <div className="form-group" style={{marginBottom:0}}><label className="form-label">Note</label><input className="form-input" value={editDonationNote} onChange={e=>setEditDonationNote(e.target.value)}/></div>
+              </div>
+              <div className="form-group" style={{marginBottom:8}}><label className="form-label">Date</label><input className="form-input" type="date" value={editDonationDate} onChange={e=>setEditDonationDate(e.target.value)}/></div>
+              <div style={{display:"flex",gap:8}}>
+                <button className="btn btn-primary" style={{flex:1}} onClick={saveEditDonation}>Save</button>
+                <button className="btn btn-outline" onClick={()=>setEditDonationId(null)}>Cancel</button>
+              </div>
+            </div>
+          ):(
+            <div className="info-row">
+              <span className="info-key">{d.note}</span>
+              <span style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:12,color:"var(--text-muted)"}}>{d.date}</span>
+                <span className="money">${Number(d.amount).toFixed(0)}</span>
+                <button className="btn btn-sm btn-outline" onClick={()=>startEditDonation(d)}>Edit</button>
+              </span>
+            </div>
+          )}
         </div>
       ))}
       <div className="card" style={{marginTop:10}}>
         <div className="card-title" style={{marginBottom:10}}>Add Donation</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
           <div className="form-group" style={{marginBottom:0}}><label className="form-label">Amount ($)</label><input className="form-input" type="number" min="0" placeholder="50" value={newDonationAmt} onChange={e=>setNewDonationAmt(e.target.value)}/></div>
           <div className="form-group" style={{marginBottom:0}}><label className="form-label">Note</label><input className="form-input" placeholder="e.g. Birthday" value={newDonationNote} onChange={e=>setNewDonationNote(e.target.value)}/></div>
         </div>
+        <div className="form-group" style={{marginBottom:10}}><label className="form-label">Date</label><input className="form-input" type="date" value={newDonationDate} onChange={e=>setNewDonationDate(e.target.value)}/></div>
         <button className="btn btn-primary btn-full" onClick={addDonation} disabled={!newDonationAmt}>Record Donation</button>
       </div>
 
@@ -2646,6 +2680,11 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
         <div className="skins-warning"><span>⚠</span><span>This event already has hole-by-hole entries. Submitting total-only scores will prevent skins from being calculated.</span></div>
       )}
 
+      {/* Add Another Golfer — above cards */}
+      {selEvent&&scorers.length<4&&(
+        <button className="btn btn-outline btn-full" style={{marginBottom:10}} onClick={addScorer}>+ Add Another Golfer ({scorers.length}/4)</button>
+      )}
+
       {/* Scorer setup cards */}
       {selEvent&&scorers.map((scorer,idx)=>{
         const g=golfers.find((x:any)=>x.golfer_id===parseInt(scorer.golferId));
@@ -2735,7 +2774,7 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
                 </thead>
                 <tbody>
                   {Array.from({length:18},(_,holeIdx)=>(
-                    <tr key={holeIdx}>
+                    <tr key={holeIdx} style={holeIdx===8?{borderBottom:"3px solid var(--green-600)"}:{}}>
                       <td style={{fontWeight:600}}>{holeIdx+1}</td>
                       <td>{refCourse?.hole_pars[holeIdx]}</td>
                       {activeScorersFull.map((s,si)=>{
@@ -2768,10 +2807,6 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
           </div>
         );
       })()}
-
-      {selEvent&&scorers.length<4&&(
-        <button className="btn btn-outline btn-full" style={{marginBottom:12}} onClick={addScorer}>+ Add Another Golfer ({scorers.length}/4)</button>
-      )}
 
       <button className="btn btn-primary btn-full" disabled={!selEventId||!canSubmit} onClick={handleSubmitAll} style={{marginTop:4}}>
         Submit {scorers.filter(s=>s.golferId&&s.courseId).length>1?`${scorers.filter(s=>s.golferId&&s.courseId).length} Scores`:"Score"}
@@ -2859,15 +2894,18 @@ function GolferRoster({golfers,setGolfers,showSuccess}:any){
       showSuccess(`${form.first_name} ${form.last_name} added`);
     }
     setForm(blank); setEditId(null);
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);
   };
 
   const startEdit=(g:any)=>{
     setEditId(g.golfer_id);
     setForm({first_name:g.first_name,last_name:g.last_name,email_address:g.email_address||"",current_handicap_index:String(g.current_handicap_index),season_fee_paid:!!g.season_fee_paid});
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);
   };
 
   const toggleStatus=(id:number,cur:string)=>{
     setGolfers((p:any)=>p.map((g:any)=>g.golfer_id===id?{...g,status:cur==="Active"?"Inactive":"Active"}:g));
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);
   };
   const toggleFee=(id:number)=>{
     setGolfers((p:any)=>p.map((g:any)=>g.golfer_id===id?{...g,season_fee_paid:!g.season_fee_paid}:g));
@@ -2912,6 +2950,7 @@ function GolferRoster({golfers,setGolfers,showSuccess}:any){
 
 // -- 3b) COURSE MANAGER ---------------------------------------
 function CourseManager({courses,setCourses,showSuccess}:any){
+  const editFormRef=useRef<HTMLDivElement>(null);
   const blank:any={course_id:0,course_name:"",tee_box_name:"",tee_slope:113,tee_rating:72.0,par:72};
   const [editing,setEditing]=useState<any|null>(null);
   const [form,setForm]=useState<any>(blank);
@@ -2919,8 +2958,8 @@ function CourseManager({courses,setCourses,showSuccess}:any){
   const [siStr,setSiStr]=useState("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18");
   const courseNames=[...new Set(courses.map((c:any)=>c.course_name))] as string[];
 
-  const startNew=()=>{setEditing("new");setForm(blank);setParStr("4,4,3,5,4,4,3,5,4,4,3,5,4,4,3,5,4,4");setSiStr("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18");};
-  const startEdit=(c:any)=>{setEditing(c.course_id);setForm({...c});setParStr(c.hole_pars.join(","));setSiStr(c.hole_stroke_indices.join(","));};
+  const startNew=()=>{setEditing("new");setForm(blank);setParStr("4,4,3,5,4,4,3,5,4,4,3,5,4,4,3,5,4,4");setSiStr("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18");setTimeout(()=>editFormRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),50);};
+  const startEdit=(c:any)=>{setEditing(c.course_id);setForm({...c});setParStr(c.hole_pars.join(","));setSiStr(c.hole_stroke_indices.join(","));setTimeout(()=>editFormRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),50);};
 
   const save=()=>{
     const pars=parStr.split(",").map(v=>parseInt(v.trim())).filter(v=>!isNaN(v));
@@ -2936,6 +2975,7 @@ function CourseManager({courses,setCourses,showSuccess}:any){
       showSuccess(`${entry.course_name} (${entry.tee_box_name}) updated`);
     }
     setEditing(null);
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);
   };
 
   return(
@@ -2946,7 +2986,7 @@ function CourseManager({courses,setCourses,showSuccess}:any){
       </div>
 
       {editing&&(
-        <div className="card" style={{marginBottom:14}}>
+        <div ref={editFormRef} className="card" style={{marginBottom:14}}>
           <div className="card-title" style={{marginBottom:10}}>{editing==="new"?"New Tee Box":"Edit Tee Box"}</div>
           <div className="form-group">
             <label className="form-label">Course Name</label>
@@ -2978,7 +3018,7 @@ function CourseManager({courses,setCourses,showSuccess}:any){
                 <span style={{fontSize:13,color:"var(--text-muted)",marginLeft:8}}>Sl {c.tee_slope} · Rt {c.tee_rating} · Par {c.par}</span>
               </div>
               <button className="btn btn-sm btn-outline" onClick={()=>startEdit(c)}>Edit</button>
-              <button className="btn btn-sm btn-danger" onClick={()=>{setCourses((p:any)=>p.filter((x:any)=>x.course_id!==c.course_id));showSuccess("Tee removed");}}>Del</button>
+              <button className="btn btn-sm btn-danger" onClick={()=>{setCourses((p:any)=>p.filter((x:any)=>x.course_id!==c.course_id));showSuccess("Tee removed");setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);}}>Del</button>
             </div>
           ))}
         </div>
@@ -3039,6 +3079,8 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
       });
     }
     showSuccess(`Score corrected: ${golferName(golfers,parseInt(selGolferId))} -> ${pts} pts`);
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);
   };
 
   const deleteEntry=()=>{
@@ -3137,7 +3179,8 @@ function ScoreCorrection({golfers,courses,events,leaderboard,setLeaderboard,hole
 
 function HandicapManager({golfers,setGolfers,showSuccess}:any){
   const [edits,setEdits]=useState<Record<number,string>>({});
-  const handleSave=()=>{setGolfers((p:any)=>p.map((g:any)=>edits[g.golfer_id]!==undefined?{...g,current_handicap_index:parseFloat(edits[g.golfer_id])||g.current_handicap_index}:g));setEdits({});showSuccess("Handicap indices updated");};
+  const [showInactive,setShowInactive]=useState(false);
+  const handleSave=()=>{setGolfers((p:any)=>p.map((g:any)=>edits[g.golfer_id]!==undefined?{...g,current_handicap_index:parseFloat(edits[g.golfer_id])||g.current_handicap_index}:g));setEdits({});showSuccess("Handicap indices updated");setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);};
   return(
     <div>
       <div className="card-title" style={{marginBottom:4}}>Weekly Handicap Update</div>
@@ -3151,6 +3194,36 @@ function HandicapManager({golfers,setGolfers,showSuccess}:any){
         ))}
       </div>
       <button className="btn btn-primary btn-full" onClick={handleSave} disabled={Object.keys(edits).length===0}>Save Handicaps {Object.keys(edits).length>0?`(${Object.keys(edits).length} changed)`:""}</button>
+
+      {/* Inactive & Guest golfers */}
+      <div style={{marginTop:20,borderTop:"2px solid var(--border)",paddingTop:16}}>
+        <button className="btn btn-outline btn-full" style={{marginBottom:showInactive?12:0}} onClick={()=>setShowInactive(v=>!v)}>
+          {showInactive?"▲ Hide":"▼ Show"} Inactive &amp; Guest Golfers
+        </button>
+        {showInactive&&(
+          <div>
+            {golfers.filter((g:any)=>g.status==="Inactive"||g.is_guest).length===0?(
+              <div style={{fontSize:13,color:"var(--text-muted)",padding:"8px 0"}}>No inactive or guest golfers.</div>
+            ):(
+              <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",marginBottom:12}}>
+                {golfers.filter((g:any)=>g.status==="Inactive"||g.is_guest).map((g:any,i:number,arr:any[])=>(
+                  <div key={g.golfer_id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 16px",borderBottom:i<arr.length-1?"1.5px solid var(--border-md)":"none",background:i%2===0?"var(--surface)":"var(--surface2)"}}>
+                    <div>
+                      <div style={{fontSize:16,fontWeight:600,color:"var(--text-primary)"}}>{g.first_name} {g.last_name}</div>
+                      <div style={{fontSize:11,color:"var(--text-muted)",marginTop:1}}>{g.is_guest?"Guest":g.status}</div>
+                    </div>
+                    <input type="number" step="0.1" min="0" max="54"
+                      style={{width:80,padding:"8px 10px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-md)",fontFamily:"DM Sans,sans-serif",fontSize:16,textAlign:"center",fontWeight:700}}
+                      value={edits[g.golfer_id]!==undefined?edits[g.golfer_id]:g.current_handicap_index}
+                      onChange={e=>setEdits((p:any)=>({...p,[g.golfer_id]:e.target.value}))}/>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="btn btn-primary btn-full" onClick={handleSave} style={{marginTop:10}}>Save All Changes</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -3275,6 +3348,7 @@ function CourseHcpSheet({golfers,courses,showSuccess}:any){
 }
 
 function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showSuccess}:any){
+  const formTopRef=useRef<HTMLDivElement>(null);
   const [date,setDate]=useState("");
   const [courseName,setCourseName]=useState("");
   const [teeTimes,setTeeTimes]=useState("09:10\n09:20\n09:30");
@@ -3287,6 +3361,7 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
   const startEdit=(ev:any)=>{
     setEditId(ev.event_id); setDate(ev.date); setCourseName(ev.course_name);
     setTeeTimes(ev.tee_times.join("\n")); setSeason(ev.season);
+    setTimeout(()=>formTopRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),50);
   };
 
   const handleSave=()=>{
@@ -3303,6 +3378,7 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
       showSuccess(`Event created: ${formatDate(date)}`);
     }
     resetForm();
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);
   };
 
   const deleteEvent=(evId:number,evDate:string)=>{
@@ -3310,6 +3386,7 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
     setEvents((p:any)=>p.filter((e:any)=>e.event_id!==evId));
     setSignups((p:any)=>p.filter((s:any)=>s.event_id!==evId));
     showSuccess("Event deleted");
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}),50);
   };
 
   const currentYear=new Date().getFullYear();
@@ -3321,7 +3398,7 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
 
   return(
     <div>
-      <div className="card-title" style={{marginBottom:12}}>{editId?"Edit Event":"Create New Event"}</div>
+      <div ref={formTopRef} className="card-title" style={{marginBottom:12}}>{editId?"Edit Event":"Create New Event"}</div>
       <div className="form-group"><label className="form-label">Season (Year)</label><input className="form-input" type="number" min="2020" max="2040" value={season} onChange={e=>setSeason(parseInt(e.target.value))}/></div>
       <div className="form-group"><label className="form-label">Date</label>
         <input className="form-input" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{cursor:"pointer"}}/>
@@ -3360,6 +3437,7 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
 }
 
 function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,showSuccess}:any){
+  const pairingsRef=useRef<HTMLDivElement>(null);
   const [selEventId,setSelEventId]=useState(events.find((e:any)=>e.status!=="Completed")?.event_id||"");
   const [pairings,setPairings]=useState<any[]|null>(null);
   const [confirmed,setConfirmed]=useState(false);
@@ -3385,6 +3463,7 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
     const a=eventSignups.map((s:any)=>({golfer_id:s.golfer_id,sponsor_golfer_id:s.sponsor_golfer_id}));
     setPairings(runPairingEngine(a,selEvent.tee_times));
     setConfirmed(false);setMoving(null);
+    setTimeout(()=>pairingsRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),100);
   };
 
   // 3e) Move a player to a different group
@@ -3443,7 +3522,7 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
       <button className="btn btn-gold btn-full" onClick={runPairings} disabled={!selEvent||eventSignups.length<2}>🎲 {confirmed?"Re-generate Pairings":"Generate Pairings"}</button>
 
       {pairings&&(
-        <div style={{marginTop:14}}>
+        <div ref={pairingsRef} style={{marginTop:14}}>
           {/* 3e) Adjustment hint */}
           <div style={{fontSize:13,color:"var(--text-muted)",marginBottom:8}}>
             {moving
