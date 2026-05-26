@@ -4414,7 +4414,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                             <div style={{textAlign:"center",fontWeight:winner==="A"?700:400,fontSize:16,color:winner==="A"?"var(--green-700)":"var(--text-muted)"}}>{r.ptsA}</div>
                             <div style={{textAlign:"center",fontWeight:winner==="B"?700:400,fontSize:16,color:winner==="B"?"var(--green-700)":"var(--text-muted)"}}>{r.ptsB}</div>
                             <div style={{textAlign:"center",fontSize:16,fontWeight:600,color:winner==="T"?"var(--text-muted)":winner==="A"?"var(--green-700)":"var(--gold-700)"}}>
-                              {winner==="T"?"TIE":winner==="A"?gA.first_name[0]:gB.first_name[0]}
+                              {winner==="T"?"TIE":winner==="A"?(gA.first_name[0]+(gA.last_name?.[0]||"")):(gB.first_name[0]+(gB.last_name?.[0]||""))}
                             </div>
                           </div>
                         );
@@ -4493,7 +4493,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                                 const favB=diff<-0.05;
                                 return(
                                   <td key={h} style={{padding:"5px 4px",textAlign:"center",fontSize:11,fontWeight:700,color:favA?"var(--green-700)":favB?"var(--gold-700)":"var(--text-muted)"}}>
-                                    {Math.abs(diff)<0.05?"--":favA?gA?.first_name[0]:gB?.first_name[0]}
+                                    {Math.abs(diff)<0.05?"--":favA?(gA?.first_name[0]+(gA?.last_name?.[0]||"")):(gB?.first_name[0]+(gB?.last_name?.[0]||""))}
                                   </td>
                                 );
                               })}
@@ -4544,7 +4544,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                                 const favB=diff<-0.05;
                                 return(
                                   <td key={h} style={{padding:"5px 4px",textAlign:"center",fontSize:11,fontWeight:700,color:favA?"var(--green-700)":favB?"var(--gold-700)":"var(--text-muted)"}}>
-                                    {Math.abs(diff)<0.05?"--":favA?gA?.first_name[0]:gB?.first_name[0]}
+                                    {Math.abs(diff)<0.05?"--":favA?(gA?.first_name[0]+(gA?.last_name?.[0]||"")):(gB?.first_name[0]+(gB?.last_name?.[0]||""))}
                                   </td>
                                 );
                               })}
