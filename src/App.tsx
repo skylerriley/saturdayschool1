@@ -578,7 +578,7 @@ export default function App(){
   const [errorMsg,setErrorMsg]=useState("");
 
   // Lifted score-entry state -- survives tab navigation
-  const [scoreMode,setScoreMode]=useState("total");
+  const [scoreMode,setScoreMode]=useState("hole");
   const [scoreEventId,setScoreEventId]=useState("");
   const [scorers,setScorers]=useState<any[]>([{golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false}]);
 
@@ -869,8 +869,14 @@ export default function App(){
                 setSignups(su=>{
                   const toInsert=su.filter((s:any)=>s.event_id===tempId);
                   const patched=su.map((s:any)=>s.event_id===tempId?{...s,event_id:realId}:s);
-                  toInsert.forEach((s:any)=>dbUpsertSignup({...s,event_id:realId}));
-                  return patched;
+                  // Use upsert with on_conflict so duplicate-key errors can't occur
+                  toInsert.forEach((s:any)=>{
+                    const {signup_id:_,...rest}={...s,event_id:realId};
+                    supabase.from("event_signups")
+                      .upsert({...rest,event_id:realId},"event_id,golfer_id")
+                      .catch(()=>{});
+                  });
+                  return patched; // state is correct immediately — no refresh needed
                 });
               }
             } finally {
@@ -999,7 +1005,7 @@ export default function App(){
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
           {errorMsg&&<div style={{background:"var(--red-100)",border:"1px solid var(--red-400)",borderRadius:"var(--radius-md)",padding:"12px 16px",color:"var(--red-600)",fontSize:14,marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>⚠</span>{errorMsg}</div>}
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} eventImages={eventImages} setEventImages={setEventImages} showSuccess={showSuccess}/>}
-          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} adminMode={adminMode}/>}
+          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} adminMode={adminMode}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} charityDonations={charityDonations} setCharityDonations={setCharityDB} showSuccess={showSuccess}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores}/>}
@@ -2120,20 +2126,7 @@ function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDona
         <div className="stat-card"><div className="stat-value">${entries.filter((e:any)=>e.charity_paid).length*5}</div><div className="stat-label">Charity This Event</div></div>
         <div className="stat-card"><div className="stat-value">${paidIn*20+skinsPaid*10+entries.filter((e:any)=>e.charity_paid).length*5}</div><div className="stat-label">Total Collected</div></div>
       </div>
-      <div className="card-title" style={{marginBottom:8}}>Payout Detail</div>
-      <table className="fin-table">
-        <thead><tr><th>Golfer</th><th style={{textAlign:"right"}}>Stableford</th><th style={{textAlign:"right"}}>Skins</th><th style={{textAlign:"right"}}>Total</th></tr></thead>
-        <tbody>
-          {entries.filter((e:any)=>e.weekly_payout_won>0||e.skins_payout_won>0).map((e:any)=>(
-            <tr key={e.summary_id}>
-              <td>{golferName(golfers,e.golfer_id)}</td>
-              <td style={{textAlign:"right"}} className="money">${Number(e.weekly_payout_won).toFixed(0)}</td>
-              <td style={{textAlign:"right"}} className="money">${Number(e.skins_payout_won).toFixed(0)}</td>
-              <td style={{textAlign:"right"}} className="money">${(Number(e.weekly_payout_won)+Number(e.skins_payout_won)).toFixed(0)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+
     </div>
   );
 }
@@ -2225,10 +2218,12 @@ function useWeather(courseName:string, eventDate:string){
 // ============================================================
 // SIGN-UP TAB  (#3a show all tee times, #3b two sub-tabs)
 // ============================================================
-function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMode}:any){
+function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,showSuccess,adminMode}:any){
   const upcomingEvents=[...events].filter((e:any)=>e.status!=="Completed").sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
   const [selEventId,setSelEventId]=useState<number>(upcomingEvents[0]?.event_id||0);
   const [subTab,setSubTab]=useState("rsvp");
+  const [pairingsConfirmed,setPairingsConfirmed]=useState(false);
+  const [moving,setMoving]=useState<{signup_id:number,gid:number,fromTee:string}|null>(null);
   const [guestName,setGuestName]=useState("");
   const [guestSponsor,setGuestSponsor]=useState("");
   const [guestHcp,setGuestHcp]=useState("18");
@@ -2268,16 +2263,40 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
   };
 
   const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
-  const mailtoLink=`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School - RSVP Reminder ${formatDate(selEvent?.date)}&body=${encodeURIComponent(buildReminderBody())}`;
+  const mailtoLink=`mailto:?cc=${allEmails.join(",")}&subject=Saturday School - RSVP Reminder ${formatDate(selEvent?.date)}&body=${encodeURIComponent(buildReminderBody())}`;
 
   // Pairing view
   const pairingsByTee = selEvent?.tee_times
     ?selEvent.tee_times.map((tt:string)=>({teeTime:tt,players:eventSignups.filter((s:any)=>s.assigned_tee_time===tt&&s.attending==="Yes")}))
     :[];
   const hasPairings=pairingsByTee.some((g:any)=>g.players.length>0);
+  useEffect(()=>{setPairingsConfirmed(false);setMoving(null);},[selEventId]);
 
   if(upcomingEvents.length===0)return<div className="empty-state"><div className="empty-text">No upcoming events</div></div>;
 
+  const movePlayer=(signup_id:number,toTee:string)=>{
+    setSignups((p:any)=>p.map((s:any)=>s.signup_id===signup_id?{...s,assigned_tee_time:toTee}:s));
+    if(signup_id<1e12)
+      supabase.from("event_signups").update({assigned_tee_time:toTee},{signup_id}).catch(()=>{});
+    setMoving(null);
+  };
+
+  const allPairingEmails=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active"&&g.email_address).map((g:any)=>g.email_address);
+
+  const buildPairingBody=()=>{
+    if(!selEvent)return"";
+    const nl="\n";
+    let b="Saturday School - Pairings"+nl+formatDate(selEvent.date)+" @ "+selEvent.course_name+nl+nl;
+    pairingsByTee.filter((g:any)=>g.players.length>0).forEach((grp:any,i:number)=>{
+      b+="Group "+(i+1)+" - Tee: "+grp.teeTime+nl;
+      grp.players.forEach((su:any)=>{
+        const gl=golfers.find((x:any)=>x.golfer_id===su.golfer_id);
+        b+="  * "+(gl?gl.first_name+" "+gl.last_name:"Guest")+(gl?.is_guest?" (Guest)":"")+nl;
+      });
+      b+=nl;
+    });
+    return b;
+  };
   return(
     <div>
       <div className="section-title">Sign Up</div>
@@ -2336,7 +2355,12 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
       {subTab==="rsvp"&&(
         <>
           <div className="card-title" style={{marginBottom:10}}>Member RSVPs</div>
-          {eventSignups.filter((s:any)=>!s.is_guest_entry).map((signup:any)=>{
+          {[...eventSignups.filter((s:any)=>!s.is_guest_entry)].sort((a:any,b:any)=>{
+            const ga=golfers.find((x:any)=>x.golfer_id===a.golfer_id);
+            const gb=golfers.find((x:any)=>x.golfer_id===b.golfer_id);
+            if(!ga||!gb)return 0;
+            return (ga.first_name||"").localeCompare(gb.first_name||"");
+          }).map((signup:any)=>{
             const g=golfers.find((x:any)=>x.golfer_id===signup.golfer_id);
             if(!g)return null;
             const myGuests=eventSignups.filter((s:any)=>s.is_guest_entry&&s.sponsor_golfer_id===g.golfer_id);
@@ -2393,31 +2417,117 @@ function RSVPTab({golfers,courses,events,signups,setSignups,showSuccess,adminMod
 
       {subTab==="pairings"&&(
         <>
+          {/* Generate / Re-generate button */}
+          {adminMode&&selEvent&&(
+            <button
+              className="btn btn-gold btn-full"
+              style={{marginBottom:14,fontWeight:700}}
+              onClick={()=>{
+                const attending=eventSignups.filter((s:any)=>s.attending==="Yes");
+                if(attending.length<2){alert("Need at least 2 players confirmed In to generate pairings.");return;}
+                const attendees=attending.map((s:any)=>({golfer_id:s.golfer_id,sponsor_golfer_id:s.sponsor_golfer_id}));
+                const newPairings=runPairingEngine(attendees,selEvent.tee_times||[]);
+                const teeByGolfer:Record<number,string>={};
+                newPairings.forEach((grp:any)=>grp.players.forEach((pid:number)=>{teeByGolfer[pid]=grp.teeTime;}));
+                const updatedSignups=eventSignups.map((s:any)=>
+                  teeByGolfer[s.golfer_id]!==undefined?{...s,assigned_tee_time:teeByGolfer[s.golfer_id]}:s
+                );
+                setSignups((su:any)=>su.map((s:any)=>{
+                  const u=updatedSignups.find((x:any)=>x.signup_id===s.signup_id);
+                  return u||s;
+                }));
+                updatedSignups.filter((s:any)=>teeByGolfer[s.golfer_id]).forEach((s:any)=>{
+                  if(s.signup_id<1e12)
+                    supabase.from("event_signups").update({assigned_tee_time:s.assigned_tee_time},{signup_id:s.signup_id}).catch(()=>{});
+                });
+                setEvents((ev:any)=>ev.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Pairings Set"}:e));
+                setMoving(null);setPairingsConfirmed(false);
+              }}
+            >🎲 {hasPairings?"Re-generate Pairings":"Generate Pairings"}</button>
+          )}
+
+          {/* Move hint */}
+          {adminMode&&hasPairings&&(
+            <div style={{fontSize:13,color:"var(--text-muted)",marginBottom:8}}>
+              {moving
+                ?<span style={{color:"var(--gold-700)",fontWeight:600}}>
+                    Moving {golferName(golfers,moving.gid).split(" ")[0]} -- tap a group to move them there
+                    {" "}<button style={{background:"none",border:"none",color:"var(--red-600)",cursor:"pointer",fontSize:13,fontWeight:600}} onClick={()=>setMoving(null)}>Cancel</button>
+                  </span>
+                :"Tap a player name to move them to another group"}
+            </div>
+          )}
+
+          {/* Pairing groups */}
           {!hasPairings
-            ?<div className="empty-state"><div className="empty-text">Pairings not yet set</div><div className="empty-sub">Check back after the admin runs the pairing engine</div></div>
-            :pairingsByTee.filter((g:any)=>g.players.length>0).map((group:any,i:number)=>(
-              <div key={i} className="pairing-card">
-                <div className="pairing-header">
-                  <span className="pairing-time">⏱ {group.teeTime}</span>
-                  <span className="pairing-group">Group {i+1} · {group.players.length} players</span>
-                </div>
-                <div className="pairing-body">
-                  {group.players.map((su:any)=>{
-                    const g=golfers.find((x:any)=>x.golfer_id===su.golfer_id);
-                    return(
-                      <div key={su.signup_id} className="pairing-player">
-                        <div>
-                          <span style={{fontWeight:500}}>{g?`${g.first_name} ${g.last_name}`:"Guest"}</span>
-                          {su.is_guest_entry&&<span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px",marginLeft:6,color:"var(--gold-800)"}}>guest</span>}
+            ?<div className="empty-state"><div className="empty-text">Pairings not yet set</div><div className="empty-sub">{adminMode?"Tap Generate Pairings above":"Check back after the admin sets pairings"}</div></div>
+            :pairingsByTee.filter((g:any)=>g.players.length>0).map((group:any,gi:number)=>{
+              const isDropTarget=adminMode&&moving&&moving.fromTee!==group.teeTime;
+              return(
+                <div
+                  key={gi}
+                  className="pairing-card"
+                  style={isDropTarget?{borderColor:"var(--green-400)",cursor:"pointer"}:{}}
+                  onClick={()=>{if(isDropTarget&&moving)movePlayer(moving.signup_id,group.teeTime);}}
+                >
+                  <div className="pairing-header">
+                    <span className="pairing-time">⏱ {group.teeTime}</span>
+                    <span className="pairing-group">
+                      Group {gi+1} · {group.players.length} players
+                      {isDropTarget?" -- tap to move here":""}
+                    </span>
+                  </div>
+                  <div className="pairing-body">
+                    {group.players.map((su:any)=>{
+                      const g=golfers.find((x:any)=>x.golfer_id===su.golfer_id);
+                      const isMoving=moving?.signup_id===su.signup_id;
+                      return(
+                        <div
+                          key={su.signup_id}
+                          className="pairing-player"
+                          style={{background:isMoving?"var(--gold-50)":undefined,cursor:adminMode?"pointer":"default"}}
+                          onClick={(e:any)=>{
+                            e.stopPropagation();
+                            if(!adminMode)return;
+                            if(moving&&moving.signup_id===su.signup_id){setMoving(null);return;}
+                            if(!moving)setMoving({signup_id:su.signup_id,gid:su.golfer_id,fromTee:group.teeTime});
+                          }}
+                        >
+                          <div>
+                            <span style={{fontWeight:500,color:isMoving?"var(--gold-700)":undefined}}>
+                              {g?`${g.first_name} ${g.last_name}`:"Guest"}{isMoving?" ✋":""}
+                            </span>
+                            {su.is_guest_entry&&<span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px",marginLeft:6,color:"var(--gold-800)"}}>guest</span>}
+                          </div>
+                          <span className="pairing-hcp" style={{color:"var(--text-muted)",fontSize:13}}>HCP {g?.current_handicap_index?.toFixed(1)??""}</span>
                         </div>
-                        <span className="pairing-hcp" style={{color:"var(--text-muted)",fontSize:13}}>HCP {g?.current_handicap_index?.toFixed(1)??""}</span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           }
+
+          {/* Confirm + Email */}
+          {adminMode&&hasPairings&&(
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button
+                className="btn btn-primary"
+                style={{flex:1}}
+                onClick={()=>{
+                  setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent?.event_id?{...e,status:"Pairings Set"}:e));
+                  setPairingsConfirmed(true);
+                  showSuccess("Pairings confirmed");
+                }}
+              >{pairingsConfirmed?"✓ Update Pairings":"Confirm Pairings"}</button>
+              <a
+                href={"mailto:?cc="+allPairingEmails.join(",")+"&subject="+encodeURIComponent("Saturday School Pairings - "+formatDate(selEvent?.date))+"&body="+encodeURIComponent(buildPairingBody())}
+                className="btn btn-outline"
+                style={{flex:1,textDecoration:"none"}}
+              >✉ Email</a>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -2678,8 +2788,8 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       <div className="section-sub">Enter scores for today's round</div>
 
       <div className="toggle-group">
-        <button className={`toggle-btn${mode==="total"?" active":""}`} onClick={()=>setMode("total")}>Total Only</button>
         <button className={`toggle-btn${mode==="hole"?" active":""}`} onClick={()=>setMode("hole")}>Hole by Hole</button>
+        <button className={`toggle-btn${mode==="total"?" active":""}`} onClick={()=>setMode("total")}>Total Only</button>
       </div>
 
       <div className="form-group">
@@ -3472,7 +3582,7 @@ function EventCreator({courses,events,setEvents,signups,setSignups,golfers,showS
       </div>
       <hr className="divider"/>
       <div className="card-title" style={{marginBottom:8}}>Invitation Email</div>
-      <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School - Upcoming Round&body=Hi all, join us for our next Saturday round. Please RSVP on the app!`} className="btn btn-outline btn-full" style={{textDecoration:"none",display:"flex",marginBottom:20}}>✉ Send Invitation</a>
+      <a href={`mailto:?cc=${allEmails.join(",")}&subject=Saturday School - Upcoming Round&body=Hi all, join us for our next Saturday round. Please RSVP on the app!`} className="btn btn-outline btn-full" style={{textDecoration:"none",display:"flex",marginBottom:20}}>✉ Send Invitation</a>
 
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
         <div className="card-title">All Events</div>
@@ -3550,6 +3660,20 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
     setConfirmed(true);setMoving(null);showSuccess("Pairings confirmed");
   };
 
+  const clearPairings=()=>{
+    if(!selEvent)return;
+    if(!window.confirm("Clear all pairings for this event? This will reset it to Upcoming."))return;
+    setSignups((p:any)=>p.map((s:any)=>s.event_id===selEvent.event_id?{...s,assigned_tee_time:null}:s));
+    setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Upcoming"}:e));
+    // Persist to DB
+    eventSignups.forEach((s:any)=>{
+      if(s.signup_id<1e12)
+        supabase.from("event_signups").update({assigned_tee_time:null},{signup_id:s.signup_id}).catch(()=>{});
+    });
+    setPairings(null);setConfirmed(false);setMoving(null);
+    showSuccess("Pairings cleared -- event reset to Upcoming");
+  };
+
   const buildBody=()=>{
     if(!pairings||!selEvent)return"";
     let b=`Saturday School - Pairings\n${formatDate(selEvent.date)} @ ${selEvent.course_name}\n\n`;
@@ -3622,8 +3746,15 @@ function PairingDashboard({golfers,courses,events,setEvents,signups,setSignups,s
           ))}
           <div style={{display:"flex",gap:8,marginTop:10}}>
             <button className="btn btn-primary" style={{flex:1}} onClick={confirmPairings}>{confirmed?"✓ Update Pairings":"Confirm Pairings"}</button>
-            <a href={`mailto:?bcc=${allEmails.join(",")}&subject=Saturday School Pairings - ${formatDate(selEvent?.date)}&body=${encodeURIComponent(buildBody())}`} className="btn btn-outline" style={{flex:1,textDecoration:"none"}}>✉ Email</a>
+            <a href={`mailto:?cc=${allEmails.join(",")}&subject=Saturday School Pairings - ${formatDate(selEvent?.date)}&body=${encodeURIComponent(buildBody())}`} className="btn btn-outline" style={{flex:1,textDecoration:"none"}}>✉ Email</a>
           </div>
+          {selEvent?.status==="Pairings Set"&&(
+            <button
+              className="btn btn-outline btn-full"
+              style={{marginTop:8,color:"var(--red-600)",borderColor:"var(--red-300)",fontSize:14}}
+              onClick={clearPairings}
+            >🗑 Clear Pairings</button>
+          )}
         </div>
       )}
     </div>
@@ -4116,7 +4247,7 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
   const [oddsMode,setOddsMode]=useState<"field"|"h2h">("field");
   // Field odds state
   const completedAndUpcoming=events.filter((e:any)=>e.status!=="Cancelled");
-  const upcomingEvents=events.filter((e:any)=>e.status==="Upcoming"||e.status==="Pairings Set"||e.status==="In-Progress");
+  const upcomingEvents=[...events.filter((e:any)=>e.status==="Upcoming"||e.status==="Pairings Set"||e.status==="In-Progress")].sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
   const allEventsSorted=[...completedAndUpcoming].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
   const [selEventId,setSelEventId]=useState<string>(String(upcomingEvents[0]?.event_id||allEventsSorted[0]?.event_id||""));
 
