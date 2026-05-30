@@ -579,6 +579,8 @@ export default function App(){
   const [pinAttempts,setPinAttempts]=useState(0);
   const [successMsg,setSuccessMsg]=useState("");
   const [errorMsg,setErrorMsg]=useState("");
+  const [scoreMsg,setScoreMsg]=useState<{text:string,ok:boolean}|null>(null);
+  const showScoreMsg=useCallback((text:string,ok=true)=>{setScoreMsg({text,ok});setTimeout(()=>setScoreMsg(null),3500);},[]);
 
   // Lifted score-entry state -- survives tab navigation
   const [scoreMode,setScoreMode]=useState("hole");
@@ -1038,7 +1040,7 @@ export default function App(){
           {errorMsg&&<div style={{background:"var(--red-100)",border:"1px solid var(--red-400)",borderRadius:"var(--radius-md)",padding:"12px 16px",color:"var(--red-600)",fontSize:14,marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span>⚠</span>{errorMsg}</div>}
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} eventImages={eventImages} setEventImages={setEventImages} showSuccess={showSuccess}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} adminMode={adminMode}/>}
-          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess}/>}
+          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} charityDonations={charityDonations} setCharityDonations={setCharityDB} showSuccess={showSuccess}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores}/>}
         </main>
@@ -2571,7 +2573,7 @@ function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,showSucces
 // ============================================================
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false,started:false,summaryId:null as number|null});
 
-function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,dbUpsertHoleScore,scoreMode,setScoreMode,scoreEventId,setScoreEventId,scorers,setScorers,showSuccess}:any){
+function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,dbUpsertHoleScore,scoreMode,setScoreMode,scoreEventId,setScoreEventId,scorers,setScorers,showSuccess,showScoreMsg,scoreMsg}:any){
   // State is lifted to App so it survives tab navigation
   const mode=scoreMode;
   const setMode=setScoreMode;
@@ -2582,6 +2584,69 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
   // Track in-flight leaderboard inserts per "eid:gid" key.
   // Prevents duplicate INSERT when user types quickly on first hole.
   const pendingLbInsert=useRef<Record<string,Array<(id:number)=>void>>>({});
+
+  // ── Offline write queue ──────────────────────────────────────
+  // Stores hole-score upserts that failed or couldn't be sent
+  // due to no connectivity. Flushed automatically when online.
+  const offlineQueue=useRef<Array<{row:any,retries:number}>>([]);
+  const flushingRef=useRef(false);
+
+  const flushOfflineQueue=useCallback(async()=>{
+    if(flushingRef.current||offlineQueue.current.length===0)return;
+    if(!navigator.onLine)return;
+    flushingRef.current=true;
+    const pending=[...offlineQueue.current];
+    offlineQueue.current=[];
+    for(const item of pending){
+      try{
+        await dbUpsertHoleScore(item.row);
+      }catch{
+        // re-queue if still failing (up to 5 retries)
+        if(item.retries<5) offlineQueue.current.push({row:item.row,retries:item.retries+1});
+      }
+    }
+    flushingRef.current=false;
+  },[dbUpsertHoleScore]);
+
+  // Auto-flush when the browser regains connectivity
+  useEffect(()=>{
+    const handler=()=>{
+      if(offlineQueue.current.length>0) flushOfflineQueue();
+    };
+    window.addEventListener("online",handler);
+    return()=>window.removeEventListener("online",handler);
+  },[flushOfflineQueue]);
+
+  // Queued write: writes immediately if online, queues if offline
+  const queueHoleWrite=useCallback((row:any)=>{
+    if(navigator.onLine){
+      dbUpsertHoleScore(row).catch(()=>{
+        offlineQueue.current.push({row,retries:0});
+      });
+    }else{
+      // Replace any existing queued entry for same summary_id+hole
+      offlineQueue.current=offlineQueue.current.filter(
+        q=>!(q.row.summary_id===row.summary_id&&q.row.hole_number===row.hole_number)
+      );
+      offlineQueue.current.push({row,retries:0});
+    }
+  },[dbUpsertHoleScore]);
+
+  // Connection status indicator shown during score entry
+  const [isOnline,setIsOnline]=useState(()=>navigator.onLine);
+  const [queuedCount,setQueuedCount]=useState(0);
+  useEffect(()=>{
+    const up=()=>{setIsOnline(true);flushOfflineQueue().then(()=>setQueuedCount(offlineQueue.current.length));};
+    const down=()=>setIsOnline(false);
+    window.addEventListener("online",up);
+    window.addEventListener("offline",down);
+    return()=>{window.removeEventListener("online",up);window.removeEventListener("offline",down);};
+  },[flushOfflineQueue]);
+  // Keep queuedCount in sync after flushes
+  useEffect(()=>{
+    const id=setInterval(()=>setQueuedCount(offlineQueue.current.length),2000);
+    return()=>clearInterval(id);
+  },[]);
 
   const activeEvents=events.filter((e:any)=>e.status==="Pairings Set"||e.status==="In-Progress");
   const selEvent=events.find((e:any)=>e.event_id===parseInt(selEventId));
@@ -2652,14 +2717,19 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
 
   const updateScorer=(idx:number,field:string,val:any)=>{
     setScorers(p=>{
-      const updated=p.map((s,i)=>i===idx?{...s,[field]:val}:s);
+      // When changing golfer, reset started/summaryId so a fresh startScoring runs
+      const base=p.map((s,i)=>i===idx
+        ?(field==="golferId"?{...s,[field]:val,started:false,summaryId:null,grossScores:Array(18).fill("")}:{...s,[field]:val})
+        :s
+      );
 
       // When a golfer is selected in H-H mode, auto-restore their in-progress round
+      // immediately (scores + tee box + started flag) without needing startScoring
       if(field==="golferId"&&val&&mode==="hole"&&selEventId){
         const eid=parseInt(selEventId);
         const gid=parseInt(val);
         const existing=leaderboard.find((r:any)=>r.event_id===eid&&r.golfer_id===gid&&r.entry_type==="Hole-by-Hole");
-        if(existing){
+        if(existing&&existing.summary_id<1e12){
           // Restore tee box from signup
           const signup=signups.find((s:any)=>s.event_id===eid&&s.golfer_id===gid&&s.tee_box_course_id);
           const courseId=signup?.tee_box_course_id?String(signup.tee_box_course_id):"";
@@ -2667,10 +2737,11 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
           const hs=holeScores.filter((h:any)=>h.summary_id===existing.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number);
           const gross=Array(18).fill("");
           hs.forEach((h:any)=>{gross[h.hole_number-1]=String(h.gross_score);});
-          return updated.map((s,i)=>i===idx?{...s,golferId:val,courseId,grossScores:gross}:s);
+          // Mark as started directly — no need to hit startScoring
+          return base.map((s,i)=>i===idx?{...s,golferId:val,courseId,grossScores:gross,started:true,summaryId:existing.summary_id}:s);
         }
       }
-      return updated;
+      return base;
     });
   };
   const updateGross=(idx:number,hole:number,val:string)=>{
@@ -2708,10 +2779,10 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       const pts=calcStablefordPoints(net,course.hole_pars[hole]);
       const holeRow={score_id:tempSid*100+hole,summary_id:tempSid,hole_number:hole+1,gross_score:grossVal,net_score:net,stableford_points:pts};
       setHoleScores((hs:any)=>[...hs.filter((h:any)=>!(h.summary_id===tempSid&&h.hole_number===hole+1)),holeRow]);
-      // If we already have a real DB row, upsert directly. Otherwise the queued
-      // flush in the .then() below will write it with the real summary_id.
+      // If we already have a real DB row, write via the queue (handles offline).
       if(existing?.summary_id&&existing.summary_id<1e12){
-        if(dbUpsertHoleScore) dbUpsertHoleScore({...holeRow,summary_id:existing.summary_id,score_id:existing.summary_id*100+hole});
+        queueHoleWrite({...holeRow,summary_id:existing.summary_id,score_id:existing.summary_id*100+hole});
+        setQueuedCount(offlineQueue.current.length);
       }
     } else if(!val){
       setHoleScores((hs:any)=>hs.filter((h:any)=>!(h.summary_id===tempSid&&h.hole_number===hole+1)));
@@ -2736,15 +2807,17 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
     ));
 
     // -- Step 5: DB writes -- correct sequence --
-    const doHoleWrite=async(realSid:number)=>{
+    const doHoleWrite=(realSid:number)=>{
       if(!val||isNaN(grossVal))return;
       const net=calcHoleNetScore(grossVal,phcp,course.hole_stroke_indices[hole]);
       const pts=calcStablefordPoints(net,course.hole_pars[hole]);
       const payload={summary_id:realSid,hole_number:hole+1,gross_score:grossVal,net_score:net,stableford_points:pts};
-      await supabase.from("hole_scores").upsert(payload,"summary_id,hole_number");
-      // Also update local holeScores with confirmed real sid
       const holeRow={score_id:realSid*100+hole,...payload};
+      // Update local state immediately
       setHoleScores((hs:any)=>[...hs.filter((h:any)=>!(h.summary_id===realSid&&h.hole_number===hole+1)),holeRow]);
+      // Write via queue — handles offline gracefully
+      queueHoleWrite(payload);
+      setQueuedCount(offlineQueue.current.length);
     };
 
     const doSignupWrite=(realSid:number)=>{
@@ -2776,7 +2849,7 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
     const realSid=existing.summary_id;
     const {summary_id,created_at,...lbRest}=liveEntry;
     supabase.from("event_leaderboard").update({...lbRest,summary_id:realSid},{summary_id:realSid}).catch(()=>{});
-    doHoleWrite(realSid).catch(()=>{});
+    doHoleWrite(realSid);
     doSignupWrite(realSid);
   };
 
@@ -2862,15 +2935,18 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
         const calcTotal=holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
         const alreadyIn=selEvent&&scorer.golferId?leaderboard.some((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===parseInt(scorer.golferId)):false;
 
-        const isResuming=mode==="hole"&&scorer.golferId&&scorer.grossScores.some((v:string)=>!!v)&&
-          selEvent&&leaderboard.some((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===parseInt(scorer.golferId)&&r.entry_type==="Hole-by-Hole");
+        const existingLbEntry=selEvent&&scorer.golferId?leaderboard.find((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===parseInt(scorer.golferId)&&r.entry_type==="Hole-by-Hole"):null;
         const holesIn=scorer.grossScores.filter((v:string)=>!!v).length;
+        const roundComplete=holesIn===18;
+        const isResuming=mode==="hole"&&scorer.golferId&&scorer.grossScores.some((v:string)=>!!v)&&
+          !!existingLbEntry&&!roundComplete;
 
         return(
           <div key={idx} className={`scorer-card${scorer.golferId?" active-scorer":""}`}>
             <div className="scorer-header">
               <span className="scorer-num">Golfer {idx+1}</span>
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {roundComplete&&<span style={{fontSize:11,fontWeight:700,background:"var(--green-100)",color:"var(--green-800)",border:"1px solid var(--green-300)",borderRadius:12,padding:"2px 9px",letterSpacing:"0.04em"}}>✓ Complete · 18/18</span>}
                 {isResuming&&<span style={{fontSize:11,fontWeight:700,background:"var(--gold-100)",color:"var(--gold-800)",border:"1px solid var(--gold-300)",borderRadius:12,padding:"2px 9px",letterSpacing:"0.04em"}}>↩ Resuming · {holesIn}/18</span>}
                 {idx>0&&<button className="btn btn-sm btn-danger" onClick={()=>removeScorer(idx)}>Remove</button>}
               </div>
@@ -2904,6 +2980,7 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
                   🟢 Live · Hole by Hole
                 </span>
                 {isResuming&&<span style={{fontSize:11,fontWeight:700,background:"var(--gold-100)",color:"var(--gold-800)",border:"1px solid var(--gold-300)",borderRadius:12,padding:"2px 9px"}}>↩ Resumed · {holesIn}/18</span>}
+                {roundComplete&&<span style={{fontSize:11,fontWeight:700,background:"var(--green-100)",color:"var(--green-800)",border:"1px solid var(--green-300)",borderRadius:12,padding:"2px 9px"}}>✓ Complete · 18/18</span>}
               </div>
             )}
             {mode==="total"&&(
@@ -2919,10 +2996,20 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       {/* Shared Start Scoring button — shown when H×H mode, at least one scorer
            is ready (golfer+tee selected) but not yet started */}
       {mode==="hole"&&selEvent&&scorers.some(s=>s.golferId&&s.courseId&&!s.started)&&(()=>{
-        const readyCount=scorers.filter(s=>s.golferId&&s.courseId&&!s.started).length;
-        const anyResume=scorers.some(s=>s.golferId&&s.courseId&&!s.started&&
+        // Only count golfers that haven't started AND don't have a complete round
+        const notStartedScorers=scorers.filter(s=>{
+          if(!s.golferId||!s.courseId||s.started)return false;
+          const gid=parseInt(s.golferId);
+          const existingEntry=leaderboard.find((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===gid&&r.entry_type==="Hole-by-Hole");
+          if(!existingEntry)return true; // new scorer, needs start
+          const existingHoles=holeScores.filter((h:any)=>h.summary_id===existingEntry.summary_id);
+          return existingHoles.length<18; // incomplete round can be resumed
+        });
+        if(!notStartedScorers.length)return null;
+        const readyCount=notStartedScorers.length;
+        const anyResume=notStartedScorers.some(s=>
           leaderboard.some((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===parseInt(s.golferId)&&r.entry_type==="Hole-by-Hole"));
-        const allResume=scorers.filter(s=>s.golferId&&s.courseId&&!s.started).every(s=>
+        const allResume=notStartedScorers.every(s=>
           leaderboard.some((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===parseInt(s.golferId)&&r.entry_type==="Hole-by-Hole"));
         const label=allResume?"↩ Resume Scoring":anyResume?"▶ Start / Resume Scoring":"▶ Start Scoring";
         const sub=readyCount>1?` (${readyCount} golfers)`:"";
@@ -3036,6 +3123,24 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
           >
             ✓ Finalize Event
           </button>
+        </div>
+      )}
+
+      {/* ── Bottom status bar: connectivity + queued writes ── */}
+      {mode==="hole"&&selEvent&&(
+        <div style={{marginTop:16,display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:"var(--radius-md)",background:isOnline?"var(--green-50)":"#fff8e1",border:`1px solid ${isOnline?"var(--green-200)":"#ffe082"}`,fontSize:12,color:isOnline?"var(--green-800)":"#7c6500"}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:isOnline?"var(--green-500)":"#f59e0b",display:"inline-block",flexShrink:0}}/>
+          {isOnline
+            ?(queuedCount>0?`Online — syncing ${queuedCount} queued score${queuedCount>1?"s":""}…`:"Online — scores saving in real time")
+            :`Offline — ${queuedCount>0?`${queuedCount} score${queuedCount>1?"s":""} queued, will sync when reconnected`:"scores will queue when entered"}`
+          }
+        </div>
+      )}
+
+      {/* ── Bottom toast (confirmation / error) — no page jump ── */}
+      {scoreMsg&&(
+        <div style={{marginTop:10,padding:"12px 16px",borderRadius:"var(--radius-md)",background:scoreMsg.ok?"var(--green-50)":"var(--red-100)",border:`1px solid ${scoreMsg.ok?"var(--green-300)":"var(--red-400)"}`,color:scoreMsg.ok?"var(--green-800)":"var(--red-600)",fontSize:14,display:"flex",alignItems:"center",gap:8}}>
+          <span>{scoreMsg.ok?"✓":"⚠"}</span>{scoreMsg.text}
         </div>
       )}
     </div>
