@@ -662,47 +662,54 @@ export default function App(){
   },[]);
 
   // Auto-restore in-progress scoring session after data loads.
-  // Runs once after loading completes.  Restores:
-  //   - event selection + hole-by-hole mode
-  //   - golfer + tee box (from signup.tee_box_course_id)
-  //   - gross scores (from hole_scores rows already in DB)
+  // Runs once — guarded by hasRestoredRef so re-renders don't re-fire it.
+  // Only restores golfers that have actually entered ≥1 hole score (not
+  // every signup with a tee box). Sets started:true only for those golfers
+  // so the score sheet appears immediately; others need to press Start Scoring.
+  const hasRestoredRef=useRef(false);
   useEffect(()=>{
-    if(loading||scoreEventId)return;
+    // Wait until all four data sources are populated and we haven't already run
+    if(loading||hasRestoredRef.current)return;
+    if(!events.length||!holeScores)return; // data not ready yet
     const inProgress=events.find((e:any)=>e.status==="In-Progress");
     if(!inProgress)return;
+    hasRestoredRef.current=true; // mark done before any async state updates
+
     setScoreEventId(String(inProgress.event_id));
     setScoreMode("hole");
-    // Collect all signups for this event that have a tee box assigned
-    // (written by updateGross on first hole entered)
-    // Any signup with a tee_box_course_id set means scoring started for that golfer
-    const eventSignups=signups.filter((s:any)=>
-      s.event_id===inProgress.event_id&&s.tee_box_course_id
+
+    // Only restore golfers that have ≥1 hole score row in the DB.
+    // This avoids dumping all 10 signed-up players into the scoring UI.
+    const eventLeaderboard=leaderboard.filter((r:any)=>
+      r.event_id===inProgress.event_id&&r.entry_type==="Hole-by-Hole"&&r.summary_id<1e12
     );
-    if(!eventSignups.length)return;
-    const restored=eventSignups.map((signup:any)=>{
-      // Find the leaderboard entry to get the summary_id for hole score lookup
-      const entry=leaderboard.find((r:any)=>
-        r.event_id===inProgress.event_id&&r.golfer_id===signup.golfer_id
+    const toRestore=eventLeaderboard.filter((entry:any)=>
+      holeScores.some((h:any)=>h.summary_id===entry.summary_id)
+    );
+    if(!toRestore.length)return;
+
+    const restored=toRestore.map((entry:any)=>{
+      const signup=signups.find((s:any)=>
+        s.event_id===inProgress.event_id&&s.golfer_id===entry.golfer_id
       );
+      const courseId=signup?.tee_box_course_id?String(signup.tee_box_course_id):"";
+      const hs=holeScores
+        .filter((h:any)=>h.summary_id===entry.summary_id)
+        .sort((a:any,b:any)=>a.hole_number-b.hole_number);
       const gross=Array(18).fill("");
-      if(entry){
-        const hs=holeScores
-          .filter((h:any)=>h.summary_id===entry.summary_id)
-          .sort((a:any,b:any)=>a.hole_number-b.hole_number);
-        hs.forEach((h:any)=>{gross[h.hole_number-1]=String(h.gross_score);});
-      }
+      hs.forEach((h:any)=>{gross[h.hole_number-1]=String(h.gross_score);});
       return{
-        golferId:String(signup.golfer_id),
-        courseId:String(signup.tee_box_course_id),
+        golferId:String(entry.golfer_id),
+        courseId,
         totalPts:"",
         grossScores:gross,
         submitted:false,
-        started:true,   // already have a DB row, resume directly into scoring
-        summaryId:entry?.summary_id||null
+        started:true,  // has real DB rows — show score sheet immediately
+        summaryId:entry.summary_id
       };
     });
     if(restored.length)setScorers(restored);
-  },[loading]);
+  },[loading,events,leaderboard,holeScores,signups]);
 
   // -- DB write helpers ----------------------------------------
   // Each write: optimistically update local state, then sync to Supabase.
@@ -2723,22 +2730,26 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
         :s
       );
 
-      // When a golfer is selected in H-H mode, auto-restore their in-progress round
-      // immediately (scores + tee box + started flag) without needing startScoring
+      // When a golfer is selected in H-H mode, restore their data if they have
+      // existing hole scores. Only set started:true if they have ≥1 hole score
+      // (otherwise leave started:false so Start Scoring button still appears).
       if(field==="golferId"&&val&&mode==="hole"&&selEventId){
         const eid=parseInt(selEventId);
         const gid=parseInt(val);
         const existing=leaderboard.find((r:any)=>r.event_id===eid&&r.golfer_id===gid&&r.entry_type==="Hole-by-Hole");
         if(existing&&existing.summary_id<1e12){
-          // Restore tee box from signup
           const signup=signups.find((s:any)=>s.event_id===eid&&s.golfer_id===gid&&s.tee_box_course_id);
           const courseId=signup?.tee_box_course_id?String(signup.tee_box_course_id):"";
-          // Restore gross scores from hole_scores
           const hs=holeScores.filter((h:any)=>h.summary_id===existing.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number);
           const gross=Array(18).fill("");
           hs.forEach((h:any)=>{gross[h.hole_number-1]=String(h.gross_score);});
-          // Mark as started directly — no need to hit startScoring
-          return base.map((s,i)=>i===idx?{...s,golferId:val,courseId,grossScores:gross,started:true,summaryId:existing.summary_id}:s);
+          // Only auto-start if they have actual hole scores; otherwise let
+          // the user press Start Scoring so startScoring() can handle it cleanly
+          const hasHoles=hs.length>0;
+          return base.map((s,i)=>i===idx
+            ?{...s,golferId:val,courseId,grossScores:gross,started:hasHoles,summaryId:hasHoles?existing.summary_id:null}
+            :s
+          );
         }
       }
       return base;
@@ -2906,8 +2917,8 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       </div>
 
       {/* Skins warning */}
-      {/* Resume banner -- shown when a prior H×H session is restored */}
-      {selEventId&&mode==="hole"&&scorers.some((s:any)=>s.grossScores.some((v:string)=>!!v))&&(
+      {/* Resume banner -- shown when a prior H×H session is restored from DB */}
+      {selEventId&&mode==="hole"&&scorers.some((s:any)=>s.summaryId&&s.grossScores.some((v:string)=>!!v))&&(
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--green-50)",border:"1.5px solid var(--green-200)",borderRadius:"var(--radius-md)",marginBottom:12}}>
           <span style={{fontSize:18}}>↩</span>
           <div>
@@ -3033,7 +3044,7 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       {mode==="hole"&&selEvent&&scorers.some(s=>s.golferId&&s.courseId&&s.started)&&(()=>{
         const activeScorersFull=scorers
           .map((s,origIdx)=>({...s,origIdx}))
-          .filter(s=>s.golferId&&s.courseId)
+          .filter(s=>s.golferId&&s.courseId&&s.started)
           .map(s=>{
             const g=golfers.find((x:any)=>x.golfer_id===parseInt(s.golferId));
             const course=courses.find((c:any)=>c.course_id===parseInt(s.courseId));
