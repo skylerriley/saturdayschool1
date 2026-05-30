@@ -2874,26 +2874,51 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       const g=golfers.find((x:any)=>x.golfer_id===gid);
       if(!g||!course)return;
       const phcp=calcPlayingHandicap(g.current_handicap_index,course.tee_slope,course.tee_rating,course.par);
-      const holeCalcs=mode==="hole"?calcHoleScores(scorer.grossScores,phcp,course):[];
-      const pts=mode==="total"?parseInt(scorer.totalPts):holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
-      if(!pts||pts<0)return;
-      const newSummaryId=Date.now()+gid;
-      const newEntry={summary_id:newSummaryId,event_id:eid,golfer_id:gid,season:selEvent?.season||2026,entry_type:mode==="hole"?"Hole-by-Hole":"Total Only",total_stableford_points:pts,buy_in_paid:true,skins_paid:mode==="hole",charity_paid:true,weekly_payout_won:0,skins_payout_won:0};
-      const alreadyIn=leaderboard.some((r:any)=>r.event_id===eid&&r.golfer_id===gid);
-      if(alreadyIn){setLeaderboard((p:any)=>p.map((r:any)=>r.event_id===eid&&r.golfer_id===gid?newEntry:r));}
-      else{setLeaderboard((p:any)=>[...p,newEntry]);}
+
       if(mode==="hole"){
-        const newScores=scorer.grossScores.map((gv:string,i:number)=>{
-          if(!gv)return null;
-          const net=calcHoleNetScore(parseInt(gv),phcp,course.hole_stroke_indices[i]);
-          const p2=calcStablefordPoints(net,course.hole_pars[i]);
-          return{score_id:Date.now()+gid+i,summary_id:newSummaryId,hole_number:i+1,gross_score:parseInt(gv),net_score:net,stableford_points:p2};
-        }).filter(Boolean);
-        setHoleScores((p:any)=>[...p,...newScores]);
+        // In hole-by-hole mode, scores are already written to the DB hole-by-hole
+        // as the user types. "Submit" just finalises the leaderboard total using
+        // the real summary_id created by startScoring() — it must NOT create a
+        // new temp id or re-insert hole scores (that would orphan the DB rows).
+        const realSid=scorer.summaryId;
+        if(!realSid||realSid>=1e12)return; // safety: startScoring not yet called
+        const holeCalcs=calcHoleScores(scorer.grossScores,phcp,course);
+        const pts=holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
+        if(pts<=0)return;
+        // Update leaderboard state with the confirmed total under the real summary_id
+        const existing=leaderboard.find((r:any)=>r.summary_id===realSid);
+        const updatedEntry={
+          ...(existing||{}),
+          summary_id:realSid,event_id:eid,golfer_id:gid,
+          season:selEvent?.season||new Date().getFullYear(),
+          entry_type:"Hole-by-Hole",total_stableford_points:pts,
+          buy_in_paid:true,skins_paid:true,charity_paid:true,
+          weekly_payout_won:existing?.weekly_payout_won||0,
+          skins_payout_won:existing?.skins_payout_won||0
+        };
+        setLeaderboard((p:any)=>[...p.filter((r:any)=>r.summary_id!==realSid),updatedEntry]);
+        // Persist final total to DB
+        const {summary_id:_sid,created_at:_ca,...lbRest}=updatedEntry;
+        supabase.from("event_leaderboard").update({...lbRest,summary_id:realSid},{summary_id:realSid}).catch(()=>{});
+        count++;
+      }else{
+        // Total-only mode: create a new entry as before
+        const pts=parseInt(scorer.totalPts);
+        if(!pts||pts<0)return;
+        const newSummaryId=Date.now()+gid;
+        const newEntry={summary_id:newSummaryId,event_id:eid,golfer_id:gid,season:selEvent?.season||2026,entry_type:"Total Only",total_stableford_points:pts,buy_in_paid:true,skins_paid:false,charity_paid:true,weekly_payout_won:0,skins_payout_won:0};
+        const alreadyIn=leaderboard.some((r:any)=>r.event_id===eid&&r.golfer_id===gid);
+        if(alreadyIn){setLeaderboard((p:any)=>p.map((r:any)=>r.event_id===eid&&r.golfer_id===gid?newEntry:r));}
+        else{setLeaderboard((p:any)=>[...p,newEntry]);}
+        count++;
       }
-      count++;
     });
-    if(count>0){showSuccess(`${count} score${count>1?"s":""} submitted`);setScorers([emptyScorer()]);}
+    if(count>0){
+      showSuccess(`${count} score${count>1?"s":""} submitted`);
+      // Total-only: reset the form. Hole-by-hole: keep scoring session open
+      // so the user can keep editing — the grid and data are preserved.
+      if(mode==="total") setScorers([emptyScorer()]);
+    }
   };
 
   const canSubmit=scorers.some(s=>s.golferId&&s.courseId&&(mode==="total"?!!s.totalPts:s.grossScores.some((v:string)=>!!v)));
