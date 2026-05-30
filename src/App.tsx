@@ -139,7 +139,7 @@ const CSS = `
   }
 
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-  html,body,#root{width:100%;overflow-x:hidden;}
+  html,body,#root{width:100%;height:100%;min-height:100%;overflow-x:hidden;}
 
   body{
     font-family:'DM Sans',sans-serif;
@@ -148,11 +148,12 @@ const CSS = `
     font-size:17px;
     line-height:1.55;
     min-height:100vh;
+    min-height:100dvh;
   }
 
   .app-shell{
     width:100%; max-width:500px; min-width:320px;
-    margin:0 auto; min-height:100vh;
+    margin:0 auto; min-height:100vh; min-height:100dvh;
     display:flex; flex-direction:column;
     background:var(--bg); overflow-x:hidden;
   }
@@ -982,7 +983,7 @@ export default function App(){
     <>
       <style>{CSS}</style>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <div className="app-shell" style={{justifyContent:"center",alignItems:"center",gap:16,backgroundColor:"#0B2E1A",backgroundImage:`url(${SPLASH_BG})`,backgroundSize:"cover",backgroundPosition:"center",backgroundRepeat:"no-repeat"}}>
+      <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",gap:16,backgroundColor:"#0B2E1A",backgroundImage:`url(${SPLASH_BG})`,backgroundSize:"cover",backgroundPosition:"center",backgroundRepeat:"no-repeat"}}>
         <div style={{fontFamily:"DM Serif Display,serif",fontSize:28,color:"#ffffff",textShadow:"0 1px 4px rgba(0,0,0,0.4)"}}>Saturday School</div>
         <div style={{fontSize:15,color:"rgba(255,255,255,0.85)"}}>Loading league data…</div>
         <div style={{width:40,height:40,border:"4px solid rgba(255,255,255,0.25)",borderTop:"4px solid #ffffff",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
