@@ -2876,16 +2876,15 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
       const phcp=calcPlayingHandicap(g.current_handicap_index,course.tee_slope,course.tee_rating,course.par);
 
       if(mode==="hole"){
-        // In hole-by-hole mode, scores are already written to the DB hole-by-hole
-        // as the user types. "Submit" just finalises the leaderboard total using
-        // the real summary_id created by startScoring() — it must NOT create a
-        // new temp id or re-insert hole scores (that would orphan the DB rows).
+        // Scores already written to DB hole-by-hole as user types.
+        // Submit finalises the leaderboard total with the real summary_id.
         const realSid=scorer.summaryId;
-        if(!realSid||realSid>=1e12)return; // safety: startScoring not yet called
+        if(!realSid||realSid>=1e12)return; // startScoring not yet called
         const holeCalcs=calcHoleScores(scorer.grossScores,phcp,course);
+        // Allow pts=0 (all pickup holes) — only skip if no holes entered at all
+        const holesEntered=scorer.grossScores.some((v:string)=>!!v);
+        if(!holesEntered)return;
         const pts=holeCalcs.reduce((s:number,h:any)=>s+(h.points??0),0);
-        if(pts<=0)return;
-        // Update leaderboard state with the confirmed total under the real summary_id
         const existing=leaderboard.find((r:any)=>r.summary_id===realSid);
         const updatedEntry={
           ...(existing||{}),
@@ -2897,12 +2896,11 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
           skins_payout_won:existing?.skins_payout_won||0
         };
         setLeaderboard((p:any)=>[...p.filter((r:any)=>r.summary_id!==realSid),updatedEntry]);
-        // Persist final total to DB
         const {summary_id:_sid,created_at:_ca,...lbRest}=updatedEntry;
         supabase.from("event_leaderboard").update({...lbRest,summary_id:realSid},{summary_id:realSid}).catch(()=>{});
         count++;
       }else{
-        // Total-only mode: create a new entry as before
+        // Total-only mode
         const pts=parseInt(scorer.totalPts);
         if(!pts||pts<0)return;
         const newSummaryId=Date.now()+gid;
@@ -2915,13 +2913,19 @@ function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,se
     });
     if(count>0){
       showSuccess(`${count} score${count>1?"s":""} submitted`);
-      // Total-only: reset the form. Hole-by-hole: keep scoring session open
-      // so the user can keep editing — the grid and data are preserved.
-      if(mode==="total") setScorers([emptyScorer()]);
+      // Reset scorers so the next group can be entered
+      setScorers([emptyScorer()]);
     }
   };
 
-  const canSubmit=scorers.some(s=>s.golferId&&s.courseId&&(mode==="total"?!!s.totalPts:s.grossScores.some((v:string)=>!!v)));
+  // canSubmit: hole-by-hole requires started+at least one hole entered;
+  // total-only requires a points value
+  const canSubmit=scorers.some(s=>{
+    if(!s.golferId||!s.courseId)return false;
+    if(mode==="total")return!!s.totalPts;
+    // hole-by-hole: must be started (has a real DB summaryId) and have ≥1 hole
+    return!!s.summaryId&&s.summaryId<1e12&&s.grossScores.some((v:string)=>!!v);
+  });
 
   return(
     <div>
