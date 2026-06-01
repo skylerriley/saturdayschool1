@@ -54,6 +54,8 @@ const supabase = (() => {
       hole_scores: "score_id",
       charity_donations: "id",
       event_images: "id",
+      event_odds: "id",
+      player_stats_cache: "golfer_id",
     };
     const pk = PK_MAP[table] || "id";
   
@@ -79,6 +81,7 @@ const supabase = (() => {
     from: (table: string) => ({
       select: (cols = "*", query = "") => fetchAll(table, cols, "created_at", query),
       selectById: (cols = "*") => fetchAll(table, cols, "id"),
+      selectFiltered: (cols = "*", filterQuery = "", orderCol = "id") => fetchAll(table, cols, orderCol, filterQuery),
       insert: (data: any) => rpc(table, "POST", Array.isArray(data) ? data : [data]),
       upsert: (data: any, onConflict?: string) =>
         rpc(table, "POST", Array.isArray(data) ? data : [data],
@@ -603,11 +606,14 @@ export default function App(){
   const [oddsLoading,setOddsLoading]=useState(false);
   const [oddsLastUpdated,setOddsLastUpdated]=useState<Date|null>(null);
 
+  // Track whether we've already auto-triggered pre-round odds for this event
+  const autoTriggeredRef=useRef<number|null>(null);
+
   const fetchEventOdds=useCallback(async()=>{
     if(!oddsEventId)return;
     setOddsLoading(true);
     try{
-      const data=await supabase.from("event_odds").selectById("*",`&event_id=eq.${oddsEventId}`);
+      const data=await supabase.from("event_odds").selectFiltered("*",`&event_id=eq.${oddsEventId}`,"computed_at");
       if(data?.length){
         // Keep latest row per golfer, prefer live over pre_round
         const latest:Record<number,any>={};
@@ -621,6 +627,14 @@ export default function App(){
         }
         setEventOdds(Object.values(latest));
         setOddsLastUpdated(new Date());
+      } else if(autoTriggeredRef.current!==oddsEventId){
+        // No odds exist yet for this event — auto-generate pre-round odds once
+        autoTriggeredRef.current=oddsEventId;
+        console.log("No event_odds found — auto-triggering pre-round calculation for event",oddsEventId);
+        fetch(
+          SUPABASE_URL+"/functions/v1/calculate-live-odds",
+          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:oddsEventId})}
+        ).then(()=>setTimeout(fetchEventOdds,2000)).catch(e=>console.warn("auto-trigger odds:",e));
       }
     }catch(e){console.warn("fetchEventOdds:",e);}
     finally{setOddsLoading(false);}
@@ -647,6 +661,33 @@ export default function App(){
       setTimeout(fetchEventOdds,1000);
     }catch(e){console.warn("triggerOdds:",e);setOddsLoading(false);}
   },[oddsEventId,fetchEventOdds]);
+
+  // -- auto post-event calibration ------------------------------------
+  // When an event transitions to Completed, fire the calibration function
+  // and rebuild the player cache so next week's odds are already improved.
+  const completedEventIdsRef=useRef<Set<number>>(new Set());
+  useEffect(()=>{
+    events.forEach((e:any)=>{
+      if(e.status==="Completed"&&!completedEventIdsRef.current.has(e.event_id)){
+        completedEventIdsRef.current.add(e.event_id);
+        // Only fire if this isn't just the initial load (set gets populated on first render)
+        if(completedEventIdsRef.current.size>1){
+          console.log("Event",e.event_id,"completed — running post-event calibration");
+          fetch(
+            SUPABASE_URL+"/functions/v1/post-event-calibration",
+            {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:e.event_id})}
+          ).catch(e=>console.warn("post-event-calibration:",e));
+          // Rebuild cache so next week's pre-round odds use updated weights
+          setTimeout(()=>{
+            fetch(
+              SUPABASE_URL+"/functions/v1/rebuild-player-cache",
+              {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:"{}"}
+            ).catch(e=>console.warn("rebuild-player-cache:",e));
+          },5000);
+        }
+      }
+    });
+  },[events]);
 
   // -- initial load --------------------------------------------
   useEffect(()=>{
