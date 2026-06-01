@@ -592,6 +592,62 @@ export default function App(){
   const showSuccess=useCallback((msg:string)=>{setSuccessMsg(msg);setTimeout(()=>setSuccessMsg(""),3500);},[]);
   const showError=useCallback((msg:string)=>{setErrorMsg(msg);setTimeout(()=>setErrorMsg(""),5000);},[]);
 
+  // ── Backend odds — inline hook (uses only supabase.from) ─────
+  const oddsTargetEvent=events.find((e:any)=>
+    ["In-Progress","Pairings Set","Upcoming"].includes(e.status)
+  );
+  const oddsEventId:number|null=oddsTargetEvent?.event_id??null;
+  const isLiveEvent:boolean=oddsTargetEvent?.status==="In-Progress";
+
+  const [eventOdds,setEventOdds]=useState<any[]>([]);
+  const [oddsLoading,setOddsLoading]=useState(false);
+  const [oddsLastUpdated,setOddsLastUpdated]=useState<Date|null>(null);
+
+  const fetchEventOdds=useCallback(async()=>{
+    if(!oddsEventId)return;
+    setOddsLoading(true);
+    try{
+      const data=await supabase.from("event_odds").select("*",`&event_id=eq.${oddsEventId}&order=computed_at.desc`);
+      if(data?.length){
+        // Keep latest row per golfer, prefer live over pre_round
+        const latest:Record<number,any>={};
+        for(const row of data){
+          const ex=latest[row.golfer_id];
+          if(!ex){latest[row.golfer_id]=row;continue;}
+          const rowIsLive=row.simulation_type==="live";
+          const exIsLive=ex.simulation_type==="live";
+          if(rowIsLive&&!exIsLive){latest[row.golfer_id]=row;continue;}
+          if(rowIsLive===exIsLive&&new Date(row.computed_at)>new Date(ex.computed_at))latest[row.golfer_id]=row;
+        }
+        setEventOdds(Object.values(latest));
+        setOddsLastUpdated(new Date());
+      }
+    }catch(e){console.warn("fetchEventOdds:",e);}
+    finally{setOddsLoading(false);}
+  },[oddsEventId]);
+
+  // Load odds when event changes
+  useEffect(()=>{fetchEventOdds();},[fetchEventOdds]);
+
+  // Poll every 30 s during live events
+  useEffect(()=>{
+    if(!isLiveEvent)return;
+    const id=setInterval(fetchEventOdds,30000);
+    return()=>clearInterval(id);
+  },[isLiveEvent,fetchEventOdds]);
+
+  const triggerOdds=useCallback(async()=>{
+    if(!oddsEventId)return;
+    setOddsLoading(true);
+    try{
+      await fetch(
+        SUPABASE_URL+"/functions/v1/calculate-live-odds",
+        {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:oddsEventId})}
+      );
+      setTimeout(fetchEventOdds,1000);
+    }catch(e){console.warn("triggerOdds:",e);setOddsLoading(false);}
+  },[oddsEventId,fetchEventOdds]);
+
   // -- initial load --------------------------------------------
   useEffect(()=>{
     const load=async()=>{
@@ -1052,7 +1108,7 @@ export default function App(){
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} adminMode={adminMode}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} charityDonations={charityDonations} setCharityDonations={setCharityDB} showSuccess={showSuccess}/>}
-          {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores}/>}
+          {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase}/>}
         </main>
 
         {/* PIN Modal */}
@@ -4027,7 +4083,7 @@ function calcSeasonLeaderData(golfers:any[],leaderboard:any[],events:any[],seaso
   }).filter(Boolean);
 }
 
-function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:any){
+function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase}:any){
   const [subTab,setSubTab]=useState("overview");
   const [selGolfer,setSelGolfer]=useState("");
   const allSeasons=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
@@ -4115,7 +4171,7 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
           {selG&&golferRounds.length===0&&<div className="empty-state"><div className="empty-text">No rounds recorded this season</div></div>}
         </>
       )}
-      {subTab==="odds"&&<OddsTab golfers={golfers} leaderboard={leaderboard} events={events} signups={signups} courses={courses} holeScores={holeScores} season={selSeason}/>}
+      {subTab==="odds"&&<OddsTab golfers={golfers} leaderboard={leaderboard} events={events} signups={signups} courses={courses} holeScores={holeScores} season={selSeason} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={onTriggerOdds}/>}
     </div>
   );
 }
@@ -4430,7 +4486,7 @@ function holeWeightedAvg(holePts:{pts:number,weight:number}[]):number{
   return den>0?num/den:0;
 }
 
-function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:any){
+function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds}:any){
   const [oddsMode,setOddsMode]=useState<"field"|"h2h">("field");
   // Field odds state
   const completedAndUpcoming=events.filter((e:any)=>e.status!=="Cancelled");
@@ -4488,11 +4544,45 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
   // Golfers in the field who have no history (can't model them)
   const noHistoryGolfers=playingField.filter((g:any)=>!profiles.find((p:any)=>p.golfer.golfer_id===g.golfer_id));
 
-  // Run Monte Carlo
-  const adjProbs=profiles.length>=2?calcFieldOdds(profiles):profiles.map(()=>1/profiles.length);
+  // Build backend odds lookup — prefer live over pre_round, newest first
+  const backendMap:Record<number,any>={};
+  (eventOdds??[]).forEach((o:any)=>{
+    const ex=backendMap[o.golfer_id];
+    if(!ex){backendMap[o.golfer_id]=o;return;}
+    const rowIsLive=o.simulation_type==="live";
+    const exIsLive=ex.simulation_type==="live";
+    if(rowIsLive&&!exIsLive){backendMap[o.golfer_id]=o;return;}
+    if(rowIsLive===exIsLive&&new Date(o.computed_at)>new Date(ex.computed_at))backendMap[o.golfer_id]=o;
+  });
+  const hasBackend=profiles.some((p:any)=>backendMap[p.golfer.golfer_id]);
 
-  // Sort by probability desc
-  const ranked=[...profiles.map((p:any,i:number)=>({...p,prob:adjProbs[i]}))].sort((a:any,b:any)=>b.prob-a.prob);
+  // Ranked list: use backend probabilities when available, fall back to client MC
+  const ranked=(()=>{
+    if(hasBackend){
+      return [...profiles.map((p:any)=>({
+        ...p,
+        prob:          backendMap[p.golfer.golfer_id]?.win_probability??0,
+        top3Prob:      backendMap[p.golfer.golfer_id]?.top3_probability??0,
+        top5Prob:      backendMap[p.golfer.golfer_id]?.top5_probability??0,
+        projMean:      backendMap[p.golfer.golfer_id]?.projected_final_mean,
+        projLow:       backendMap[p.golfer.golfer_id]?.projected_final_low,
+        projHigh:      backendMap[p.golfer.golfer_id]?.projected_final_high,
+        oddsAmerican:  backendMap[p.golfer.golfer_id]?.win_odds_american,
+        heaterActive:  backendMap[p.golfer.golfer_id]?.heater_active??false,
+        heaterMag:     backendMap[p.golfer.golfer_id]?.heater_magnitude,
+        pointsSoFar:   backendMap[p.golfer.golfer_id]?.points_so_far,
+        oddsSource:    "backend",
+      }))].sort((a:any,b:any)=>b.prob-a.prob);
+    }
+    // Fallback: existing client-side Monte Carlo
+    const adjProbs=profiles.length>=2?calcFieldOdds(profiles):profiles.map(()=>1/profiles.length);
+    return [...profiles.map((p:any,i:number)=>({
+      ...p,
+      prob:        adjProbs[i],
+      oddsAmerican:toAmericanOdds(adjProbs[i]),
+      oddsSource:  "client",
+    }))].sort((a:any,b:any)=>b.prob-a.prob);
+  })();
 
   // Toggle exclude
   const toggleExclude=(gid:number)=>{
@@ -4603,6 +4693,25 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
 
           {profiles.length>=2&&(
             <>
+              {/* Live odds status bar */}
+              {selEvent?.status==="In-Progress"&&(
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderRadius:"var(--radius-md)",background:"var(--green-50)",border:"1px solid var(--green-200)",marginBottom:12,fontSize:13}}>
+                  <span style={{display:"flex",alignItems:"center",gap:6,color:"var(--green-800)"}}>
+                    <span style={{width:8,height:8,borderRadius:"50%",background:"var(--green-500)",display:"inline-block",animation:"livePulse 1.5s infinite"}}/>
+                    {ranked.some((r:any)=>r.oddsSource==="backend")
+                      ?`Live odds · updated ${oddsLastUpdated?new Date(oddsLastUpdated).toLocaleTimeString():"…"}`
+                      :"Live odds · client estimate"}
+                  </span>
+                  <button
+                    onClick={onTriggerOdds}
+                    disabled={oddsLoading}
+                    style={{background:"var(--green-700)",color:"white",border:"none",borderRadius:6,padding:"4px 10px",fontSize:12,cursor:"pointer",opacity:oddsLoading?0.6:1}}
+                  >
+                    {oddsLoading?"…":"↻ Refresh"}
+                  </button>
+                </div>
+              )}
+
               {/* Odds board */}
               <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",overflow:"hidden",marginBottom:4}}>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 60px 65px 60px",padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
@@ -4612,17 +4721,29 @@ function OddsTab({golfers,leaderboard,events,signups,courses,holeScores,season}:
                   <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"right"}}>Odds</div>
                 </div>
                 {ranked.map((r:any,i:number)=>{
-                  const odds=toAmericanOdds(r.prob);
+                  const odds=r.oddsAmerican??toAmericanOdds(r.prob);
                   const isFav=i===0;
                   return(
                     <div key={r.golfer.golfer_id} style={{display:"grid",gridTemplateColumns:"1fr 60px 65px 60px",padding:"11px 12px",borderBottom:"1px solid rgba(255,255,255,0.06)",background:isFav?"rgba(196,120,0,0.12)":"transparent",alignItems:"center"}}>
                       <div>
-                        <div style={{fontSize:15,fontWeight:isFav?700:500,color:isFav?"var(--gold-300)":"rgba(255,255,255,0.88)"}}>{r.golfer.first_name} {r.golfer.last_name}{isFav?" 🏆":""}</div>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:1}}>
+                        <div style={{fontSize:15,fontWeight:isFav?700:500,color:isFav?"var(--gold-300)":"rgba(255,255,255,0.88)"}}>
+                          {r.golfer.first_name} {r.golfer.last_name}{isFav?" 🏆":""}
+                        </div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:1,alignItems:"center",gap:4,flexWrap:"wrap"}}>
                           {r.rounds} rds · σ{r.sd} {r.trend>0.05?"↑ hot":r.trend<-0.05?"↓ cooling":"-> steady"}
+                          {r.heaterActive&&(
+                            <span style={{fontSize:10,fontWeight:700,background:"var(--gold-100)",color:"var(--gold-800)",border:"1px solid var(--gold-300)",borderRadius:10,padding:"1px 6px"}}>
+                              🔥 {(r.heaterMag??0).toFixed(1)}σ
+                            </span>
+                          )}
+                          {r.projLow!=null&&r.projHigh!=null&&(
+                            <span style={{color:"rgba(255,255,255,0.35)"}}>
+                              {r.projLow}–{r.projHigh} pts
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div style={{textAlign:"center",fontSize:17,fontWeight:700,color:"var(--green-300)"}}>{r.proj}</div>
+                      <div style={{textAlign:"center",fontSize:17,fontWeight:700,color:"var(--green-300)"}}>{r.projMean??r.proj}</div>
                       <div style={{textAlign:"center"}}>
                         <div style={{fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>{(r.prob*100).toFixed(1)}%</div>
                         <div style={{height:4,background:"rgba(255,255,255,0.15)",borderRadius:2,marginTop:3}}>
