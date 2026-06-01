@@ -595,112 +595,161 @@ export default function App(){
   const showSuccess=useCallback((msg:string)=>{setSuccessMsg(msg);setTimeout(()=>setSuccessMsg(""),3500);},[]);
   const showError=useCallback((msg:string)=>{setErrorMsg(msg);setTimeout(()=>setErrorMsg(""),5000);},[]);
 
-  // ── Backend odds ────────────────────────────────────────────
-  // oddsEventId is a stable primitive (number|null) so it never
-  // causes spurious re-renders or infinite loops.
-  const [oddsEventId,setOddsEventId]=useState<number|null>(null);
-  const [oddsIsLive,setOddsIsLive]=useState(false);
+  // ── Backend odds ─────────────────────────────────────────────
+  // All odds logic lives in a single stable ref-based system.
+  // Nothing here depends on the `events` array as a React dep,
+  // which would cause a new effect run on every state update.
   const [eventOdds,setEventOdds]=useState<any[]>([]);
   const [oddsLoading,setOddsLoading]=useState(false);
   const [oddsLastUpdated,setOddsLastUpdated]=useState<Date|null>(null);
-  const autoTriggeredRef=useRef<Set<number>>(new Set());
-  const calibratedRef=useRef<Set<number>>(new Set());
-  const oddsInitRef=useRef(false);
 
-  // Separate effect: resolve which event to track odds for.
-  // Runs only when the events array changes length (new event loaded/completed).
-  const eventsLenRef=useRef(0);
-  useEffect(()=>{
-    if(events.length===eventsLenRef.current)return;
-    eventsLenRef.current=events.length;
-    const target=events.find((e:any)=>["In-Progress","Pairings Set","Upcoming"].includes(e.status));
-    const newId=target?.event_id??null;
-    const newLive=target?.status==="In-Progress"??false;
-    setOddsEventId(prev=>{if(prev!==newId){autoTriggeredRef.current.delete(prev??0);}return newId;});
-    setOddsIsLive(newLive);
-  },[events]);
+  // All mutable tracking lives in refs — no state, no re-renders
+  const oddsRef=useRef<{
+    eventId:number|null;
+    isLive:boolean;
+    autoTriggered:Set<number>;
+    calibrated:Set<number>;
+    initialized:boolean;
+    pollTimer:ReturnType<typeof setInterval>|null;
+    trackedStatuses:Record<number,string>;
+  }>({
+    eventId:null,
+    isLive:false,
+    autoTriggered:new Set(),
+    calibrated:new Set(),
+    initialized:false,
+    pollTimer:null,
+    trackedStatuses:{},
+  });
 
-  // Stable fetch function — only recreated when oddsEventId changes
+  // Core fetch — pure function, no React deps, called imperatively
   const fetchEventOdds=useCallback(async(eid:number)=>{
     setOddsLoading(true);
     try{
-      const data=await supabase.from("event_odds").selectFiltered("*",`&event_id=eq.${eid}`,"computed_at");
+      const data=await supabase.from("event_odds").selectFiltered(
+        "*",`&event_id=eq.${eid}`,"computed_at"
+      );
       if(data?.length){
         const latest:Record<number,any>={};
         for(const row of data){
           const ex=latest[row.golfer_id];
           if(!ex){latest[row.golfer_id]=row;continue;}
-          const rowIsLive=row.simulation_type==="live";
-          const exIsLive=ex.simulation_type==="live";
-          if(rowIsLive&&!exIsLive){latest[row.golfer_id]=row;continue;}
-          if(rowIsLive===exIsLive&&new Date(row.computed_at)>new Date(ex.computed_at))latest[row.golfer_id]=row;
+          const rowLive=row.simulation_type==="live";
+          const exLive=ex.simulation_type==="live";
+          if(rowLive&&!exLive){latest[row.golfer_id]=row;continue;}
+          if(rowLive===exLive&&new Date(row.computed_at)>new Date(ex.computed_at))
+            latest[row.golfer_id]=row;
         }
         setEventOdds(Object.values(latest));
         setOddsLastUpdated(new Date());
-      } else if(!autoTriggeredRef.current.has(eid)){
-        // No odds for this event yet — trigger pre-round calculation once
-        autoTriggeredRef.current.add(eid);
-        console.log("[odds] No event_odds found — generating pre-round odds for event",eid);
+      } else if(!oddsRef.current.autoTriggered.has(eid)){
+        oddsRef.current.autoTriggered.add(eid);
+        console.log("[odds] Generating pre-round odds for event",eid);
         fetch(
           SUPABASE_URL+"/functions/v1/calculate-live-odds",
-          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:eid})}
-        ).then(()=>setTimeout(()=>fetchEventOdds(eid),3000)).catch(err=>console.warn("[odds] auto-trigger:",err));
+          {method:"POST",
+           headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+           body:JSON.stringify({event_id:eid})}
+        ).then(()=>setTimeout(()=>fetchEventOdds(eid),3000))
+         .catch(err=>console.warn("[odds] auto-trigger:",err));
       }
-    }catch(err){console.warn("[odds] fetchEventOdds:",err);}
+    }catch(err){console.warn("[odds] fetch:",err);}
     finally{setOddsLoading(false);}
-  },[]); // no deps — eid passed as argument
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
-  // Load odds once when oddsEventId is set
-  useEffect(()=>{
-    if(!oddsEventId)return;
-    fetchEventOdds(oddsEventId);
-  },[oddsEventId,fetchEventOdds]);
-
-  // Poll every 45 s during live events only
-  useEffect(()=>{
-    if(!oddsIsLive||!oddsEventId)return;
-    const id=setInterval(()=>fetchEventOdds(oddsEventId),45000);
-    return()=>clearInterval(id);
-  },[oddsIsLive,oddsEventId,fetchEventOdds]);
-
-  // Manual refresh button handler
+  // Manual refresh
   const triggerOdds=useCallback(async()=>{
-    if(!oddsEventId)return;
+    const eid=oddsRef.current.eventId;
+    if(!eid)return;
     setOddsLoading(true);
     try{
       await fetch(
         SUPABASE_URL+"/functions/v1/calculate-live-odds",
-        {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:oddsEventId})}
+        {method:"POST",
+         headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+         body:JSON.stringify({event_id:eid})}
       );
-      setTimeout(()=>fetchEventOdds(oddsEventId),1500);
-    }catch(err){console.warn("[odds] triggerOdds:",err);setOddsLoading(false);}
-  },[oddsEventId,fetchEventOdds]);
+      setTimeout(()=>fetchEventOdds(eid),1500);
+    }catch(err){console.warn("[odds] trigger:",err);setOddsLoading(false);}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
-  // Post-event calibration — fires once when an event is marked Completed.
-  // Uses a ref so it never re-runs on re-renders, only on genuine status changes.
+  // Single effect — runs only once after initial data load (when loading flips false).
+  // Imperatively reads current event statuses from the events array via ref,
+  // sets up polling if live, and seeds the calibration set.
+  // Never re-runs because its dep array is [loading] and loading only changes twice.
   useEffect(()=>{
-    if(!oddsInitRef.current){
-      // First render: seed the ref with all already-completed events so we
-      // don't fire calibration for historical events on load.
-      events.forEach((e:any)=>{if(e.status==="Completed")calibratedRef.current.add(e.event_id);});
-      oddsInitRef.current=true;
-      return;
+    if(loading)return; // wait for data
+    const o=oddsRef.current;
+
+    // Seed calibrated set with all already-completed events (do this once)
+    if(!o.initialized){
+      events.forEach((e:any)=>{
+        if(e.status==="Completed")o.calibrated.add(e.event_id);
+        o.trackedStatuses[e.event_id]=e.status;
+      });
+      o.initialized=true;
     }
-    events.forEach((e:any)=>{
-      if(e.status==="Completed"&&!calibratedRef.current.has(e.event_id)){
-        calibratedRef.current.add(e.event_id);
-        console.log("[odds] Event",e.event_id,"completed — running post-event calibration");
-        fetch(
-          SUPABASE_URL+"/functions/v1/post-event-calibration",
-          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:e.event_id})}
-        ).catch(err=>console.warn("[odds] calibration:",err));
-        setTimeout(()=>fetch(
-          SUPABASE_URL+"/functions/v1/rebuild-player-cache",
-          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:"{}"}
-        ).catch(err=>console.warn("[odds] rebuild-cache:",err)),8000);
+
+    // Find the active event
+    const target=events.find((e:any)=>
+      ["In-Progress","Pairings Set","Upcoming"].includes(e.status)
+    );
+    const newId=target?.event_id??null;
+    const newLive=target?.status==="In-Progress";
+
+    if(newId!==o.eventId){
+      // Event changed — clear old poll, reset auto-trigger for new event
+      if(o.pollTimer){clearInterval(o.pollTimer);o.pollTimer=null;}
+      o.eventId=newId;
+      o.isLive=newLive;
+      if(newId)fetchEventOdds(newId);
+    }
+
+    // Set up live polling if needed
+    if(newLive&&newId&&!o.pollTimer){
+      o.pollTimer=setInterval(()=>fetchEventOdds(newId),45000);
+    }
+
+    return()=>{
+      if(o.pollTimer){clearInterval(o.pollTimer);o.pollTimer=null;}
+    };
+  // Only re-run when loading changes (initial load complete)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[loading]);
+
+  // Post-event calibration — a completely separate, minimal effect.
+  // Watches only for completed event IDs by comparing a stable serialised key.
+  // Does NOT depend on the events array reference — uses a derived string instead.
+  const completedIdsKey=events
+    .filter((e:any)=>e.status==="Completed")
+    .map((e:any)=>e.event_id)
+    .sort()
+    .join(",");
+  const prevCompletedKeyRef=useRef("");
+  useEffect(()=>{
+    if(completedIdsKey===prevCompletedKeyRef.current)return;
+    const prev=new Set(prevCompletedKeyRef.current.split(",").filter(Boolean).map(Number));
+    prevCompletedKeyRef.current=completedIdsKey;
+    const o=oddsRef.current;
+    if(!o.initialized)return; // don't fire on initial seed
+    completedIdsKey.split(",").filter(Boolean).map(Number).forEach(eid=>{
+      if(!prev.has(eid)&&!o.calibrated.has(eid)){
+        o.calibrated.add(eid);
+        console.log("[odds] Event",eid,"completed — calibrating");
+        fetch(SUPABASE_URL+"/functions/v1/post-event-calibration",
+          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+           body:JSON.stringify({event_id:eid})})
+          .catch(err=>console.warn("[odds] calibration:",err));
+        setTimeout(()=>fetch(SUPABASE_URL+"/functions/v1/rebuild-player-cache",
+          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+           body:"{}"}).catch(err=>console.warn("[odds] rebuild:",err)),8000);
       }
     });
-  },[events]);
+  // completedIdsKey is a stable string — only changes when IDs actually change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[completedIdsKey]);
 
   // -- initial load --------------------------------------------
   useEffect(()=>{
