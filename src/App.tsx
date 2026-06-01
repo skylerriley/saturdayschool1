@@ -20,6 +20,10 @@ ChartJS.register(
 // ============================================================
 const SUPABASE_URL  = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL)  || "https://YOUR_PROJECT_ID.supabase.co";
 const SUPABASE_KEY  = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_ANON_KEY) || "YOUR_ANON_KEY_HERE";
+// Service key used only for calling Edge Functions (never exposed in DB queries).
+// Add VITE_SUPABASE_SERVICE_KEY to your Vercel env vars pointing to your service_role key.
+// If not set, falls back to anon key (works when functions use --no-verify-jwt).
+const SUPABASE_FUNC_KEY = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_SERVICE_KEY) || SUPABASE_KEY;
 
 // Minimal Supabase REST client (no npm install needed for Claude artifact preview)
 // In your real Netlify project, replace this with: import { createClient } from '@supabase/supabase-js'
@@ -648,10 +652,12 @@ export default function App(){
         fetch(
           SUPABASE_URL+"/functions/v1/calculate-live-odds",
           {method:"POST",
-           headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+           headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_FUNC_KEY},
            body:JSON.stringify({event_id:eid})}
-        ).then(()=>setTimeout(()=>fetchEventOdds(eid),3000))
-         .catch(err=>console.warn("[odds] auto-trigger:",err));
+        ).then(async res=>{
+          if(!res.ok){const t=await res.text().catch(()=>"");console.warn("[odds] auto-trigger HTTP",res.status,t);}
+          setTimeout(()=>fetchEventOdds(eid),3000);
+        }).catch(err=>console.warn("[odds] auto-trigger:",err));
       }
     }catch(err){console.warn("[odds] fetch:",err);}
     finally{setOddsLoading(false);}
@@ -664,12 +670,13 @@ export default function App(){
     if(!eid)return;
     setOddsLoading(true);
     try{
-      await fetch(
+      const _tr=await fetch(
         SUPABASE_URL+"/functions/v1/calculate-live-odds",
         {method:"POST",
-         headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+         headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_FUNC_KEY},
          body:JSON.stringify({event_id:eid})}
       );
+      if(!_tr.ok){const t=await _tr.text().catch(()=>"");console.warn("[odds] trigger HTTP",_tr.status,t);}
       setTimeout(()=>fetchEventOdds(eid),1500);
     }catch(err){console.warn("[odds] trigger:",err);setOddsLoading(false);}
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -739,11 +746,11 @@ export default function App(){
         o.calibrated.add(eid);
         console.log("[odds] Event",eid,"completed — calibrating");
         fetch(SUPABASE_URL+"/functions/v1/post-event-calibration",
-          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_FUNC_KEY},
            body:JSON.stringify({event_id:eid})})
           .catch(err=>console.warn("[odds] calibration:",err));
         setTimeout(()=>fetch(SUPABASE_URL+"/functions/v1/rebuild-player-cache",
-          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_FUNC_KEY},
            body:"{}"}).catch(err=>console.warn("[odds] rebuild:",err)),8000);
       }
     });
