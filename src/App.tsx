@@ -53,6 +53,7 @@ const supabase = (() => {
       event_signups: "signup_id",
       hole_scores: "score_id",
       charity_donations: "id",
+      event_images: "id",
     };
     const pk = PK_MAP[table] || "id";
   
@@ -77,6 +78,7 @@ const supabase = (() => {
   return {
     from: (table: string) => ({
       select: (cols = "*", query = "") => fetchAll(table, cols, "created_at", query),
+      selectById: (cols = "*") => fetchAll(table, cols, "id"),
       insert: (data: any) => rpc(table, "POST", Array.isArray(data) ? data : [data]),
       upsert: (data: any, onConflict?: string) =>
         rpc(table, "POST", Array.isArray(data) ? data : [data],
@@ -655,8 +657,9 @@ export default function App(){
 
 
   // Load event images (scorecard photos)
+  // Uses selectById because event_images has no created_at column
   useEffect(()=>{
-    supabase.from("event_images").select("*").then((rows:any)=>{
+    supabase.from("event_images").selectById("*").then((rows:any)=>{
       if(rows)setEventImages(rows);
     }).catch(()=>{});
   },[]);
@@ -4062,10 +4065,17 @@ function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores}:an
       const topPts=paidEv[0]?.total_stableford_points;
       const tied1st=paidEv.filter((r:any)=>r.total_stableford_points===topPts);
       const secondPts=tied1st.length<paidEv.length?paidEv[tied1st.length]?.total_stableford_points:null;
-      const tied2nd=secondPts!=null?paidEv.filter((r:any)=>r.total_stableford_points===secondPts):[];
+      // 2nd place only exists when there is exactly ONE player in 1st (matches weekly logic)
+      const secondPtsRbR=tied1st.length===1&&paidEv.length>1?paidEv[tied1st.length]?.total_stableford_points:null;
+      const tied2nd=secondPtsRbR!=null?paidEv.filter((r:any)=>r.total_stableford_points===secondPtsRbR):[];
       let roundEarned=0;
-      if(tied1st.some((r:any)=>r.golfer_id===selG.golfer_id))roundEarned=(tied1st.length>1?pot:pot*0.75)/tied1st.length;
-      else if(tied2nd.some((r:any)=>r.golfer_id===selG.golfer_id))roundEarned=(pot*0.25)/tied2nd.length;
+      if(tied1st.some((r:any)=>r.golfer_id===selG.golfer_id)){
+        // Solo 1st: 2/3 of pot. Tied 1st: split entire pot (no 2nd place payout)
+        roundEarned=tied1st.length===1?pot*(2/3):pot/tied1st.length;
+      } else if(tied2nd.some((r:any)=>r.golfer_id===selG.golfer_id)){
+        // 2nd place: 1/3 of pot (only reachable when solo 1st exists)
+        roundEarned=(pot*(1/3))/tied2nd.length;
+      }
       return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned};
     }).filter(Boolean):[];
 
