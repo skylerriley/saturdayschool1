@@ -607,7 +607,7 @@ export default function App(){
     if(!oddsEventId)return;
     setOddsLoading(true);
     try{
-      const data=await supabase.from("event_odds").select("*",`&event_id=eq.${oddsEventId}&order=computed_at.desc`);
+      const data=await supabase.from("event_odds").selectById("*",`&event_id=eq.${oddsEventId}`);
       if(data?.length){
         // Keep latest row per golfer, prefer live over pre_round
         const latest:Record<number,any>={};
