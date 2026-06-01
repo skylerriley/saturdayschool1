@@ -595,27 +595,37 @@ export default function App(){
   const showSuccess=useCallback((msg:string)=>{setSuccessMsg(msg);setTimeout(()=>setSuccessMsg(""),3500);},[]);
   const showError=useCallback((msg:string)=>{setErrorMsg(msg);setTimeout(()=>setErrorMsg(""),5000);},[]);
 
-  // ── Backend odds — inline hook (uses only supabase.from) ─────
-  const oddsTargetEvent=events.find((e:any)=>
-    ["In-Progress","Pairings Set","Upcoming"].includes(e.status)
-  );
-  const oddsEventId:number|null=oddsTargetEvent?.event_id??null;
-  const isLiveEvent:boolean=oddsTargetEvent?.status==="In-Progress";
-
+  // ── Backend odds ────────────────────────────────────────────
+  // oddsEventId is a stable primitive (number|null) so it never
+  // causes spurious re-renders or infinite loops.
+  const [oddsEventId,setOddsEventId]=useState<number|null>(null);
+  const [oddsIsLive,setOddsIsLive]=useState(false);
   const [eventOdds,setEventOdds]=useState<any[]>([]);
   const [oddsLoading,setOddsLoading]=useState(false);
   const [oddsLastUpdated,setOddsLastUpdated]=useState<Date|null>(null);
+  const autoTriggeredRef=useRef<Set<number>>(new Set());
+  const calibratedRef=useRef<Set<number>>(new Set());
+  const oddsInitRef=useRef(false);
 
-  // Track whether we've already auto-triggered pre-round odds for this event
-  const autoTriggeredRef=useRef<number|null>(null);
+  // Separate effect: resolve which event to track odds for.
+  // Runs only when the events array changes length (new event loaded/completed).
+  const eventsLenRef=useRef(0);
+  useEffect(()=>{
+    if(events.length===eventsLenRef.current)return;
+    eventsLenRef.current=events.length;
+    const target=events.find((e:any)=>["In-Progress","Pairings Set","Upcoming"].includes(e.status));
+    const newId=target?.event_id??null;
+    const newLive=target?.status==="In-Progress"??false;
+    setOddsEventId(prev=>{if(prev!==newId){autoTriggeredRef.current.delete(prev??0);}return newId;});
+    setOddsIsLive(newLive);
+  },[events]);
 
-  const fetchEventOdds=useCallback(async()=>{
-    if(!oddsEventId)return;
+  // Stable fetch function — only recreated when oddsEventId changes
+  const fetchEventOdds=useCallback(async(eid:number)=>{
     setOddsLoading(true);
     try{
-      const data=await supabase.from("event_odds").selectFiltered("*",`&event_id=eq.${oddsEventId}`,"computed_at");
+      const data=await supabase.from("event_odds").selectFiltered("*",`&event_id=eq.${eid}`,"computed_at");
       if(data?.length){
-        // Keep latest row per golfer, prefer live over pre_round
         const latest:Record<number,any>={};
         for(const row of data){
           const ex=latest[row.golfer_id];
@@ -627,29 +637,33 @@ export default function App(){
         }
         setEventOdds(Object.values(latest));
         setOddsLastUpdated(new Date());
-      } else if(autoTriggeredRef.current!==oddsEventId){
-        // No odds exist yet for this event — auto-generate pre-round odds once
-        autoTriggeredRef.current=oddsEventId;
-        console.log("No event_odds found — auto-triggering pre-round calculation for event",oddsEventId);
+      } else if(!autoTriggeredRef.current.has(eid)){
+        // No odds for this event yet — trigger pre-round calculation once
+        autoTriggeredRef.current.add(eid);
+        console.log("[odds] No event_odds found — generating pre-round odds for event",eid);
         fetch(
           SUPABASE_URL+"/functions/v1/calculate-live-odds",
-          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:oddsEventId})}
-        ).then(()=>setTimeout(fetchEventOdds,2000)).catch(e=>console.warn("auto-trigger odds:",e));
+          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:eid})}
+        ).then(()=>setTimeout(()=>fetchEventOdds(eid),3000)).catch(err=>console.warn("[odds] auto-trigger:",err));
       }
-    }catch(e){console.warn("fetchEventOdds:",e);}
+    }catch(err){console.warn("[odds] fetchEventOdds:",err);}
     finally{setOddsLoading(false);}
-  },[oddsEventId]);
+  },[]); // no deps — eid passed as argument
 
-  // Load odds when event changes
-  useEffect(()=>{fetchEventOdds();},[fetchEventOdds]);
-
-  // Poll every 30 s during live events
+  // Load odds once when oddsEventId is set
   useEffect(()=>{
-    if(!isLiveEvent)return;
-    const id=setInterval(fetchEventOdds,30000);
-    return()=>clearInterval(id);
-  },[isLiveEvent,fetchEventOdds]);
+    if(!oddsEventId)return;
+    fetchEventOdds(oddsEventId);
+  },[oddsEventId,fetchEventOdds]);
 
+  // Poll every 45 s during live events only
+  useEffect(()=>{
+    if(!oddsIsLive||!oddsEventId)return;
+    const id=setInterval(()=>fetchEventOdds(oddsEventId),45000);
+    return()=>clearInterval(id);
+  },[oddsIsLive,oddsEventId,fetchEventOdds]);
+
+  // Manual refresh button handler
   const triggerOdds=useCallback(async()=>{
     if(!oddsEventId)return;
     setOddsLoading(true);
@@ -658,33 +672,32 @@ export default function App(){
         SUPABASE_URL+"/functions/v1/calculate-live-odds",
         {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:oddsEventId})}
       );
-      setTimeout(fetchEventOdds,1000);
-    }catch(e){console.warn("triggerOdds:",e);setOddsLoading(false);}
+      setTimeout(()=>fetchEventOdds(oddsEventId),1500);
+    }catch(err){console.warn("[odds] triggerOdds:",err);setOddsLoading(false);}
   },[oddsEventId,fetchEventOdds]);
 
-  // -- auto post-event calibration ------------------------------------
-  // When an event transitions to Completed, fire the calibration function
-  // and rebuild the player cache so next week's odds are already improved.
-  const completedEventIdsRef=useRef<Set<number>>(new Set());
+  // Post-event calibration — fires once when an event is marked Completed.
+  // Uses a ref so it never re-runs on re-renders, only on genuine status changes.
   useEffect(()=>{
+    if(!oddsInitRef.current){
+      // First render: seed the ref with all already-completed events so we
+      // don't fire calibration for historical events on load.
+      events.forEach((e:any)=>{if(e.status==="Completed")calibratedRef.current.add(e.event_id);});
+      oddsInitRef.current=true;
+      return;
+    }
     events.forEach((e:any)=>{
-      if(e.status==="Completed"&&!completedEventIdsRef.current.has(e.event_id)){
-        completedEventIdsRef.current.add(e.event_id);
-        // Only fire if this isn't just the initial load (set gets populated on first render)
-        if(completedEventIdsRef.current.size>1){
-          console.log("Event",e.event_id,"completed — running post-event calibration");
-          fetch(
-            SUPABASE_URL+"/functions/v1/post-event-calibration",
-            {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:e.event_id})}
-          ).catch(e=>console.warn("post-event-calibration:",e));
-          // Rebuild cache so next week's pre-round odds use updated weights
-          setTimeout(()=>{
-            fetch(
-              SUPABASE_URL+"/functions/v1/rebuild-player-cache",
-              {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:"{}"}
-            ).catch(e=>console.warn("rebuild-player-cache:",e));
-          },5000);
-        }
+      if(e.status==="Completed"&&!calibratedRef.current.has(e.event_id)){
+        calibratedRef.current.add(e.event_id);
+        console.log("[odds] Event",e.event_id,"completed — running post-event calibration");
+        fetch(
+          SUPABASE_URL+"/functions/v1/post-event-calibration",
+          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:JSON.stringify({event_id:e.event_id})}
+        ).catch(err=>console.warn("[odds] calibration:",err));
+        setTimeout(()=>fetch(
+          SUPABASE_URL+"/functions/v1/rebuild-player-cache",
+          {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},body:"{}"}
+        ).catch(err=>console.warn("[odds] rebuild-cache:",err)),8000);
       }
     });
   },[events]);
