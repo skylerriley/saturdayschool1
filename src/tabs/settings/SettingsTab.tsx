@@ -106,6 +106,15 @@ export function SettingsTab(){
   const [changelogOpen,setChangelogOpen]=useState(false);
   const versions=[
     {
+      version:"v2.5.0 Smith",
+      date:"June 14, 2026",
+      sections:[
+        {type:"NEW",items:["Early sign up","Drag to refresh","Navigation animations","Course Overview Stats","Upcoming Event Tab","H2H Score Groups"]},
+        {type:"IMPROVED",items:["H2H Score entry","General quality updates"]},
+        {type:"FIXED",items:["H2H Score entry behavior","Live leaderboard","App crashes"]}
+      ]
+    },
+    {
       version:"v2.0.1 Neo",
       date:"June 7, 2026",
       sections:[
@@ -153,7 +162,7 @@ export function SettingsTab(){
             <span style={{fontSize:18}}>📋</span>
             <div>
               <div style={{fontSize:15,fontWeight:700,color:"var(--text-primary)"}}>Version History</div>
-              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:1}}>v2.0.1 · June 7, 2026</div>
+              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:1}}>v2.5.0 · June 14, 2026</div>
             </div>
           </div>
           <span style={{fontSize:18,color:"var(--text-muted)",transition:"transform 0.2s",display:"inline-block",transform:changelogOpen?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
