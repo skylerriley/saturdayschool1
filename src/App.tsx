@@ -929,7 +929,7 @@ export default function App(){
   // Directional tab-transition state
   const shellRef=useRef<HTMLDivElement>(null);
   const mainRef=useRef<HTMLDivElement>(null);
-  useEdgeElastic(mainRef,loading);
+  useEdgeElastic(mainRef,loading||!splashDone);
   const [tabDir,setTabDir]=useState<"right"|"left">("right");
   const prevTabRef=useRef(_initTab);
   const [initialSubTab]=useState(_initSubTab);
@@ -1289,7 +1289,7 @@ export default function App(){
   // re-fetches all data for the current tab (and subtabs), eliminating the
   // need to close/reopen the app to see updates from other users.
   const [pullState,setPullState]=useState<{pull:number,refreshing:boolean}>({pull:0,refreshing:false});
-  usePullToRefresh(shellRef,mainRef,refreshAllData,setPullState,loading);
+  usePullToRefresh(shellRef,mainRef,refreshAllData,setPullState,loading||!splashDone);
 
   // -- guest golfer listener -----------------------------------
   useEffect(()=>{const h=(e:any)=>setGolfers(p=>[...p,e.detail]);window.addEventListener("addGolfer",h);return()=>window.removeEventListener("addGolfer",h);},[]);
