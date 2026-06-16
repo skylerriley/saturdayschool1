@@ -422,8 +422,9 @@ export function SeasonScrubber({value,setValue,max}:{
 // ============================================================
 // FLICK CAROUSEL
 // ============================================================
-export function FlickCarousel({children,style}:{children:React.ReactNode;style?:React.CSSProperties}){
+export function FlickCarousel({children,style,count}:{children:React.ReactNode;style?:React.CSSProperties;count?:number}){
   const wrapRef=useRef<HTMLDivElement>(null);
+  const pillRef=useRef<HTMLDivElement>(null);
   const flingRaf=useRef<number|null>(null);
   const drag=useRef({active:false,startX:0,startScroll:0,lastX:0,lastT:0,vel:0,moved:false});
   const [dragging,setDragging]=useState(false);
@@ -446,6 +447,13 @@ export function FlickCarousel({children,style}:{children:React.ReactNode;style?:
         const img=card.querySelector<HTMLElement>(".hcard-img");
         if(img)img.style.transform=`translateX(${(-c*12).toFixed(1)}px) scale(1.10)`;
       });
+      // Update indicator pill position directly (no re-render)
+      if(pillRef.current&&el.scrollWidth>el.clientWidth){
+        const pct=el.scrollLeft/(el.scrollWidth-el.clientWidth);
+        const trackW=pillRef.current.parentElement!.clientWidth;
+        const pillW=pillRef.current.offsetWidth;
+        pillRef.current.style.transform=`translateX(${Math.round(pct*(trackW-pillW))}px)`;
+      }
     };
     const onScrollEnd=()=>requestAnimationFrame(update);
     const onScroll=()=>{if(raf==null)raf=requestAnimationFrame(update);};
@@ -521,19 +529,32 @@ export function FlickCarousel({children,style}:{children:React.ReactNode;style?:
 
   useEffect(()=>()=>stopFling(),[]);
 
+  // Pill width as a fraction of the track: 1/count clamped to a readable range
+  const pillPct=count&&count>1?Math.max(0.08,Math.min(0.5,1/count)):null;
+
   return(
-    <div
-      ref={wrapRef}
-      className={`flick-carousel${dragging?" dragging":""}`}
-      style={style}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
-      onClickCapture={onClickCapture}
-      onDragStart={(e)=>e.preventDefault()}
-    >
-      {children}
+    <div style={{position:"relative"}}>
+      <div
+        ref={wrapRef}
+        className={`flick-carousel${dragging?" dragging":""}`}
+        style={style}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClickCapture={onClickCapture}
+        onDragStart={(e)=>e.preventDefault()}
+      >
+        {children}
+      </div>
+      {pillPct!=null&&(
+        <div style={{margin:"6px 16px 4px",height:4,borderRadius:2,background:"rgba(255,255,255,0.18)",position:"relative",overflow:"hidden"}}>
+          <div
+            ref={pillRef}
+            style={{position:"absolute",top:0,left:0,height:"100%",width:`${pillPct*100}%`,borderRadius:2,background:"var(--gold-400,#c9a227)",willChange:"transform"}}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -29,9 +29,9 @@ export function useEdgeElastic(ref: React.RefObject<HTMLElement>, remountKey?: a
     const onMove = (e: TouchEvent) => {
       if (!active) return;
       const dy = e.touches[0].clientY - startY;
-      const pullingDownAtTop = dy > 0 && atTop();
+      // Only handle bottom-edge elastic — top-edge pull is handled by usePullToRefresh
       const pullingUpAtBottom = dy < 0 && atBottom();
-      if (pullingDownAtTop || pullingUpAtBottom) {
+      if (pullingUpAtBottom) {
         // Damped resistance -- the further you pull, the harder it gets (mass)
         pull = Math.sign(dy) * Math.min(Math.pow(Math.abs(dy), 0.82) * 1.1, 120);
         if (e.cancelable) e.preventDefault();

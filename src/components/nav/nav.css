@@ -1,0 +1,206 @@
+/* ============================================================
+   Modular navigation styles — top app bar + floating bottom tab bar.
+   Relies on the design tokens declared in App.tsx :root (--green-*,
+   --gold-*, --bg, --surface, --text-*, --font-serif), so it inherits
+   Golden Hour theming automatically.
+   ============================================================ */
+
+/* ── TOP APP BAR ──────────────────────────────────────────── */
+/* Selector is intentionally .app-header.app-bar (the header carries both
+   classes) so it beats App.tsx's lower-specificity `.app-header` rule.
+   Transparent: the topographic artwork is painted by .app-shell behind this
+   bar (and the pull-to-refresh strip) so it reads as one continuous image. */
+.app-header.app-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* Top padding absorbs the status bar so the logo sits below it.
+     The background image is on .app-shell so it fills behind the status bar automatically. */
+  padding: calc(env(safe-area-inset-top, 14px) + 8px) 18px 12px;
+}
+
+.app-bar__logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The brand mark SVG — gold "S" with a built-in golf ball. Constrained by
+   height so it keeps its natural aspect ratio. */
+.app-bar__logo-img {
+  height: 100%;
+  width: auto;
+  display: block;
+}
+
+.app-bar__profile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--green-300);
+  transition: color 0.2s, background 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.app-bar__profile:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.app-bar__profile.is-admin {
+  color: var(--gold-300);
+}
+
+/* ── BOTTOM TAB BAR ───────────────────────────────────────── */
+/* Absolutely positioned within .app-shell (the phone frame) rather than
+   the viewport, so it stays inside the 500px column on desktop.
+
+   The bar itself is TRANSPARENT — the solid white surface is painted by the
+   .bnav__cut pseudo-elements' box-shadows, which leaves a genuine
+   transparent circular hole behind the floating button so the page content
+   shows through the cutout's curves.
+
+   `overflow: visible` lets the floating button poke above the bar; the
+   box-shadow that would otherwise bleed upward is clipped by .bnav__cut
+   (which has its own overflow: hidden), not by the nav. */
+.bottom-nav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Flat 56px bar with 10px of built-in bottom breathing room. We do NOT add
+     env(safe-area-inset-bottom) here: .app-shell is 100dvh and stops above the
+     home indicator, so the safe area lives BELOW the shell and is painted by the
+     white <body> background. The nav sits at the shell's bottom edge (the top of
+     the home-indicator strip) and its white surface blends straight into that
+     body-white below. Adding the inset here would double-count it and float the
+     tabs up — the "huge padding" bug. */
+  height: 84px;
+  display: flex;
+  justify-content: space-around;
+  align-items: stretch;
+  background: transparent;
+  z-index: 200;
+  overflow: visible;
+  padding-top: 0;
+  padding-bottom: 30px;
+  /* Breathing room from rounded-screen / notch safe areas so the edge tabs
+     aren't clipped. */
+  padding-left: max(14px, env(safe-area-inset-left, 0px));
+  padding-right: max(14px, env(safe-area-inset-right, 0px));
+}
+
+/* ── THE WHITE SURFACE + FILLETED BOWL CUTOUT ─────────────────
+   An inline SVG paints the whole bar white (a <rect>) and a <mask> subtracts
+   a smooth, filleted "bowl" <path> so the flat top edge rounds fluidly down
+   into the cutout (no sharp corners) and the page shows through the bowl.
+   The bowl path is drawn centred at local x=0 and slid horizontally to the
+   active tab via the --cx CSS variable (px), so it tracks the flexible tabs
+   and animates smoothly when the active tab changes. */
+.bnav__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: block;
+}
+.bnav__surface {
+  /* Hardcoded white — var(--surface) is #fffaf2 in Golden Hour mode which
+     reads as cream, but the nav bar should always be pure white. */
+  fill: #ffffff;
+}
+/* Both the mask bowl and the inner-shadow bowl share this transform so they
+   slide together. transform-box:view-box makes the px translate match the
+   SVG user units (viewBox is 1:1 with the rendered size). */
+.bnav__bowl {
+  transform: translateX(var(--cx, 50%));
+  transform-box: view-box;
+  transform-origin: 0 0;
+  transition: transform 0.42s cubic-bezier(0.34, 1.1, 0.5, 1);
+}
+
+/* ── NAV ITEMS ────────────────────────────────────────────── */
+.bnav__item {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--green-700);
+  transition: color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.bnav__item:hover:not(.is-active) {
+  color: var(--text-secondary);
+}
+
+.bnav__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bnav__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* The active tab hides its own label + icon — the floating ball takes over. */
+.bnav__item.is-active {
+  color: var(--green-800);
+}
+.bnav__item.is-active .bnav__label {
+  display: none;
+}
+.bnav__item.is-active .bnav__icon {
+  opacity: 0;
+}
+
+/* ── THE FLOATING BALL ────────────────────────────────────────
+   A single element (not per-tab) sitting in the bowl, 1px below the bar's top
+   edge. It jumps straight to the active tab centre via --cx — only the bowl
+   cutout slides; the icon itself does NOT slide across. */
+.bnav__ball {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--green-800);
+  color: var(--gold-300);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 5px rgba(10, 46, 26, 0.22);
+  z-index: 3;
+  pointer-events: none;
+  transform: translateX(calc(var(--cx, 50%) - 20px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bnav__bowl {
+    transition: none;
+  }
+}

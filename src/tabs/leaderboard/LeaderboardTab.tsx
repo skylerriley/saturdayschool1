@@ -1779,7 +1779,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
 
       {/* ── Course cards view ── */}
       {view==="course"&&(
-        <FlickCarousel>
+        <FlickCarousel count={holeStats.length}>
           <div style={{display:"flex",gap:12,paddingLeft:2,paddingRight:2,width:"max-content"}}>
             {holeStats.map((h:any)=>{
               const img=imgByHole[h.hole];
