@@ -4,6 +4,14 @@ import { degToCompass } from "./weatherUtils";
 // ============================================================
 // WEATHER MODAL -- shown when user taps the live leaderboard header
 // ============================================================
+
+const slideUpStyle = `
+@keyframes weather-slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+`;
+
 export function WeatherModal({ courseName, onClose }: { courseName: string; onClose: () => void }) {
   const { data, loading } = useLiveWeather(courseName);
   const cur = data?.current;
@@ -121,6 +129,7 @@ export function WeatherModal({ courseName, onClose }: { courseName: string; onCl
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <style>{slideUpStyle}</style>
       {/* Scrim */}
       <div style={{ position: "absolute", inset: 0, background: "rgba(28,20,16,0.55)", backdropFilter: "blur(2px)" }}
         onClick={onClose} />
@@ -135,6 +144,8 @@ export function WeatherModal({ courseName, onClose }: { courseName: string; onCl
         overflowY: "auto",
         boxShadow: "0 -6px 32px rgba(28,20,16,0.18)",
         fontFamily: "var(--font-sans)",
+        paddingBottom: 84,
+        animation: "weather-slide-up 0.42s cubic-bezier(0.34, 1.18, 0.64, 1) both",
       }}>
         {/* Drag handle */}
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 14, paddingBottom: 2 }}>

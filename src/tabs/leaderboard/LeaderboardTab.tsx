@@ -8,6 +8,7 @@ import { useLiveWeather } from "../../hooks/useLiveWeather";
 import { WindParticles } from "../../components/weather/WindParticles";
 import { WeatherModal } from "../../components/weather/WeatherModal";
 import { UpcomingCourseCard } from "./UpcomingCourseCard";
+import { FieldStrengthMeter } from "./FieldStrengthMeter";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
 
 export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData}:any){
@@ -1112,6 +1113,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               <WeatherModal courseName={nextEvent.course_name} onClose={()=>setUpcomingWeatherOpen(false)}/>
             )}
             <UpcomingCourseCard event={nextEvent} courses={courses} holeImages={holeImages} onClick={()=>setUpcomingWeatherOpen(true)}/>
+            <FieldStrengthMeter upEntries={upEntries} golfers={golfers} leaderboard={leaderboardCompleted} events={events} season={selSeason}/>
 
             {rows.length===0&&(
               <div className="empty-state"><div className="empty-text">No RSVPs yet</div></div>
