@@ -249,6 +249,14 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   const switchSubTab=(id:string)=>{
     setSubTab(id);
     if(expandedId!=null)requestAnimationFrame(()=>setExpandedId(null));
+    if(pillRowRef.current?.classList.contains("stuck")){
+      const mc=document.querySelector(".main-content") as HTMLElement|null;
+      const sentinel=pillSentinelRef.current;
+      if(mc&&sentinel){
+        const offset=sentinel.getBoundingClientRect().top-mc.getBoundingClientRect().top+mc.scrollTop;
+        mc.scrollTo({top:offset-6,behavior:"smooth"});
+      }
+    }
   };
   // Cascading row-entrance animation for Season/Top15, deferred by one
   // frame: the click that switches into the tab mounts the rows WITHOUT
@@ -297,6 +305,19 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
       document.body.classList.remove("feed-overlay-open");
     };
   },[feedOverlayEvent]);
+
+  const pillSentinelRef=useRef<HTMLDivElement|null>(null);
+  const pillRowRef=useRef<HTMLDivElement|null>(null);
+  useEffect(()=>{
+    const sentinel=pillSentinelRef.current;
+    if(!sentinel)return;
+    const obs=new IntersectionObserver(([entry])=>{
+      pillRowRef.current?.classList.toggle("stuck",!entry.isIntersecting);
+    },{threshold:0,rootMargin:"0px"});
+    obs.observe(sentinel);
+    return()=>obs.disconnect();
+  },[]);
+
   const openFeedOverlay=(ev:any)=>{
     const mc=document.querySelector(".main-content") as HTMLElement|null;
     feedScrollPosRef.current=mc?mc.scrollTop:0;
@@ -1002,7 +1023,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
         </select>
       </div>
 
-      <div className="tab-sub">
+      <div ref={pillSentinelRef} style={{height:1,marginBottom:-1}}/>
+      <div ref={pillRowRef} className="tab-sub">
         {tabs.map(t=>(
           <button key={t.id} className={"tab-sub-btn"+(subTab===t.id?" active":"")} onClick={()=>switchSubTab(t.id)}>
             {t.id==="live"?<><span className="live-dot"/><span style={{fontWeight:700,letterSpacing:"0.05em"}}>LIVE</span></>:t.label}

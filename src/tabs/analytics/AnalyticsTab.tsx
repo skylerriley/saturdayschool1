@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { SubTabPanel } from "../../App";
 import { formatDate, uniqueCourseNames } from "../../lib/formatters";
 import { calcSeasonLeaderData } from "../../lib/seasonStats";
@@ -90,6 +90,30 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
 
   const SUBTABS=[{id:"overview",label:"Overview"},{id:"odds",label:"Odds"},{id:"golfer",label:"By Golfer"},{id:"consistency",label:"Consistency"},{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"},{id:"champions",label:"Champions"}];
 
+  const switchSubTab=(id:string)=>{
+    setSubTab(id);
+    if(pillRowRef.current?.classList.contains("stuck")){
+      const mc=document.querySelector(".main-content") as HTMLElement|null;
+      const sentinel=pillSentinelRef.current;
+      if(mc&&sentinel){
+        const offset=sentinel.getBoundingClientRect().top-mc.getBoundingClientRect().top+mc.scrollTop;
+        mc.scrollTo({top:offset-6,behavior:"smooth"});
+      }
+    }
+  };
+
+  const pillSentinelRef=useRef<HTMLDivElement|null>(null);
+  const pillRowRef=useRef<HTMLDivElement|null>(null);
+  useEffect(()=>{
+    const sentinel=pillSentinelRef.current;
+    if(!sentinel)return;
+    const obs=new IntersectionObserver(([entry])=>{
+      pillRowRef.current?.classList.toggle("stuck",!entry.isIntersecting);
+    },{threshold:0,rootMargin:"0px"});
+    obs.observe(sentinel);
+    return()=>obs.disconnect();
+  },[]);
+
   return(
     <div>
       <div className="section-title">Analytics</div>
@@ -119,9 +143,10 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
           })}
         </div>
       </div>
-      <div className="tab-sub">
+      <div ref={pillSentinelRef} style={{height:1,marginBottom:-1}}/>
+      <div ref={pillRowRef} className="tab-sub">
         {SUBTABS.map(t=>(
-          <button key={t.id} className={`tab-sub-btn${subTab===t.id?" active":""}`} onClick={()=>setSubTab(t.id)}>{t.label}</button>
+          <button key={t.id} className={`tab-sub-btn${subTab===t.id?" active":""}`} onClick={()=>switchSubTab(t.id)}>{t.label}</button>
         ))}
       </div>
 
