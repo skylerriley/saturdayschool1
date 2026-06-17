@@ -724,7 +724,8 @@ const CSS = `
 
   .success-banner{background:var(--green-100);border:1px solid var(--green-300);border-radius:var(--radius-md);padding:13px 16px;color:var(--green-800);font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:9px;}
 
-  .tab-sub{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;}
+  .tab-sub{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;position:sticky;top:-4px;z-index:10;background:var(--bg);padding-top:0px;}
+  .tab-sub.stuck{box-shadow:0 -40px 0 40px var(--bg);padding-top:0px;padding-bottom:8px;}
   .tab-sub::-webkit-scrollbar{display:none;}
   .tab-sub-btn{flex-shrink:0;scroll-snap-align:center;padding:8px 16px;border-radius:20px;font-size:13px;text-transform: uppercase; font-weight:600;letter-spacing:0.03em;border:1.5px solid var(--border-md);background:transparent;color:var(--text-muted);cursor:pointer;transition:all 0.15s;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
   .tab-sub-btn.active{background:var(--green-800);border-color:var(--green-800);color:white;}
