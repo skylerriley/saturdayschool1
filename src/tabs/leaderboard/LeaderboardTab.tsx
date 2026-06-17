@@ -119,21 +119,21 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
         <div>
           {/* Winner rows -- centered, full width, wraps gracefully */}
           {tied1st.length>0&&firstPts!=null&&(
-            <div style={{textAlign:"center",marginBottom:14}}>
-              <div style={{display:"inline-flex",alignItems:"center",gap:7,marginBottom:5,flexWrap:"wrap",justifyContent:"center"}}>
-                <span style={{background:"rgba(212,168,67,0.35)",border:"1px solid rgba(212,168,67,0.7)",borderRadius:8,padding:"3px 10px",fontSize:12,fontWeight:900,color:"#f5d87a",letterSpacing:"0.04em",lineHeight:1.2}}>1st</span>
-                <span style={{fontSize:20,fontWeight:800,lineHeight:1.2,textShadow:"0 1px 8px rgba(0,0,0,0.6)"}}>{isTied1st?tied1st.map((r:any)=>nameOf(r.golfer_id).split(" ")[0]).join(" & "):nameOf(tied1st[0].golfer_id)}</span>
-                <span style={{fontSize:14,fontWeight:700,color:"#f5d87a",opacity:0.9}}>{firstPts} pts</span>
+            <div style={{marginBottom:14}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginBottom:6,flexWrap:"wrap"}}>
+                <span style={{background:"rgba(212,168,67,0.35)",border:"1px solid rgba(212,168,67,0.7)",borderRadius:8,padding:"3px 10px",fontSize:12,fontWeight:900,color:"#f5d87a",letterSpacing:"0.04em",lineHeight:1.2,flexShrink:0}}>1st</span>
+                <span style={{fontSize:20,fontWeight:800,lineHeight:1.2,textShadow:"0 1px 8px rgba(0,0,0,0.6)",textAlign:"center"}}>{isTied1st?tied1st.map((r:any)=>nameOf(r.golfer_id).split(" ")[0]).join(" & "):nameOf(tied1st[0].golfer_id)}</span>
+                <span style={{fontSize:14,fontWeight:700,color:"#f5d87a",opacity:0.9,flexShrink:0}}>{firstPts} pts</span>
               </div>
               {first2ndLine!=null&&(()=>{
                 const secondPts=paidEntries.find((r:any)=>r.total_stableford_points<(firstPts??0))?.total_stableford_points??null;
                 const tied2nd=secondPts!=null?paidEntries.filter((r:any)=>r.total_stableford_points===secondPts):[];
                 const name2nd=tied2nd.map((r:any)=>nameOf(r.golfer_id).split(" ")[0]).join(" & ");
                 return secondPts!=null?(
-                  <div style={{display:"inline-flex",alignItems:"center",gap:7,flexWrap:"wrap",justifyContent:"center"}}>
-                    <span style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"3px 10px",fontSize:12,fontWeight:900,letterSpacing:"0.04em",lineHeight:1.2}}>2nd</span>
-                    <span style={{fontSize:16,fontWeight:600,opacity:0.88,lineHeight:1.2}}>{name2nd}</span>
-                    <span style={{fontSize:13,fontWeight:700,opacity:0.72}}>{secondPts} pts</span>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,flexWrap:"wrap"}}>
+                    <span style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"3px 10px",fontSize:12,fontWeight:900,letterSpacing:"0.04em",lineHeight:1.2,flexShrink:0}}>2nd</span>
+                    <span style={{fontSize:16,fontWeight:600,opacity:0.88,lineHeight:1.2,textAlign:"center"}}>{name2nd}</span>
+                    <span style={{fontSize:13,fontWeight:700,opacity:0.72,flexShrink:0}}>{secondPts} pts</span>
                   </div>
                 ):null;
               })()}
@@ -280,17 +280,22 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     overlayScrollRef.current=node;
     if(node)node.scrollTop=0;
   };
-  // Disable .main-content pointer events while overlay is open so the
-  // pull-to-refresh handler cannot fire through the overlay.
+  // While the overlay is open: disable pull-to-refresh and fill the nav bowl
+  // cutout so the feed behind the overlay doesn't show through the transparent
+  // hole in the active tab.
   useEffect(()=>{
     const mc=document.querySelector(".main-content") as HTMLElement|null;
-    if(!mc)return;
     if(feedOverlayEvent){
-      mc.style.pointerEvents="none";
+      if(mc)mc.style.pointerEvents="none";
+      document.body.classList.add("feed-overlay-open");
     }else{
-      mc.style.pointerEvents="";
+      if(mc)mc.style.pointerEvents="";
+      document.body.classList.remove("feed-overlay-open");
     }
-    return()=>{mc.style.pointerEvents="";};
+    return()=>{
+      if(mc)mc.style.pointerEvents="";
+      document.body.classList.remove("feed-overlay-open");
+    };
   },[feedOverlayEvent]);
   const openFeedOverlay=(ev:any)=>{
     const mc=document.querySelector(".main-content") as HTMLElement|null;
@@ -621,6 +626,80 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   const seasonAvgWithTiesReplay=withTiePositions(seasonAvgReplay,"avg");
   const top15AvgWithTiesReplay=withTiePositions(top15AvgReplay,"avg");
 
+  // ── Trajectory maps: position movement since previous event ──────────────
+  // Compute "prev" standings by replaying one event earlier, then diff ranks.
+  // Keyed by golfer_id; value is delta (positive = moved up) or null (no indicator).
+  const buildAvgFromPoints=(pointsMap:Record<number,Record<number,number>>,eventIds:Set<number>,top15:boolean,qualifiedRef:any[]):any[]=>{
+    const rows:any[]=[];
+    Object.entries(pointsMap).forEach(([gid,byEvent])=>{
+      const pts=Object.entries(byEvent).filter(([eid])=>eventIds.has(parseInt(eid))).map(([,p])=>p as number);
+      if(!pts.length)return;
+      const finalRow=qualifiedRef.find((r:any)=>r.golfer_id===parseInt(gid));
+      const qualified=finalRow?.qualified??false;
+      if(top15){
+        const top=[...pts].sort((a,b)=>b-a).slice(0,15);
+        rows.push({golfer_id:parseInt(gid),avg:top.reduce((a,b)=>a+b,0)/top.length,rounds:pts.length,qualified});
+      }else{
+        rows.push({golfer_id:parseInt(gid),avg:pts.reduce((a,b)=>a+b,0)/pts.length,rounds:pts.length,qualified});
+      }
+    });
+    rows.sort((a,b)=>b.avg-a.avg);
+    return rows;
+  };
+
+  const buildTrajectoryMap=(currentRows:any[],prevRows:any[]):Record<number,number|null>=>{
+    const prevRankMap:Record<number,number>={};
+    prevRows.forEach((r:any,i:number)=>{prevRankMap[r.golfer_id]=i+1;});
+    const map:Record<number,number|null>={};
+    currentRows.forEach((r:any,i:number)=>{
+      const currentRank=i+1;
+      const prevRank=prevRankMap[r.golfer_id];
+      if(prevRank==null){map[r.golfer_id]=null;return;}
+      const delta=prevRank-currentRank;
+      map[r.golfer_id]=Math.abs(delta)>=2?delta:null;
+    });
+    return map;
+  };
+
+  const{seasonTrajectoryMap,top15TrajectoryMap}=useMemo(()=>{
+    // When scrubbing: compare current scrub position vs scrub-1
+    // When not scrubbing: compare full standings vs standings excluding most recent event
+    const eventIdsAll=new Set(seasonEventsAsc.map((e:any)=>e.event_id as number));
+
+    if(isSeasonReplaying){
+      // scrubber active: prev = seasonScrub-1
+      if(seasonScrub<=1){
+        const empty:Record<number,number|null>={};
+        seasonAvgWithTiesReplay.forEach((r:any)=>{empty[r.golfer_id]=null;});
+        top15AvgWithTiesReplay.forEach((r:any)=>{empty[r.golfer_id]=null;});
+        return{seasonTrajectoryMap:empty,top15TrajectoryMap:empty};
+      }
+      const prevEventIds=new Set(seasonEventsAsc.slice(0,seasonScrub-1).map((e:any)=>e.event_id as number));
+      const prevSa=buildAvgFromPoints(seasonPointsByEvent,prevEventIds,false,seasonAvg);
+      const prevTa=buildAvgFromPoints(seasonPointsByEvent,prevEventIds,true,top15Avg);
+      return{
+        seasonTrajectoryMap:buildTrajectoryMap(seasonAvgReplay,prevSa),
+        top15TrajectoryMap:buildTrajectoryMap(top15AvgReplay,prevTa),
+      };
+    }
+
+    // Not scrubbing: prev = all events minus the most recent
+    if(seasonEventsAsc.length<=1){
+      const empty:Record<number,number|null>={};
+      seasonAvgWithTiesReplay.forEach((r:any)=>{empty[r.golfer_id]=null;});
+      top15AvgWithTiesReplay.forEach((r:any)=>{empty[r.golfer_id]=null;});
+      return{seasonTrajectoryMap:empty,top15TrajectoryMap:empty};
+    }
+    const prevEventIds=new Set(seasonEventsAsc.slice(0,-1).map((e:any)=>e.event_id as number));
+    void eventIdsAll;
+    const prevSa=buildAvgFromPoints(seasonPointsByEvent,prevEventIds,false,seasonAvg);
+    const prevTa=buildAvgFromPoints(seasonPointsByEvent,prevEventIds,true,top15Avg);
+    return{
+      seasonTrajectoryMap:buildTrajectoryMap(seasonAvg,prevSa),
+      top15TrajectoryMap:buildTrajectoryMap(top15Avg,prevTa),
+    };
+  },[isSeasonReplaying,seasonScrub,seasonEventsAsc,seasonPointsByEvent,seasonAvg,top15Avg,seasonAvgReplay,top15AvgReplay,seasonAvgWithTiesReplay,top15AvgWithTiesReplay]);
+
   // Measure collapsed row height once so reordered rows can animate via `top`
   const lbRowRefs=useRef<Record<number,HTMLDivElement|null>>({});
   const [lbRowH,setLbRowH]=useState<number|null>(null);
@@ -635,7 +714,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   // ScoreSymbol moved to module scope — see below LeaderboardTab
 
   // Render ESPN-style leaderboard row
-  const renderLbRow=(row:any,mode:"season"|"weekly")=>{
+  const renderLbRow=(row:any,mode:"season"|"weekly",trajectoryDelta?:number|null)=>{
     const gid=row.golfer_id;
     const g=golfers.find((x:any)=>x.golfer_id===gid);
     const isExpanded=expandedId===gid;
@@ -697,7 +776,11 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             });
           }}
         >
-          <div className={`lb-rank-cell ${rankClass}`} style={{fontSize:row.tied?16:22,fontWeight:700}}>{posLabel}</div>
+          <div className={`lb-rank-cell ${rankClass}`} style={{fontSize:row.tied?16:22,fontWeight:700,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1}}>
+            {trajectoryDelta!=null&&trajectoryDelta>=3&&<span style={{fontSize:9,lineHeight:1,color:"var(--green-500)"}}>▲</span>}
+            {trajectoryDelta!=null&&trajectoryDelta<=-3&&<span style={{fontSize:9,lineHeight:1,color:"#c0392b"}}>▼</span>}
+            {posLabel}
+          </div>
           <div className="lb-name-cell">
             <div className="lb-name-main">{(()=>{
               if(!g)return"Unknown";
@@ -890,7 +973,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
   // Render a list of season/top15 rows with FLIP-style position
   // animation so the Season Scrubber can reshuffle them in place.
-  const renderSeasonRows=(rows:any[])=>{
+  const renderSeasonRows=(rows:any[],trajectoryMap?:Record<number,number|null>)=>{
     const animatable=expandedId==null&&lbRowH!=null;
     return(
       <div style={{position:"relative",minHeight:animatable?rows.length*(lbRowH as number):undefined}}>
@@ -901,7 +984,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             className={`replay-row-wrap${cascadeOn?" lb-cascade":""}${i===rows.length-1?" last":""}`}
             style={{...(animatable?{position:"absolute",left:0,right:0,top:i*(lbRowH as number),transition:"top 0.45s cubic-bezier(0.22,1,0.36,1)"}:{position:"relative"}),["--row-i" as any]:i}}
           >
-            {renderLbRow(row,"season")}
+            {renderLbRow(row,"season",trajectoryMap?trajectoryMap[row.golfer_id]:null)}
           </div>
         ))}
       </div>
@@ -1410,7 +1493,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
                   <div className="lb-header-cell right">Avg</div><div className="lb-header-cell right">Rnds</div>
                 </div>
-                {renderSeasonRows(qualRows)}
+                {renderSeasonRows(qualRows,seasonTrajectoryMap)}
               </div>
             )}
             {!isPastSeason&&<div style={{fontSize:13,color:"var(--text-muted)",marginTop:10,marginBottom:10}}><span style={{color:"var(--gold-700)"}}>*</span> = fewer than 15 rounds (not yet qualified)</div>}
@@ -1426,7 +1509,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
                     <div className="lb-header-cell right">Avg</div><div className="lb-header-cell right">Rnds</div>
                   </div>
-                  {renderSeasonRows(dnqRows)}
+                  {renderSeasonRows(dnqRows,seasonTrajectoryMap)}
                 </div>
               </>
             )}
@@ -1447,7 +1530,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
                   <div className="lb-header-cell right">Avg</div><div className="lb-header-cell right">Rnds</div>
                 </div>
-                {renderSeasonRows(qualRows)}
+                {renderSeasonRows(qualRows,top15TrajectoryMap)}
               </div>
             )}
             {!isPastSeason&&<div style={{fontSize:13,color:"var(--text-muted)",marginTop:10,marginBottom:10}}><span style={{color:"var(--gold-700)"}}>*</span> = fewer than 15 rounds (not yet qualified)</div>}
@@ -1463,7 +1546,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
                     <div className="lb-header-cell right">Avg</div><div className="lb-header-cell right">Rnds</div>
                   </div>
-                  {renderSeasonRows(dnqRows)}
+                  {renderSeasonRows(dnqRows,top15TrajectoryMap)}
                 </div>
               </>
             )}
@@ -1497,7 +1580,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
           className="feed-overlay"
           style={{
             position:"fixed",
-            top:0,left:0,right:0,bottom:0,
+            top:0,left:0,right:0,bottom:84,
             background:"var(--bg)",
             zIndex:9000,
             overflowY:"auto",

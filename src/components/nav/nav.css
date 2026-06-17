@@ -14,11 +14,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* Top padding absorbs the status bar so the logo sits below it.
-     The background image is on .app-shell so it fills behind the status bar automatically. */
+  /* Top padding absorbs the status bar so the logo sits below it. */
   padding: calc(env(safe-area-inset-top, 14px) + 8px) 18px 12px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  background: linear-gradient(to bottom, #0B2E1A, #0b311c);
+  /* Sit above the banner in the stacking order */
+  position: relative;
+  z-index: 100;
 }
 
 .app-bar__logo {
@@ -205,4 +208,10 @@
   .bnav__bowl {
     transition: none;
   }
+}
+
+/* When the feed detail overlay is open, fill the nav bowl cutout so the
+   feed content behind the overlay doesn't show through the transparent hole. */
+.feed-overlay-open .bnav__bowl {
+  fill: #ffffff;
 }
