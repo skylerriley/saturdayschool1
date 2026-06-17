@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import ReactDOM from "react-dom";
 import { SeasonScrubber, FlickCarousel, SubTabPanel, ToggleGroup, ScoreSymbol } from "../../components/common";
 import { golferName, formatDate } from "../../lib/formatters";
 import { calcPlayingHandicap } from "../../lib/golfMath";
@@ -10,6 +11,207 @@ import { WeatherModal } from "../../components/weather/WeatherModal";
 import { UpcomingCourseCard } from "./UpcomingCourseCard";
 import { FieldStrengthMeter } from "./FieldStrengthMeter";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
+
+// ── EventFeedCard ─────────────────────────────────────────────────────────────
+// Full-width image card for the weekly leaderboard feed.
+// Props: event, eventNumber, golfers, leaderboard, holeScores, holeImages
+function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeImages,onClick}:any){
+  const courseName:string=event.course_name||"";
+
+  // Hole image: cycle 1..18 by event number
+  const holeNum=((eventNumber-1)%18)+1;
+  const imgRecord=(holeImages||[]).find((img:any)=>img.course_name===courseName&&img.hole_number===holeNum&&img.public_url);
+  const imgUrl:string|null=imgRecord?imgRecord.public_url:null;
+
+  // Leaderboard entries for this event, sorted by points desc
+  const entries=[...leaderboard.filter((r:any)=>r.event_id===event.event_id)]
+    .sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
+  const paidEntries=entries.filter((r:any)=>r.buy_in_paid);
+
+  // 1st place (handle ties)
+  const firstPts:number|null=paidEntries[0]?.total_stableford_points??null;
+  const tied1st=firstPts!=null?paidEntries.filter((r:any)=>r.total_stableford_points===firstPts):[];
+  const isTied1st=tied1st.length>1;
+
+  const nameOf=(gid:number)=>{
+    const g=golfers.find((x:any)=>x.golfer_id===gid);
+    return g?`${g.first_name} ${g.last_name}`:"Unknown";
+  };
+
+  const first1stLine=tied1st.length>0
+    ? (isTied1st
+        ? tied1st.map((r:any)=>nameOf(r.golfer_id).split(" ")[0]).join(" & ")+" — "+firstPts+" pts"
+        : nameOf(tied1st[0].golfer_id)+" — "+firstPts+" pts"
+      )
+    : null;
+
+  // 2nd place: only when 1st is solo
+  let first2ndLine:string|null=null;
+  if(!isTied1st&&paidEntries.length>1){
+    const secondPts=paidEntries.find((r:any)=>r.total_stableford_points<(firstPts??0))?.total_stableford_points??null;
+    if(secondPts!=null){
+      const tied2nd=paidEntries.filter((r:any)=>r.total_stableford_points===secondPts);
+      first2ndLine=tied2nd.map((r:any)=>nameOf(r.golfer_id).split(" ")[0]).join(" & ")+" — "+secondPts+" pts";
+    }
+  }
+
+  // Skins: count distinct holes won
+  const entryIds=new Set(entries.map((r:any)=>r.summary_id));
+  const skinsPaidIds=new Set(entries.filter((r:any)=>r.skins_paid).map((r:any)=>r.summary_id));
+  const playerHoleMap:Record<number,Record<number,number>>={};
+  holeScores.filter((h:any)=>skinsPaidIds.has(h.summary_id)&&h.stableford_points!=null).forEach((h:any)=>{
+    const gid=entries.find((r:any)=>r.summary_id===h.summary_id)?.golfer_id;
+    if(gid==null)return;
+    if(!playerHoleMap[gid])playerHoleMap[gid]={};
+    playerHoleMap[gid][h.hole_number]=h.stableford_points;
+  });
+  void entryIds;
+  const pids=Object.keys(playerHoleMap).map(Number);
+  let skinsCount=0;
+  for(let hN=1;hN<=18;hN++){
+    const scores=pids.map(id=>({id,pts:playerHoleMap[id]?.[hN]})).filter(x=>x.pts!=null);
+    if(!scores.length)continue;
+    const maxPts=Math.max(...scores.map(x=>x.pts));
+    const leaders=scores.filter(x=>x.pts===maxPts);
+    if(leaders.length===1)skinsCount++;
+  }
+
+  // Date MM/DD
+  const dt=new Date(event.date+"T00:00:00");
+  const dateLabel=`${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}`;
+  const fieldSize=entries.length;
+
+  return(
+    <div
+      className="ef-card"
+      onClick={onClick}
+      style={{
+        position:"relative",borderRadius:"var(--radius-lg)",overflow:"hidden",
+        minHeight:230,marginBottom:14,cursor:"pointer",
+        background:"linear-gradient(145deg,var(--green-900),var(--green-800))",
+        boxShadow:"0 4px 18px rgba(28,20,16,0.18)",
+        WebkitTapHighlightColor:"transparent",
+        flexShrink:0,
+      }}
+    >
+      {/* Background image */}
+      {imgUrl&&(
+        <img
+          src={imgUrl}
+          alt={`${courseName} hole ${holeNum}`}
+          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 60%"}}
+          loading="lazy"
+          draggable={false}
+        />
+      )}
+      {/* Scrim: dark at bottom, light touch at top */}
+      <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,rgba(0,0,0,0.45) 0%,rgba(0,0,0,0.0) 30%,rgba(0,0,0,0.75) 100%)"}}/>
+      {/* Content layer */}
+      <div style={{position:"relative",minHeight:230,display:"flex",flexDirection:"column",justifyContent:"space-between",padding:"12px 14px 14px",color:"white"}}>
+
+        {/* Top row: course name left, date pill right */}
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+          <div style={{fontSize:18,fontWeight:800,lineHeight:1.15,letterSpacing:"-0.01em",textShadow:"0 1px 8px rgba(0,0,0,0.6)"}}>{courseName}</div>
+          <div style={{background:"rgba(0,0,0,0.45)",backdropFilter:"blur(4px)",borderRadius:20,padding:"4px 11px",fontSize:12,fontWeight:700,letterSpacing:"0.04em",whiteSpace:"nowrap",flexShrink:0}}>{dateLabel}</div>
+        </div>
+
+        {/* Bottom block */}
+        <div>
+          {/* Winner rows -- centered, full width, wraps gracefully */}
+          {tied1st.length>0&&firstPts!=null&&(
+            <div style={{textAlign:"center",marginBottom:14}}>
+              <div style={{display:"inline-flex",alignItems:"center",gap:7,marginBottom:5,flexWrap:"wrap",justifyContent:"center"}}>
+                <span style={{background:"rgba(212,168,67,0.35)",border:"1px solid rgba(212,168,67,0.7)",borderRadius:8,padding:"3px 10px",fontSize:12,fontWeight:900,color:"#f5d87a",letterSpacing:"0.04em",lineHeight:1.2}}>1st</span>
+                <span style={{fontSize:20,fontWeight:800,lineHeight:1.2,textShadow:"0 1px 8px rgba(0,0,0,0.6)"}}>{isTied1st?tied1st.map((r:any)=>nameOf(r.golfer_id).split(" ")[0]).join(" & "):nameOf(tied1st[0].golfer_id)}</span>
+                <span style={{fontSize:14,fontWeight:700,color:"#f5d87a",opacity:0.9}}>{firstPts} pts</span>
+              </div>
+              {first2ndLine!=null&&(()=>{
+                const secondPts=paidEntries.find((r:any)=>r.total_stableford_points<(firstPts??0))?.total_stableford_points??null;
+                const tied2nd=secondPts!=null?paidEntries.filter((r:any)=>r.total_stableford_points===secondPts):[];
+                const name2nd=tied2nd.map((r:any)=>nameOf(r.golfer_id).split(" ")[0]).join(" & ");
+                return secondPts!=null?(
+                  <div style={{display:"inline-flex",alignItems:"center",gap:7,flexWrap:"wrap",justifyContent:"center"}}>
+                    <span style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"3px 10px",fontSize:12,fontWeight:900,letterSpacing:"0.04em",lineHeight:1.2}}>2nd</span>
+                    <span style={{fontSize:16,fontWeight:600,opacity:0.88,lineHeight:1.2}}>{name2nd}</span>
+                    <span style={{fontSize:13,fontWeight:700,opacity:0.72}}>{secondPts} pts</span>
+                  </div>
+                ):null;
+              })()}
+            </div>
+          )}
+          {/* Stat pills row */}
+          <div style={{display:"flex",justifyContent:"center",gap:8}}>
+            <span style={{background:"rgba(255,255,255,0.18)",backdropFilter:"blur(4px)",borderRadius:20,padding:"4px 13px",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
+              {fieldSize} golfer{fieldSize!==1?"s":""}
+            </span>
+            {skinsCount>0&&(
+              <span style={{background:"rgba(255,255,255,0.18)",backdropFilter:"blur(4px)",borderRadius:20,padding:"4px 13px",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
+                {skinsCount} skin{skinsCount!==1?"s":""}
+              </span>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+const FEED_PAGE_INIT=10;
+const FEED_PAGE_MORE=5;
+
+// ── LeaderboardFeed ───────────────────────────────────────────────────────────
+// Paginated vertical feed of EventFeedCards for the selected season.
+// Props: seasonEvents (all completed events for the season, newest first),
+//        golfers, leaderboard, holeScores, holeImages, onCardTap
+function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages,onCardTap}:any){
+  const [visibleCount,setVisibleCount]=useState(FEED_PAGE_INIT);
+  const sentinelRef=useRef<HTMLDivElement|null>(null);
+  const allEvents:any[]=[...seasonEvents].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
+  const shown=allEvents.slice(0,visibleCount);
+  const hasMore=visibleCount<allEvents.length;
+
+  // eventNumber: 1-based index within the season ordered oldest-first
+  const oldestFirst=[...allEvents].reverse();
+  const eventNumMap:Record<number,number>={};
+  oldestFirst.forEach((ev:any,i:number)=>{eventNumMap[ev.event_id]=i+1;});
+
+  useEffect(()=>{
+    if(!sentinelRef.current||!hasMore)return;
+    const obs=new IntersectionObserver((entries)=>{
+      if(entries[0]?.isIntersecting)setVisibleCount(prev=>prev+FEED_PAGE_MORE);
+    },{threshold:0.1});
+    obs.observe(sentinelRef.current);
+    return()=>obs.disconnect();
+  },[hasMore,visibleCount]);
+
+  if(allEvents.length===0){
+    return(
+      <div className="empty-state">
+        <div className="empty-text">No events yet this season</div>
+        <div className="empty-sub">Completed events will appear here</div>
+      </div>
+    );
+  }
+
+  return(
+    <div>
+      {shown.map((ev:any)=>(
+        <EventFeedCard
+          key={ev.event_id}
+          event={ev}
+          eventNumber={eventNumMap[ev.event_id]||1}
+          golfers={golfers}
+          leaderboard={leaderboard}
+          holeScores={holeScores}
+          holeImages={holeImages}
+          onClick={()=>onCardTap(ev)}
+        />
+      ))}
+      {hasMore&&<div ref={sentinelRef} style={{height:2}}/>}
+    </div>
+  );
+}
 
 export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData}:any){
   // ── Golden Hour Mode ──────────────────────────────────────────────────
@@ -68,6 +270,42 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   const [liveExpandedId,setLiveExpandedId]=useState<number|null>(null);
   const [liveWeatherOpen,setLiveWeatherOpen]=useState(false);
   const [upcomingWeatherOpen,setUpcomingWeatherOpen]=useState(false);
+
+  // Feed overlay state: which event's full detail is open
+  const [feedOverlayEvent,setFeedOverlayEvent]=useState<any|null>(null);
+  const feedScrollPosRef=useRef<number>(0);
+  const overlayScrollRef=useRef<HTMLDivElement|null>(null);
+  // Ref callback: fires synchronously on mount so scrollTop=0 lands before paint.
+  const overlayRefCallback=(node:HTMLDivElement|null)=>{
+    overlayScrollRef.current=node;
+    if(node)node.scrollTop=0;
+  };
+  // Disable .main-content pointer events while overlay is open so the
+  // pull-to-refresh handler cannot fire through the overlay.
+  useEffect(()=>{
+    const mc=document.querySelector(".main-content") as HTMLElement|null;
+    if(!mc)return;
+    if(feedOverlayEvent){
+      mc.style.pointerEvents="none";
+    }else{
+      mc.style.pointerEvents="";
+    }
+    return()=>{mc.style.pointerEvents="";};
+  },[feedOverlayEvent]);
+  const openFeedOverlay=(ev:any)=>{
+    const mc=document.querySelector(".main-content") as HTMLElement|null;
+    feedScrollPosRef.current=mc?mc.scrollTop:0;
+    setSelEventId(ev.event_id);
+    setExpandedId(null);
+    setFeedOverlayEvent(ev);
+  };
+  const closeFeedOverlay=()=>{
+    setFeedOverlayEvent(null);
+    requestAnimationFrame(()=>{
+      const mc=document.querySelector(".main-content") as HTMLElement|null;
+      if(mc)mc.scrollTop=feedScrollPosRef.current;
+    });
+  };
 
   // 1) Season selector -- dropdown only, no "all time"
   const allSeasons=[...new Set([...events.map((e:any)=>e.season),...leaderboard.map((r:any)=>r.season)])].sort((a:any,b:any)=>b-a) as number[];
@@ -449,7 +687,15 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
         <div
           className={`lb-row${isExpanded?" expanded":""}${decayOpacity>0?" post-win":""}`}
           style={decayOpacity>0?{["--decay-opacity" as any]:decayOpacity.toFixed(3)}:undefined}
-          onClick={()=>setExpandedId(isExpanded?null:gid)}
+          onClick={()=>{
+            // Preserve overlay scroll position -- expanding a row changes layout
+            // height which can cause the overlay scroll container to jump.
+            const savedScroll=overlayScrollRef.current?.scrollTop??0;
+            setExpandedId(isExpanded?null:gid);
+            requestAnimationFrame(()=>{
+              if(overlayScrollRef.current)overlayScrollRef.current.scrollTop=savedScroll;
+            });
+          }}
         >
           <div className={`lb-rank-cell ${rankClass}`} style={{fontSize:row.tied?16:22,fontWeight:700}}>{posLabel}</div>
           <div className="lb-name-cell">
@@ -505,7 +751,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               return(
                 <>
                   {/* Weekly metrics: Total Score, HCP, Tees, Earnings */}
-                  <div className="lb-detail-grid" style={{marginBottom:10}}>
+                  <div className="lb-detail-grid" style={{marginBottom:10,justifyItems:"center",textAlign:"center"}}>
                     
                     {/* 3: Total Gross only shown when H×H data exists */}
                     
@@ -533,7 +779,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     const sk=(hNum:number)=>skinHoleWinners[hNum]===gid;
                     return(
                       <div>
-                        <div style={{fontSize:14,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Scorecard</div>
+                        <div style={{fontSize:14,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textAlign:"center",textTransform:"uppercase",marginBottom:4}}>Scorecard</div>
                         <div style={{overflowX:"auto"}}>
                           <table className="scorecard-table" style={{minWidth:0,width:"100%"}}>
                             {/* ── COL sizing: label | 9 hole cols | summary | tot ── */}
@@ -663,7 +909,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   };
 
   return(
-    <div className={isGoldenHour?"golden-hour":undefined}>
+    <div className={isGoldenHour?"golden-hour":undefined} style={{position:"relative"}}>
       <div className="section-title">Leaderboard</div>
 
       {/* 1) Season dropdown */}
@@ -1226,390 +1472,402 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
       })()}
 
       {subTab==="weekly"&&(
-        <>
-          <div className="form-group">
-            <label className="form-label">Event</label>
-            <select className="form-select" value={displayEvent?.event_id||""} onChange={e=>{setSelEventId(parseInt(e.target.value));setExpandedId(null);}}>
-              {seasonEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
-            </select>
-          </div>
-          {displayEvent&&(
-            <>
-              {!skinsEligible&&eventEntries.some((e:any)=>e.entry_type==="Total Only")&&(
-                <div className="skins-warning"><span>⚠</span><span>Mixed entry -- skins cannot be calculated until all players have hole-by-hole scores.</span></div>
-              )}
-              <div className="stat-grid">
-                <div className="stat-card"><div className="stat-value">{paidEntries.length}</div><div className="stat-label">Players</div></div>
-                <div className="stat-card"><div className="stat-value" style={{color:"var(--gold-600)"}}>${totalPot}</div><div className="stat-label">Stableford Pot</div></div>
-                {skinsEligible&&<div className="stat-card"><div className="stat-value" style={{color:"var(--green-700)"}}>${eventEntries.filter((e:any)=>e.skins_paid).length*10}</div><div className="stat-label">Skins Pot</div></div>}
-                {hasLiveSkins&&<div className="stat-card"><div style={{fontSize:20,fontWeight:700,color:"var(--green-600)",marginBottom:2}}>✓ Skins Live</div><div className="stat-label">{Object.keys(skinHoleWinners).length} skin{Object.keys(skinHoleWinners).length!==1?"s":""}</div></div>}
-              </div>
-              {eventEntries.length>=2&&(()=>{
-                const isTied=tied1st.length>1;
-                // Tied 1st: show all tied players sharing full pot, no 2nd
-                if(isTied){
-                  return(
-                    <div style={{display:"grid",gridTemplateColumns:"repeat("+Math.min(tied1st.length,4)+",1fr)",gap:10,marginBottom:18}}>
-                      {tied1st.map((e:any)=>{
-                        const payout=(totalPot/tied1st.length).toFixed(0);
-                        return(
-                          <div key={e.summary_id} className="podium-card p1">
-                            <div className="podium-pos">🥇</div>
-                            <div className="podium-pname">{golferName(golfers,e.golfer_id).split(" ")[0]}</div>
-                            <div className="podium-pscore">{e.total_stableford_points} pts</div>
-                            <div className="podium-payout">${payout}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                }
-                // Solo 1st: winner gets 2/3, runner-up gets 1/3
-                const winner=paidEntries[0];
-                // Find runner-up (first player with different score from winner)
-                const runnerUp=paidEntries.find((e:any)=>e.total_stableford_points<(winner?.total_stableford_points??0));
-                const winnerPayout=(totalPot*(2/3)).toFixed(0);
-                // Runner-up payout splits 1/3 among all tied for 2nd
-                const secondPts=runnerUp?.total_stableford_points;
-                const tied2nd=secondPts!=null?paidEntries.filter((e:any)=>e.total_stableford_points===secondPts):[];
-                const runnerUpPayout=tied2nd.length>0?((totalPot*(1/3))/tied2nd.length).toFixed(0):"0";
-                return(
-                  <div className="podium-row">
-                    {winner&&(
-                      <div className="podium-card p1">
-                        <div className="podium-pos">🥇</div>
-                        <div className="podium-pname">{golferName(golfers,winner.golfer_id).split(" ")[0]}</div>
-                        <div className="podium-pscore">{winner.total_stableford_points} pts</div>
-                        <div className="podium-payout">${winnerPayout}</div>
-                      </div>
-                    )}
-                    {runnerUp&&(
-                      <div className="podium-card p2">
-                        <div className="podium-pos">🥈{tied2nd.length>1&&<span style={{fontSize:12,marginLeft:3}}>×{tied2nd.length}</span>}</div>
-                        <div className="podium-pname">{tied2nd.length>1?"Tied 2nd":golferName(golfers,runnerUp.golfer_id).split(" ")[0]}</div>
-                        <div className="podium-pscore">{runnerUp.total_stableford_points} pts</div>
-                        <div className="podium-payout">${runnerUpPayout}{tied2nd.length>1?" ea":""}</div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-              <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
-                <div className="lb-header" style={{gridTemplateColumns:"36px 1fr 56px 62px"}}>
-                  <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
-                  <div className="lb-header-cell right">Pts</div><div className="lb-header-cell right">$$$</div>
-                </div>
-                {eventEntriesWithTies.map((entry:any,i:number)=>(
-                  <div key={entry.golfer_id} className="boot-row" style={{["--row-i" as any]:i}}>
-                    {renderLbRow(entry,"weekly")}
-                  </div>
-                ))}
-              </div>
-
-              {/* Admin: Send Round Recap email */}
-              {adminMode&&eventEntries.length>=2&&(()=>{
-                const md=(()=>{const dt=new Date(displayEvent.date+"T00:00:00");return String(dt.getMonth()+1).padStart(2,"0")+"/"+String(dt.getDate()).padStart(2,"0");})();
-                const firstPts=eventEntriesWithTies[0]?.total_stableford_points;
-                const winners=eventEntriesWithTies.filter((e:any)=>e.total_stableford_points===firstPts);
-                const remaining=eventEntriesWithTies.filter((e:any)=>e.total_stableford_points!==firstPts);
-                const secondPts=remaining[0]?.total_stableford_points;
-                const runnersUp=secondPts!=null?remaining.filter((e:any)=>e.total_stableford_points===secondPts):[];
-
-                const joinNames=(arr:any[])=>{
-                  const names=arr.map((e:any)=>golferName(golfers,e.golfer_id).split(" ")[0]);
-                  if(names.length===1)return names[0];
-                  if(names.length===2)return names[0]+" and "+names[1];
-                  return names.slice(0,-1).join(", ")+", and "+names[names.length-1];
-                };
-
-                const winnerVerb=winners.length>1?"came in 1st (tied)":"came in 1st";
-                let body=`Congratulations to ${joinNames(winners)}, who ${winnerVerb} with ${firstPts} pts`;
-                if(runnersUp.length>0){
-                  const ruVerb=runnersUp.length>1?"took 2nd (tied)":"took 2nd";
-                  body+=` and ${joinNames(runnersUp)} ${ruVerb} with ${secondPts} pts`;
-                }
-                body+=`.\n\nSee more details on the Saturday round in the app: https://saturdayschool.vercel.app/?tab=leaderboard`;
-
-                const subject=`Saturday ${md} Results`;
-                const mailtoHref=`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-                return(
-                  <a href={mailtoHref} className="btn btn-outline btn-full" style={{textDecoration:"none",marginTop:10,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                    ✉ Send Round Recap
-                  </a>
-                );
-              })()}
-
-              {/* View Scorecards button */}
-              {displayEvent&&(()=>{
-                const imgs=(eventImages||[]).filter((img:any)=>img.event_id===displayEvent.event_id);
-                const compressAndUpload=async(file:File):Promise<string|null>=>{
-                  return new Promise((resolve,reject)=>{
-                    const imgEl=new Image();
-                    const reader=new FileReader();
-                    reader.onload=(e:any)=>{
-                      imgEl.onload=async()=>{
-                        try{
-                          const MAX=1200;
-                          const scale=Math.min(1,MAX/Math.max(imgEl.width,imgEl.height));
-                          const canvas=document.createElement("canvas");
-                          canvas.width=Math.round(imgEl.width*scale);
-                          canvas.height=Math.round(imgEl.height*scale);
-                          canvas.getContext("2d")?.drawImage(imgEl,0,0,canvas.width,canvas.height);
-                          canvas.toBlob(async(blob:Blob|null)=>{
-                            if(!blob){reject(new Error("Canvas toBlob failed"));return;}
-                            // Path has no subfolder so the simple policy (bucket_id = 'scorecards') works
-                            const path="event_"+displayEvent.event_id+"_"+Date.now()+".jpg";
-                            try{
-                              const result=await supabase.storage.upload("scorecards",path,blob);
-                              if(!result){reject(new Error("Upload returned null"));return;}
-                              // Insert metadata row — don't depend on the returned row having an id
-                              const newImg={event_id:displayEvent.event_id,storage_path:path,public_url:result.url};
-                              try{
-                                const rows=await supabase.from("event_images").insert(newImg);
-                                const savedImg=rows&&rows[0]?rows[0]:{...newImg,id:Date.now()};
-                                setEventImages((p:any)=>[...p,savedImg]);
-                              }catch(_:any){
-                                // Insert failed but file is uploaded — still show it
-                                setEventImages((p:any)=>[...p,{...newImg,id:Date.now()}]);
-                              }
-                              resolve(result.url);
-                            }catch(uploadErr:any){
-                              reject(uploadErr);
-                            }
-                          },"image/jpeg",0.82);
-                        }catch(err:any){reject(err);}
-                      };
-                      imgEl.onerror=()=>reject(new Error("Image load failed"));
-                      imgEl.src=e.target.result;
-                    };
-                    reader.onerror=()=>reject(new Error("FileReader failed"));
-                    reader.readAsDataURL(file);
-                  });
-                };
-                return(
-                  <div style={{marginTop:18}}>
-                    <button
-                      className="btn btn-outline btn-full"
-                      style={{fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}
-                      onClick={()=>setShowScorecardModal(true)}
-                    >
-                      📷 View Scorecards{imgs.length>0?" ("+imgs.length+")":""}
-                    </button>
-
-                    {/* Scorecard modal */}
-                    {showScorecardModal&&(
-                      <div
-                        style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
-                        onClick={()=>{setShowScorecardModal(false);setLightboxImg(null);}}
-                      >
-                        <div
-                          style={{background:"var(--surface)",borderRadius:"var(--radius-lg) var(--radius-lg) 0 0",padding:"20px 16px 36px",width:"100%",maxWidth:520,maxHeight:"88vh",overflowY:"auto"}}
-                          onClick={(e:any)=>e.stopPropagation()}
-                        >
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-                            <div>
-                              <div style={{fontSize:17,fontWeight:700,color:"var(--green-800)"}}>Scorecards</div>
-                              <div style={{fontSize:13,color:"var(--text-muted)"}}>{formatDate(displayEvent.date)} -- {displayEvent.course_name}</div>
-                            </div>
-                            {adminMode&&(
-                              <label style={{cursor:"pointer"}}>
-                                <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={async(e:any)=>{
-                                  const files=Array.from(e.target.files||[]) as File[];
-                                  if(!files.length)return;
-                                  setScorecardUploading(true);
-                                  let ok=0,fail=0;
-                                  for(const f of files){
-                                    try{
-                                      await compressAndUpload(f);
-                                      ok++;
-                                    }catch(err:any){
-                                      fail++;
-                                      console.error("Upload error:",err);
-                                      alert("Upload failed: "+( err?.message||String(err)));
-                                    }
-                                  }
-                                  setScorecardUploading(false);
-                                  e.target.value="";
-                                  if(ok>0)showSuccess("Scorecard"+(ok>1?"s":"")+" uploaded!");
-                                }}/>
-                                <span className="btn btn-primary" style={{fontSize:13,padding:"8px 14px"}}>
-                                  {scorecardUploading?"Uploading...":"+ Add Photo"}
-                                </span>
-                              </label>
-                            )}
-                          </div>
-
-                          {imgs.length===0&&!scorecardUploading&&(
-                            <div style={{textAlign:"center",padding:"32px 0",color:"var(--text-muted)"}}>
-                              <div style={{fontSize:32,marginBottom:8}}>📋</div>
-                              <div style={{fontSize:14}}>No scorecards uploaded yet</div>
-                              {adminMode&&<div style={{fontSize:12,marginTop:4}}>Tap "+ Add Photo" to upload</div>}
-                            </div>
-                          )}
-
-                          {scorecardUploading&&(
-                            <div style={{textAlign:"center",padding:"20px 0",color:"var(--text-muted)",fontSize:14}}>
-                              <div style={{width:32,height:32,border:"3px solid var(--green-100)",borderTop:"3px solid var(--green-600)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 10px"}}/>
-                              Compressing and uploading...
-                            </div>
-                          )}
-
-                          {/* Image grid */}
-                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
-                            {imgs.map((img:any)=>(
-                              <div key={img.id||img.storage_path} style={{position:"relative",borderRadius:"var(--radius-md)",overflow:"hidden",aspectRatio:"4/3",background:"var(--surface2)",cursor:"pointer"}} onClick={()=>setLightboxImg(img.public_url)}>
-                                <img src={img.public_url} alt="Scorecard" style={{width:"100%",height:"100%",objectFit:"cover"}} loading="lazy"/>
-                                {adminMode&&(
-                                  <button
-                                    onClick={async(e:any)=>{
-                                      e.stopPropagation();
-                                      if(!window.confirm("Delete this scorecard photo?"))return;
-                                      await supabase.storage.remove("scorecards",[img.storage_path]);
-                                      await supabase.from("event_images").delete({id:img.id});
-                                      setEventImages((p:any)=>p.filter((x:any)=>x.id!==img.id));
-                                    }}
-                                    style={{position:"absolute",top:4,right:4,background:"rgba(192,32,32,0.9)",color:"white",border:"none",borderRadius:6,padding:"4px 8px",fontSize:12,fontWeight:700,cursor:"pointer"}}
-                                  >Delete</button>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-
-                          <button className="btn btn-outline btn-full" style={{marginTop:8}} onClick={()=>setShowScorecardModal(false)}>Close</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Lightbox */}
-                    {lightboxImg&&(
-                      <div
-                        style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:9100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
-                        onClick={()=>setLightboxImg(null)}
-                      >
-                        <img src={lightboxImg} alt="Scorecard" style={{maxWidth:"100%",maxHeight:"90vh",borderRadius:"var(--radius-md)",objectFit:"contain"}}/>
-                        <button onClick={()=>setLightboxImg(null)} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.15)",color:"white",border:"none",borderRadius:"50%",width:36,height:36,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* ── Course Stats Module ── */}
-              {displayEvent&&skinsEligible&&(()=>{
-                const eventCourseName=displayEvent.course_name;
-                // All signups for this event that have a tee box assigned
-                const eventSignups=signups.filter((s:any)=>s.event_id===displayEvent.event_id&&s.tee_box_course_id);
-                // All leaderboard entries for this event
-                const eventEntryIds=new Set(leaderboard.filter((e:any)=>e.event_id===displayEvent.event_id).map((e:any)=>e.summary_id));
-                // Hole scores for this event
-                const eventHoleScores=holeScores.filter((h:any)=>eventEntryIds.has(h.summary_id));
-
-                // Derive per-hole pars from the courses that players used
-                // We build a consensus par array from all tee boxes played
-                const holeCount=18;
-                const holePars:number[]=Array(holeCount).fill(0);
-                const holeParsVotes:number[][]=Array.from({length:holeCount},()=>[]);
-                for(const s of eventSignups){
-                  const c=courses.find((c:any)=>c.course_id===s.tee_box_course_id);
-                  if(c?.hole_pars){c.hole_pars.forEach((p:number,i:number)=>{holeParsVotes[i].push(p);});}
-                }
-                holePars.forEach((_,i)=>{
-                  const votes=holeParsVotes[i];
-                  holePars[i]=votes.length>0?Math.round(votes.reduce((a:number,b:number)=>a+b,0)/votes.length):4;
-                });
-
-                // Per-hole average yardage (averaged across tee boxes played)
-                // Courses don't currently store hole_yards — show "—" if missing
-                const holeYards:number[]=Array(holeCount).fill(0);
-                let hasYards=false;
-                for(const s of eventSignups){
-                  const c=courses.find((c:any)=>c.course_id===s.tee_box_course_id);
-                  if(c?.hole_yards&&Array.isArray(c.hole_yards)){hasYards=true;}
-                }
-                if(hasYards){
-                  const yardVotes:number[][]=Array.from({length:holeCount},()=>[]);
-                  for(const s of eventSignups){
-                    const c=courses.find((c:any)=>c.course_id===s.tee_box_course_id);
-                    if(c?.hole_yards){c.hole_yards.forEach((y:number,i:number)=>{if(y>0)yardVotes[i].push(y);});}
-                  }
-                  yardVotes.forEach((v,i)=>{holeYards[i]=v.length>0?Math.round(v.reduce((a:number,b:number)=>a+b,0)/v.length):0;});
-                }
-
-                // Per-hole stats
-                type HoleStat={hole:number;par:number;yards:number;avgPts:number;plusMinus:number;count:number;eagles:number;birdies:number;pars:number;bogeys:number;dblPlus:number;};
-                const holeStats:HoleStat[]=Array.from({length:holeCount},(_,i)=>{
-                  const hNum=i+1;
-                  const par=holePars[i]||4;
-                  const scores=eventHoleScores.filter((h:any)=>h.hole_number===hNum&&h.gross_score!=null&&h.stableford_points!=null);
-                  const count=scores.length;
-                  const avgPts=count>0?scores.reduce((s:number,h:any)=>s+(h.stableford_points||0),0)/count:0;
-                  const plusMinus=avgPts-2; // 2 pts = par baseline in stableford
-                  // Gross score breakdown
-                  let eagles=0,birdies=0,pars=0,bogeys=0,dblPlus=0;
-                  for(const h of scores){
-                    const diff=h.gross_score-par;
-                    if(diff<=-2)eagles++;
-                    else if(diff===-1)birdies++;
-                    else if(diff===0)pars++;
-                    else if(diff===1)bogeys++;
-                    else dblPlus++;
-                  }
-                  return{hole:hNum,par,yards:holeYards[i]||0,avgPts,plusMinus,count,eagles,birdies,pars,bogeys,dblPlus};
-                }).filter(h=>h.count>0); // only show holes with data
-
-                // Rank by difficulty = lowest avgPts = rank 1
-                const sorted=[...holeStats].sort((a,b)=>a.avgPts-b.avgPts);
-                const rankMap:Record<number,number>={};
-                sorted.forEach((h,i)=>{rankMap[h.hole]=i+1;});
-
-                // Per-hole player breakdown — for card flip view
-                // Map summary_id -> golfer_id for this event
-                const summaryToGolfer:Record<number,number>={};
-                leaderboard.filter((e:any)=>e.event_id===displayEvent.event_id).forEach((e:any)=>{summaryToGolfer[e.summary_id]=e.golfer_id;});
-                const playerHoleData:Record<number,{golfer_id:number;name:string;gross:number;pts:number;isSkinWinner:boolean}[]>={};
-                for(let hNum=1;hNum<=holeCount;hNum++){
-                  const rows=eventHoleScores
-                    .filter((h:any)=>h.hole_number===hNum&&h.gross_score!=null&&h.stableford_points!=null)
-                    .map((h:any)=>{
-                      const gid=summaryToGolfer[h.summary_id];
-                      const g=golfers.find((gl:any)=>gl.golfer_id===gid);
-                      return{
-                        golfer_id:gid,
-                        name:g?`${g.first_name} ${g.last_name}`:"Unknown",
-                        gross:h.gross_score,
-                        pts:h.stableford_points,
-                        isSkinWinner:skinHoleWinners[hNum]===gid,
-                      };
-                    })
-                    .sort((a:any,b:any)=>b.pts-a.pts);
-                  playerHoleData[hNum]=rows;
-                }
-
-                return(
-                  <CourseStatsModule
-                    holeStats={holeStats}
-                    rankMap={rankMap}
-                    playerHoleData={playerHoleData}
-                    holeImages={holeImages}
-                    setHoleImages={setHoleImages}
-                    courseName={eventCourseName}
-                    adminMode={adminMode}
-                    supabase={supabase}
-                    showSuccess={showSuccess}
-                    hasYards={hasYards}
-                    holeCount={holeStats.length}
-                  />
-                );
-              })()}
-            </>
-          )}
-        </>
+        <div>
+          <LeaderboardFeed
+            seasonEvents={seasonEvents}
+            golfers={golfers}
+            leaderboard={leaderboard}
+            holeScores={holeScores}
+            holeImages={holeImages}
+            onCardTap={openFeedOverlay}
+          />
+        </div>
       )}
 
 
 
       </SubTabPanel>
+
+      {/* Portal the overlay to document.body so it escapes .app-shell's
+          overflow:hidden and all ancestor stacking contexts. position:fixed
+          is safe here because document.body has no CSS animation ancestor. */}
+      {feedOverlayEvent&&displayEvent&&ReactDOM.createPortal(
+        <div
+          ref={overlayRefCallback}
+          className="feed-overlay"
+          style={{
+            position:"fixed",
+            top:0,left:0,right:0,bottom:0,
+            background:"var(--bg)",
+            zIndex:9000,
+            overflowY:"auto",
+            overscrollBehaviorY:"contain",
+            paddingBottom:24,
+          }}
+        >
+          {/* Sticky header -- back button + event title, stays visible while scrolling */}
+          <div style={{
+            position:"sticky",
+            top:0,
+            background:"var(--bg)",
+            zIndex:20,
+            paddingTop:"env(safe-area-inset-top, 0px)",
+            paddingLeft:12,
+            paddingRight:12,
+            borderBottom:"1px solid var(--border)",
+          }}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0 10px"}}>
+              <button
+                onClick={closeFeedOverlay}
+                style={{
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  width:40,height:40,borderRadius:"50%",
+                  background:"var(--green-800)",color:"white",
+                  border:"none",flexShrink:0,
+                  cursor:"pointer",WebkitTapHighlightColor:"transparent",
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 22 22" fill="none" style={{display:"block"}}>
+                  <path d="M14 4L7 11L14 18" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              <div style={{textAlign:"right",minWidth:0,paddingLeft:12}}>
+                <div style={{fontSize:19,fontWeight:700,color:"var(--green-900)",lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{displayEvent.course_name}</div>
+                <div style={{fontSize:14,color:"var(--text-muted)",marginTop:3}}>{formatDate(displayEvent.date)}</div>
+              </div>
+            </div>
+          </div>
+          <div style={{paddingLeft:12,paddingRight:12,paddingTop:12}}>
+
+          {!skinsEligible&&eventEntries.some((e:any)=>e.entry_type==="Total Only")&&(
+            <div className="skins-warning"><span>⚠</span><span>Mixed entry -- skins cannot be calculated until all players have hole-by-hole scores.</span></div>
+          )}
+          <div className="stat-grid">
+            <div className="stat-card"><div className="stat-value">{paidEntries.length}</div><div className="stat-label">Players</div></div>
+            <div className="stat-card"><div className="stat-value" style={{color:"var(--gold-600)"}}>${totalPot}</div><div className="stat-label">Stableford Pot</div></div>
+            {skinsEligible&&<div className="stat-card"><div className="stat-value" style={{color:"var(--green-700)"}}>${eventEntries.filter((e:any)=>e.skins_paid).length*10}</div><div className="stat-label">Skins Pot</div></div>}
+            {hasLiveSkins&&<div className="stat-card"><div style={{fontSize:20,fontWeight:700,color:"var(--green-600)",marginBottom:2}}>Skins Live</div><div className="stat-label">{Object.keys(skinHoleWinners).length} skin{Object.keys(skinHoleWinners).length!==1?"s":""}</div></div>}
+          </div>
+          {eventEntries.length>=2&&(()=>{
+            const isTied=tied1st.length>1;
+            if(isTied){
+              return(
+                <div style={{display:"grid",gridTemplateColumns:"repeat("+Math.min(tied1st.length,4)+",1fr)",gap:10,marginBottom:18}}>
+                  {tied1st.map((e:any)=>{
+                    const payout=(totalPot/tied1st.length).toFixed(0);
+                    return(
+                      <div key={e.summary_id} className="podium-card p1">
+                        <div className="podium-pos">🥇</div>
+                        <div className="podium-pname">{golferName(golfers,e.golfer_id).split(" ")[0]}</div>
+                        <div className="podium-pscore">{e.total_stableford_points} pts</div>
+                        <div className="podium-payout">${payout}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            }
+            const winner=paidEntries[0];
+            const runnerUp=paidEntries.find((e:any)=>e.total_stableford_points<(winner?.total_stableford_points??0));
+            const winnerPayout=(totalPot*(2/3)).toFixed(0);
+            const secondPts=runnerUp?.total_stableford_points;
+            const tied2nd=secondPts!=null?paidEntries.filter((e:any)=>e.total_stableford_points===secondPts):[];
+            const runnerUpPayout=tied2nd.length>0?((totalPot*(1/3))/tied2nd.length).toFixed(0):"0";
+            return(
+              <div className="podium-row">
+                {winner&&(
+                  <div className="podium-card p1">
+                    <div className="podium-pos">🥇</div>
+                    <div className="podium-pname">{golferName(golfers,winner.golfer_id).split(" ")[0]}</div>
+                    <div className="podium-pscore">{winner.total_stableford_points} pts</div>
+                    <div className="podium-payout">${winnerPayout}</div>
+                  </div>
+                )}
+                {runnerUp&&(
+                  <div className="podium-card p2">
+                    <div className="podium-pos">🥈{tied2nd.length>1&&<span style={{fontSize:12,marginLeft:3}}>x{tied2nd.length}</span>}</div>
+                    <div className="podium-pname">{tied2nd.length>1?"Tied 2nd":golferName(golfers,runnerUp.golfer_id).split(" ")[0]}</div>
+                    <div className="podium-pscore">{runnerUp.total_stableford_points} pts</div>
+                    <div className="podium-payout">${runnerUpPayout}{tied2nd.length>1?" ea":""}</div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
+            <div className="lb-header" style={{gridTemplateColumns:"36px 1fr 56px 62px"}}>
+              <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
+              <div className="lb-header-cell right">Pts</div><div className="lb-header-cell right">$$$</div>
+            </div>
+            {eventEntriesWithTies.map((entry:any,i:number)=>(
+              <div key={entry.golfer_id} className="boot-row" style={{["--row-i" as any]:i}}>
+                {renderLbRow(entry,"weekly")}
+              </div>
+            ))}
+          </div>
+
+          {adminMode&&eventEntries.length>=2&&(()=>{
+            const md=(()=>{const dt=new Date(displayEvent.date+"T00:00:00");return String(dt.getMonth()+1).padStart(2,"0")+"/"+String(dt.getDate()).padStart(2,"0");})();
+            const firstPts=eventEntriesWithTies[0]?.total_stableford_points;
+            const winners=eventEntriesWithTies.filter((e:any)=>e.total_stableford_points===firstPts);
+            const remaining=eventEntriesWithTies.filter((e:any)=>e.total_stableford_points!==firstPts);
+            const secondPts=remaining[0]?.total_stableford_points;
+            const runnersUp=secondPts!=null?remaining.filter((e:any)=>e.total_stableford_points===secondPts):[];
+            const joinNames=(arr:any[])=>{
+              const names=arr.map((e:any)=>golferName(golfers,e.golfer_id).split(" ")[0]);
+              if(names.length===1)return names[0];
+              if(names.length===2)return names[0]+" and "+names[1];
+              return names.slice(0,-1).join(", ")+", and "+names[names.length-1];
+            };
+            const winnerVerb=winners.length>1?"came in 1st (tied)":"came in 1st";
+            let body=`Congratulations to ${joinNames(winners)}, who ${winnerVerb} with ${firstPts} pts`;
+            if(runnersUp.length>0){
+              const ruVerb=runnersUp.length>1?"took 2nd (tied)":"took 2nd";
+              body+=` and ${joinNames(runnersUp)} ${ruVerb} with ${secondPts} pts`;
+            }
+            body+=`.\n\nSee more details on the Saturday round in the app: https://saturdayschool.vercel.app/?tab=leaderboard`;
+            const subject=`Saturday ${md} Results`;
+            const mailtoHref=`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            return(
+              <a href={mailtoHref} className="btn btn-outline btn-full" style={{textDecoration:"none",marginTop:10,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                Send Round Recap
+              </a>
+            );
+          })()}
+
+          {(()=>{
+            const imgs=(eventImages||[]).filter((img:any)=>img.event_id===displayEvent.event_id);
+            const compressAndUpload=async(file:File):Promise<string|null>=>{
+              return new Promise((resolve,reject)=>{
+                const imgEl=new Image();
+                const reader=new FileReader();
+                reader.onload=(e:any)=>{
+                  imgEl.onload=async()=>{
+                    try{
+                      const MAX=1200;
+                      const scale=Math.min(1,MAX/Math.max(imgEl.width,imgEl.height));
+                      const canvas=document.createElement("canvas");
+                      canvas.width=Math.round(imgEl.width*scale);
+                      canvas.height=Math.round(imgEl.height*scale);
+                      canvas.getContext("2d")?.drawImage(imgEl,0,0,canvas.width,canvas.height);
+                      canvas.toBlob(async(blob:Blob|null)=>{
+                        if(!blob){reject(new Error("Canvas toBlob failed"));return;}
+                        const path="event_"+displayEvent.event_id+"_"+Date.now()+".jpg";
+                        try{
+                          const result=await supabase.storage.upload("scorecards",path,blob);
+                          if(!result){reject(new Error("Upload returned null"));return;}
+                          const newImg={event_id:displayEvent.event_id,storage_path:path,public_url:result.url};
+                          try{
+                            const rows=await supabase.from("event_images").insert(newImg);
+                            const savedImg=rows&&rows[0]?rows[0]:{...newImg,id:Date.now()};
+                            setEventImages((p:any)=>[...p,savedImg]);
+                          }catch(_:any){
+                            setEventImages((p:any)=>[...p,{...newImg,id:Date.now()}]);
+                          }
+                          resolve(result.url);
+                        }catch(uploadErr:any){
+                          reject(uploadErr);
+                        }
+                      },"image/jpeg",0.82);
+                    }catch(err:any){reject(err);}
+                  };
+                  imgEl.onerror=()=>reject(new Error("Image load failed"));
+                  imgEl.src=e.target.result;
+                };
+                reader.onerror=()=>reject(new Error("FileReader failed"));
+                reader.readAsDataURL(file);
+              });
+            };
+            return(
+              <div style={{marginTop:18}}>
+                <button
+                  className="btn btn-outline btn-full"
+                  style={{fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}
+                  onClick={()=>setShowScorecardModal(true)}
+                >
+                  View Scorecards{imgs.length>0?" ("+imgs.length+")":""}
+                </button>
+                {showScorecardModal&&(
+                  <div
+                    style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+                    onClick={()=>{setShowScorecardModal(false);setLightboxImg(null);}}
+                  >
+                    <div
+                      style={{background:"var(--surface)",borderRadius:"var(--radius-lg) var(--radius-lg) 0 0",padding:"20px 16px 36px",width:"100%",maxWidth:520,maxHeight:"88vh",overflowY:"auto"}}
+                      onClick={(e:any)=>e.stopPropagation()}
+                    >
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                        <div>
+                          <div style={{fontSize:17,fontWeight:700,color:"var(--green-800)"}}>Scorecards</div>
+                          <div style={{fontSize:13,color:"var(--text-muted)"}}>{formatDate(displayEvent.date)} -- {displayEvent.course_name}</div>
+                        </div>
+                        {adminMode&&(
+                          <label style={{cursor:"pointer"}}>
+                            <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={async(e:any)=>{
+                              const files=Array.from(e.target.files||[]) as File[];
+                              if(!files.length)return;
+                              setScorecardUploading(true);
+                              let ok=0,fail=0;
+                              for(const f of files){
+                                try{
+                                  await compressAndUpload(f);
+                                  ok++;
+                                }catch(err:any){
+                                  fail++;
+                                  console.error("Upload error:",err);
+                                  alert("Upload failed: "+(err?.message||String(err)));
+                                }
+                              }
+                              setScorecardUploading(false);
+                              e.target.value="";
+                              if(ok>0)showSuccess("Scorecard"+(ok>1?"s":"")+" uploaded!");
+                            }}/>
+                            <span className="btn btn-primary" style={{fontSize:13,padding:"8px 14px"}}>
+                              {scorecardUploading?"Uploading...":"+ Add Photo"}
+                            </span>
+                          </label>
+                        )}
+                      </div>
+                      {imgs.length===0&&!scorecardUploading&&(
+                        <div style={{textAlign:"center",padding:"32px 0",color:"var(--text-muted)"}}>
+                          <div style={{fontSize:32,marginBottom:8}}>📋</div>
+                          <div style={{fontSize:14}}>No scorecards uploaded yet</div>
+                          {adminMode&&<div style={{fontSize:12,marginTop:4}}>Tap "+ Add Photo" to upload</div>}
+                        </div>
+                      )}
+                      {scorecardUploading&&(
+                        <div style={{textAlign:"center",padding:"20px 0",color:"var(--text-muted)",fontSize:14}}>
+                          <div style={{width:32,height:32,border:"3px solid var(--green-100)",borderTop:"3px solid var(--green-600)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 10px"}}/>
+                          Compressing and uploading...
+                        </div>
+                      )}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
+                        {imgs.map((img:any)=>(
+                          <div key={img.id||img.storage_path} style={{position:"relative",borderRadius:"var(--radius-md)",overflow:"hidden",aspectRatio:"4/3",background:"var(--surface2)",cursor:"pointer"}} onClick={()=>setLightboxImg(img.public_url)}>
+                            <img src={img.public_url} alt="Scorecard" style={{width:"100%",height:"100%",objectFit:"cover"}} loading="lazy"/>
+                            {adminMode&&(
+                              <button
+                                onClick={async(e:any)=>{
+                                  e.stopPropagation();
+                                  if(!window.confirm("Delete this scorecard photo?"))return;
+                                  await supabase.storage.remove("scorecards",[img.storage_path]);
+                                  await supabase.from("event_images").delete({id:img.id});
+                                  setEventImages((p:any)=>p.filter((x:any)=>x.id!==img.id));
+                                }}
+                                style={{position:"absolute",top:4,right:4,background:"rgba(192,32,32,0.9)",color:"white",border:"none",borderRadius:6,padding:"4px 8px",fontSize:12,fontWeight:700,cursor:"pointer"}}
+                              >Delete</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <button className="btn btn-outline btn-full" style={{marginTop:8}} onClick={()=>setShowScorecardModal(false)}>Close</button>
+                    </div>
+                  </div>
+                )}
+                {lightboxImg&&(
+                  <div
+                    style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:9100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+                    onClick={()=>setLightboxImg(null)}
+                  >
+                    <img src={lightboxImg} alt="Scorecard" style={{maxWidth:"100%",maxHeight:"90vh",borderRadius:"var(--radius-md)",objectFit:"contain"}}/>
+                    <button onClick={()=>setLightboxImg(null)} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.15)",color:"white",border:"none",borderRadius:"50%",width:36,height:36,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>x</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {skinsEligible&&(()=>{
+            const eventCourseName=displayEvent.course_name;
+            const eventSignups=signups.filter((s:any)=>s.event_id===displayEvent.event_id&&s.tee_box_course_id);
+            const eventEntryIds=new Set(leaderboard.filter((e:any)=>e.event_id===displayEvent.event_id).map((e:any)=>e.summary_id));
+            const eventHoleScores=holeScores.filter((h:any)=>eventEntryIds.has(h.summary_id));
+            const holeCount=18;
+            const holePars:number[]=Array(holeCount).fill(0);
+            const holeParsVotes:number[][]=Array.from({length:holeCount},()=>[]);
+            for(const s of eventSignups){
+              const c=courses.find((c:any)=>c.course_id===s.tee_box_course_id);
+              if(c?.hole_pars){c.hole_pars.forEach((p:number,i:number)=>{holeParsVotes[i].push(p);});}
+            }
+            holePars.forEach((_,i)=>{
+              const votes=holeParsVotes[i];
+              holePars[i]=votes.length>0?Math.round(votes.reduce((a:number,b:number)=>a+b,0)/votes.length):4;
+            });
+            const holeYards:number[]=Array(holeCount).fill(0);
+            let hasYards=false;
+            for(const s of eventSignups){
+              const c=courses.find((c:any)=>c.course_id===s.tee_box_course_id);
+              if(c?.hole_yards&&Array.isArray(c.hole_yards)){hasYards=true;}
+            }
+            if(hasYards){
+              const yardVotes:number[][]=Array.from({length:holeCount},()=>[]);
+              for(const s of eventSignups){
+                const c=courses.find((c:any)=>c.course_id===s.tee_box_course_id);
+                if(c?.hole_yards){c.hole_yards.forEach((y:number,i:number)=>{if(y>0)yardVotes[i].push(y);});}
+              }
+              yardVotes.forEach((v,i)=>{holeYards[i]=v.length>0?Math.round(v.reduce((a:number,b:number)=>a+b,0)/v.length):0;});
+            }
+            type HoleStat={hole:number;par:number;yards:number;avgPts:number;plusMinus:number;count:number;eagles:number;birdies:number;pars:number;bogeys:number;dblPlus:number;};
+            const holeStats:HoleStat[]=Array.from({length:holeCount},(_,i)=>{
+              const hNum=i+1;
+              const par=holePars[i]||4;
+              const scores=eventHoleScores.filter((h:any)=>h.hole_number===hNum&&h.gross_score!=null&&h.stableford_points!=null);
+              const count=scores.length;
+              const avgPts=count>0?scores.reduce((s:number,h:any)=>s+(h.stableford_points||0),0)/count:0;
+              const plusMinus=avgPts-2;
+              let eagles=0,birdies=0,pars=0,bogeys=0,dblPlus=0;
+              for(const h of scores){
+                const diff=h.gross_score-par;
+                if(diff<=-2)eagles++;
+                else if(diff===-1)birdies++;
+                else if(diff===0)pars++;
+                else if(diff===1)bogeys++;
+                else dblPlus++;
+              }
+              return{hole:hNum,par,yards:holeYards[i]||0,avgPts,plusMinus,count,eagles,birdies,pars,bogeys,dblPlus};
+            }).filter(h=>h.count>0);
+            const sorted=[...holeStats].sort((a,b)=>a.avgPts-b.avgPts);
+            const rankMap:Record<number,number>={};
+            sorted.forEach((h,i)=>{rankMap[h.hole]=i+1;});
+            const summaryToGolfer:Record<number,number>={};
+            leaderboard.filter((e:any)=>e.event_id===displayEvent.event_id).forEach((e:any)=>{summaryToGolfer[e.summary_id]=e.golfer_id;});
+            const playerHoleData:Record<number,{golfer_id:number;name:string;gross:number;pts:number;isSkinWinner:boolean}[]>={};
+            for(let hNum=1;hNum<=holeCount;hNum++){
+              const rows=eventHoleScores
+                .filter((h:any)=>h.hole_number===hNum&&h.gross_score!=null&&h.stableford_points!=null)
+                .map((h:any)=>{
+                  const gid=summaryToGolfer[h.summary_id];
+                  const g=golfers.find((gl:any)=>gl.golfer_id===gid);
+                  return{
+                    golfer_id:gid,
+                    name:g?`${g.first_name} ${g.last_name}`:"Unknown",
+                    gross:h.gross_score,
+                    pts:h.stableford_points,
+                    isSkinWinner:skinHoleWinners[hNum]===gid,
+                  };
+                })
+                .sort((a:any,b:any)=>b.pts-a.pts);
+              playerHoleData[hNum]=rows;
+            }
+            return(
+              <CourseStatsModule
+                holeStats={holeStats}
+                rankMap={rankMap}
+                playerHoleData={playerHoleData}
+                holeImages={holeImages}
+                setHoleImages={setHoleImages}
+                courseName={eventCourseName}
+                adminMode={adminMode}
+                supabase={supabase}
+                showSuccess={showSuccess}
+                hasYards={hasYards}
+                holeCount={holeStats.length}
+              />
+            );
+          })()}
+          </div>{/* end inner padding div */}
+        </div>
+      ,document.body)}
     </div>
   );
 }

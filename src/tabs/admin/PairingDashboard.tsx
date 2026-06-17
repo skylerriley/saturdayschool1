@@ -30,7 +30,7 @@ export function PairingDashboard({ golfers, courses, events, setEvents, signups,
 
   const runPairings = () => {
     // Only pair confirmed players — waiting room players stay in waiting room
-    const a = confirmedInGroups.map((s: any) => ({ golfer_id: s.golfer_id, sponsor_golfer_id: s.sponsor_golfer_id }));
+    const a = confirmedInGroups.map((s: any) => ({ golfer_id: s.golfer_id, sponsor_golfer_id: s.sponsor_golfer_id, early_tee_request: !!s.early_tee_request }));
     setPairings(runPairingEngine(a, selEvent.tee_times));
     setConfirmed(false); setMoving(null);
     setTimeout(() => pairingsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);

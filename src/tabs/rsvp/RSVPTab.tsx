@@ -195,9 +195,8 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
   const movePlayer=(signup_id:number,toTee:string)=>{
     setSignups((p:any)=>p.map((s:any)=>s.signup_id===signup_id?{...s,assigned_tee_time:toTee}:s));
-    if(signup_id<1e12)
-      supabase.from("event_signups").update({assigned_tee_time:toTee},{signup_id}).catch(()=>{});
     setMoving(null);
+    setPairingsChanged(true);
   };
 
   // Swap all players between two tee times
@@ -205,14 +204,8 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
     if(!selEvent)return;
     setSignups((p:any)=>p.map((s:any)=>{
       if(s.event_id!==selEvent.event_id||s.attending!=="Yes"||s.in_waiting_room)return s;
-      if(s.assigned_tee_time===teeA){
-        if(s.signup_id<1e12)supabase.from("event_signups").update({assigned_tee_time:teeB},{signup_id:s.signup_id}).catch(()=>{});
-        return{...s,assigned_tee_time:teeB};
-      }
-      if(s.assigned_tee_time===teeB){
-        if(s.signup_id<1e12)supabase.from("event_signups").update({assigned_tee_time:teeA},{signup_id:s.signup_id}).catch(()=>{});
-        return{...s,assigned_tee_time:teeA};
-      }
+      if(s.assigned_tee_time===teeA)return{...s,assigned_tee_time:teeB};
+      if(s.assigned_tee_time===teeB)return{...s,assigned_tee_time:teeA};
       return s;
     }));
     setPairingsChanged(true);
@@ -563,18 +556,9 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                 const newPairings=runPairingEngine(attendees,selEvent.tee_times||[]);
                 const teeByGolfer:Record<number,string>={};
                 newPairings.forEach((grp:any)=>grp.players.forEach((pid:number)=>{teeByGolfer[pid]=grp.teeTime;}));
-                const updatedSignups=eventSignups.map((s:any)=>
-                  teeByGolfer[s.golfer_id]!==undefined?{...s,assigned_tee_time:teeByGolfer[s.golfer_id]}:s
-                );
                 setSignups((su:any)=>su.map((s:any)=>{
-                  const u=updatedSignups.find((x:any)=>x.signup_id===s.signup_id);
-                  return u||s;
+                  return teeByGolfer[s.golfer_id]!==undefined?{...s,assigned_tee_time:teeByGolfer[s.golfer_id]}:s;
                 }));
-                updatedSignups.filter((s:any)=>teeByGolfer[s.golfer_id]).forEach((s:any)=>{
-                  if(s.signup_id<1e12)
-                    supabase.from("event_signups").update({assigned_tee_time:s.assigned_tee_time},{signup_id:s.signup_id}).catch(()=>{});
-                });
-                setEvents((ev:any)=>ev.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Pairings Set"}:e));
                 setMoving(null);setPairingsConfirmed(false);setPairingsChanged(true);
               }}
             >🎲 {hasPairings?"Re-generate Pairings":"Generate Pairings"}</button>
@@ -698,7 +682,14 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
       style={{opacity:(pairingsConfirmed&&!pairingsChanged)?0.45:1,cursor:(pairingsConfirmed&&!pairingsChanged)?"default":"pointer"}}
       disabled={pairingsConfirmed&&!pairingsChanged}
       onClick={() => {
-        setEvents((p:any) => p.map((e:any) => e.event_id===selEvent?.event_id ? {...e, status:"Pairings Set"} : e));
+        if(!selEvent)return;
+        setEvents((p:any) => p.map((e:any) => e.event_id===selEvent.event_id ? {...e, status:"Pairings Set"} : e));
+        if(selEvent.event_id<1e12)
+          supabase.from("events").update({status:"Pairings Set"},{event_id:selEvent.event_id}).catch(()=>{});
+        eventSignups.filter((s:any)=>s.assigned_tee_time).forEach((s:any)=>{
+          if(s.signup_id<1e12)
+            supabase.from("event_signups").update({assigned_tee_time:s.assigned_tee_time},{signup_id:s.signup_id}).catch(()=>{});
+        });
         setPairingsConfirmed(true);
         setPairingsChanged(false);
         showSuccess("Pairings confirmed");

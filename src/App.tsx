@@ -714,6 +714,11 @@ const CSS = `
   .podium-pscore{font-size:24px;font-weight:700;color:var(--green-700);margin-top:2px;}
   .podium-payout{font-size:15px;color:var(--gold-600);font-weight:600;margin-top:2px;}
 
+  /* ── Event Feed ── */
+  .ef-card{touch-action:manipulation;-webkit-user-select:none;user-select:none;}
+  .ef-card:active{opacity:0.88;}
+  .feed-overlay{border-radius:0;}
+
   .success-banner{background:var(--green-100);border:1px solid var(--green-300);border-radius:var(--radius-md);padding:13px 16px;color:var(--green-800);font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:9px;}
 
   .tab-sub{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;}

@@ -18,11 +18,10 @@ interface AppHeaderProps {
  */
 export function AppHeader({ adminMode, onLogoClick, onProfileClick }: AppHeaderProps) {
   return (
-    <header className="app-header app-bar">
+    <header className="app-header app-bar" onClick={onLogoClick}>
       <button
         type="button"
         className="app-bar__logo"
-        onClick={onLogoClick}
         aria-label="Saturday School — scroll to top"
       >
         <img src="/logo.svg" alt="Saturday School" className="app-bar__logo-img" />
@@ -31,7 +30,7 @@ export function AppHeader({ adminMode, onLogoClick, onProfileClick }: AppHeaderP
       <button
         type="button"
         className={`app-bar__profile${adminMode ? " is-admin" : ""}`}
-        onClick={onProfileClick}
+        onClick={e => { e.stopPropagation(); onProfileClick(); }}
         aria-label={adminMode ? "Exit admin mode" : "Admin profile"}
         title={adminMode ? "Exit Admin" : "Admin"}
       >
