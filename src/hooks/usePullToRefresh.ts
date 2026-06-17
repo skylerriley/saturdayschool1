@@ -29,7 +29,9 @@ export function usePullToRefresh(
     const shell = shellRef.current; if (!shell) return;
     if (typeof window === "undefined") return;
 
-    let startY = 0, armed = false, pulling = false, pull = 0, raf: number | null = null;
+    let startY = 0, startX = 0, armed = false, pulling = false, pull = 0, raf: number | null = null;
+    // "v" = confirmed vertical swipe (can pull), "h" = confirmed horizontal (abort), null = undecided
+    let dirLock: "v" | "h" | null = null;
     const atTop = () => (scrollRef.current?.scrollTop ?? 0) <= 2;
 
     // Walk up from the touch target to the scroll container — if any
@@ -53,11 +55,23 @@ export function usePullToRefresh(
       armed = atTop() && !isInsideScrolledContainer(e.target);
       pulling = false;
       pull = 0;
+      dirLock = null;
       startY = e.touches[0].clientY;
+      startX = e.touches[0].clientX;
     };
     const onMove = (e: TouchEvent) => {
       if (!armed || refreshingRef.current) return;
       const dy = e.touches[0].clientY - startY;
+      const dx = e.touches[0].clientX - startX;
+
+      if (dirLock === null) {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        // Require a clear vertical bias before engaging PTR — any meaningfully
+        // horizontal gesture is released so tab-pills and scrubbers work freely.
+        dirLock = Math.abs(dy) > Math.abs(dx) * 1.5 ? "v" : "h";
+      }
+      if (dirLock === "h") { armed = false; return; }
+
       if (dy <= 0) {
         if (pulling) { pulling = false; pull = 0; setPullState({ pull: 0, refreshing: false }); }
         armed = false;
