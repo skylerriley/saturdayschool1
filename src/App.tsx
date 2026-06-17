@@ -1072,7 +1072,7 @@ export default function App(){
       }
     }catch(err){console.warn("[odds] fetchEventOdds error:",err);}
     finally{setOddsLoading(false);}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   },[]);
 
   // Manual refresh — always writes to snapshot_hole=99 (live display slot).
@@ -1225,7 +1225,7 @@ export default function App(){
       }
     });
   // completedIdsKey is a stable string — only changes when IDs actually change
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   },[completedIdsKey]);
 
   // -- initial load --------------------------------------------

@@ -53,6 +53,6 @@ export function useEdgeElastic(ref: React.RefObject<HTMLElement>, remountKey?: a
       el.removeEventListener("touchcancel", onEnd);
       if (raf != null) cancelAnimationFrame(raf);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [ref, remountKey]);
 }

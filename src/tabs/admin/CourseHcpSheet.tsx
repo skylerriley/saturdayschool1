@@ -16,7 +16,7 @@ export function CourseHcpSheet({ golfers, courses, showSuccess }: any) {
     const tdNameStyle = "padding:8px 14px;font-size:14px;border-bottom:1px solid #e0d4c4;white-space:nowrap;";
     const tdHcpStyle = "padding:2px 0;font-size:11px;color:#888;";
     const tdValStyle = "padding:8px 14px;text-align:center;font-size:16px;font-weight:700;color:#1a6b3a;border-bottom:1px solid #e0d4c4;";
-    let rows = members.map((g: any) => {
+    const rows = members.map((g: any) => {
       const cells = tees.map((t: any) => "<td style=\"" + tdValStyle + "\">" + calcPlayingHandicap(g.current_handicap_index, t.tee_slope, t.tee_rating, t.par) + "</td>").join("");
       return "<tr><td style=\"" + tdNameStyle + "\">" + g.first_name + " " + g.last_name + "<div style=\"" + tdHcpStyle + "\">HCP " + g.current_handicap_index.toFixed(1) + "</div></td>" + cells + "</tr>";
     }).join("");
