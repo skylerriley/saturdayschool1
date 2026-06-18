@@ -78,8 +78,7 @@
    box-shadow that would otherwise bleed upward is clipped by .bnav__cut
    (which has its own overflow: hidden), not by the nav. */
 .is-pwa .bottom-nav {
-  padding-bottom: 34px;
-  height: 84px;
+ 
 }
 .is-pwa .app-shell {
   height: calc(100dvh - 34px + var(--sab, 0px));
@@ -96,7 +95,7 @@
      the home-indicator strip) and its white surface blends straight into that
      body-white below. Adding the inset here would double-count it and float the
      tabs up — the "huge padding" bug. */
-  height: 64px;
+  height: 78px;
   display: flex;
   justify-content: space-around;
   align-items: stretch;
@@ -104,7 +103,7 @@
   z-index: 200;
   overflow: visible;
   padding-top: 0;
-  padding-bottom: 14px;
+  padding-bottom: 26px;
   /* Breathing room from rounded-screen / notch safe areas so the edge tabs
      aren't clipped. */
   padding-left: max(14px, env(safe-area-inset-left, 0px));
