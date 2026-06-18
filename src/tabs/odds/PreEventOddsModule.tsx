@@ -99,8 +99,8 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
         })}
       </div>
 
-      <TonyInsight ranked={ranked} selEventId={String(event?.event_id)} selEvent={event} fieldConfirmed={fieldConfirmed} hasBackend={hasBackend}
-        leaderboard={leaderboard} events={events} signups={signups} golfers={golfers} courseName={courseName} hideRecord />
+      {fieldConfirmed && <TonyInsight ranked={ranked} selEventId={String(event?.event_id)} selEvent={event} fieldConfirmed={fieldConfirmed} hasBackend={hasBackend}
+        leaderboard={leaderboard} events={events} signups={signups} golfers={golfers} courseName={courseName} hideRecord />}
     </div>
   );
 }

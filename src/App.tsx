@@ -913,7 +913,7 @@ const _urlParams=new URLSearchParams(
   typeof window!=="undefined"?window.location.search:""
 );
 const _initTab=(()=>{const t=_urlParams.get("tab");return(t&&["leaderboard","rsvp","score","admin","analytics","settings"].includes(t))?t:"leaderboard";})();
-const _initSubTab=_urlParams.get("subtab")||"";
+const _initSubTab=(()=>{const s=_urlParams.get("subtab");if(s)return s;const d=new Date().getDay();return(d>=1&&d<=3)?"season":"";})();
 if(typeof window!=="undefined"&&window.location.search){
   window.history.replaceState({},"",window.location.pathname);
 }
@@ -1860,7 +1860,7 @@ export default function App(){
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
           {errorMsg&&<div className="error-banner"><span>⚠</span>{errorMsg}</div>}
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
-          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData}/>}
+          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}

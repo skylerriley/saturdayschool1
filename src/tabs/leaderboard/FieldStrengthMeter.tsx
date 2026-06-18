@@ -67,10 +67,10 @@ function descriptor(fsi: number): string {
 }
 
 function dotColor(fsi: number): string {
-  if (fsi <= 30) return "var(--text-muted)";
-  if (fsi <= 55) return "var(--text-secondary)";
-  if (fsi <= 75) return "var(--green-400)";
-  return "var(--gold-300)";
+  if (fsi <= 30) return "#9c7c65";
+  if (fsi <= 55) return "#7b6a5a";
+  if (fsi <= 75) return "#2db368";
+  return "#ffc947";
 }
 
 export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, season }: Props) {
@@ -85,6 +85,12 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
   const color = dotColor(fsi);
   const desc = descriptor(fsi);
 
+  const glowColor =
+    fsi <= 30 ? "rgba(156,124,101,0.45)" :
+    fsi <= 55 ? "rgba(107,82,64,0.4)" :
+    fsi <= 75 ? "rgba(45,179,104,0.55)" :
+    "rgba(255,201,71,0.6)";
+
   return (
     <div style={{
       background: "var(--surface)",
@@ -95,7 +101,7 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
       boxShadow: "var(--shadow-sm)",
     }}>
       {/* Label row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{
           fontSize: 10,
           fontWeight: 700,
@@ -105,40 +111,78 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
         }}>
           Field Strength
         </span>
-        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-          {desc}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{desc}</span>
+          <span style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: color,
+            minWidth: 32,
+            textAlign: "right",
+            fontVariantNumeric: "tabular-nums",
+          }}>
+            {pct}
+          </span>
+        </div>
       </div>
 
       {/* Bar */}
-      <div style={{ position: "relative", height: 10, borderRadius: 5, overflow: "visible", marginBottom: 6 }}>
-        {/* Three zone segments */}
-        <div style={{ display: "flex", height: "100%", borderRadius: 5, overflow: "hidden" }}>
-          <div style={{ flex: 1, background: "var(--text-muted)", opacity: 0.3 }} />
-          <div style={{ flex: 1, background: "var(--text-secondary)", opacity: 0.3 }} />
-          <div style={{ flex: 1, background: "var(--gold-300)", opacity: 0.35 }} />
-        </div>
+      <div style={{ position: "relative", height: 8, borderRadius: 4, marginBottom: 7 }}>
+        {/* Full-width gradient track */}
+        <div style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: 4,
+          background: "linear-gradient(to right, #7b6a5a 0%, #9c7c65 28%, #2db368 58%, #ffc947 100%)",
+          opacity: 0.22,
+        }} />
 
-        {/* Sliding dot */}
+        {/* Filled portion */}
+        <div style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: `${pct}%`,
+          height: "100%",
+          borderRadius: 4,
+          background: "linear-gradient(to right, #7b6a5a 0%, #9c7c65 28%, #2db368 58%, #ffc947 100%)",
+          transition: "width 0.4s ease",
+        }} />
+
+        {/* Average tick at 50% */}
+        <div style={{
+          position: "absolute",
+          top: -2,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 1.5,
+          height: 12,
+          background: "var(--border-md, rgba(0,0,0,0.18))",
+          borderRadius: 1,
+          zIndex: 1,
+        }} />
+
+        {/* Indicator dot */}
         <div style={{
           position: "absolute",
           top: "50%",
-          left: `calc(${pct}% - 7px)`,
-          transform: "translateY(-50%)",
+          left: `${pct}%`,
+          transform: "translate(-50%, -50%)",
           width: 14,
           height: 14,
           borderRadius: "50%",
           background: color,
-          border: "2px solid var(--surface)",
-          boxShadow: "0 0 0 1px rgba(0,0,0,0.18)",
-          zIndex: 1,
+          border: "2.5px solid var(--surface)",
+          boxShadow: `0 0 0 1px rgba(0,0,0,0.12), 0 0 8px 2px ${glowColor}`,
+          zIndex: 2,
+          transition: "left 0.4s ease",
         }} />
       </div>
 
       {/* Zone labels */}
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.04em" }}>QUIET</span>
-        <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.04em" }}>AVERAGE</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.04em" }}>AVG</span>
         <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.04em" }}>LOADED</span>
       </div>
     </div>

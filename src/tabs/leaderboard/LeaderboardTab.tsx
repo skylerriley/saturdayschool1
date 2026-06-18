@@ -213,7 +213,7 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
   );
 }
 
-export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData}:any){
+export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab}:any){
   // ── Golden Hour Mode ──────────────────────────────────────────────────
   // Fri/Sat 4-8pm PST: the leaderboard drifts toward amber-tinted greens and
   // warmer whites. Friday afternoon = anticipation; Saturday evening = the
@@ -235,7 +235,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     return()=>window.clearInterval(id);
   },[]);
 
-  const [subTab,setSubTab]=useState("weekly");
+  const [subTab,setSubTab]=useState(initialSubTab||"weekly");
   const [selEventId,setSelEventId]=useState<number|null>(null);
   const [expandedId,setExpandedId]=useState<number|null>(null);
   // Switching tabs and collapsing an expanded row used to happen in the
@@ -1460,9 +1460,6 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
         });
         return(
           <div>
-            {upcomingWeatherOpen&&(
-              <WeatherModal courseName={nextEvent.course_name} onClose={()=>setUpcomingWeatherOpen(false)}/>
-            )}
             <UpcomingCourseCard event={nextEvent} courses={courses} holeImages={holeImages} onClick={()=>setUpcomingWeatherOpen(true)}/>
             <FieldStrengthMeter upEntries={upEntries} golfers={golfers} leaderboard={leaderboardCompleted} events={events} season={selSeason}/>
 
@@ -1592,6 +1589,10 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
 
       </SubTabPanel>
+
+      {upcomingWeatherOpen&&nextEvent&&(
+        <WeatherModal courseName={nextEvent.course_name} onClose={()=>setUpcomingWeatherOpen(false)}/>
+      )}
 
       {/* Portal the overlay to document.body so it escapes .app-shell's
           overflow:hidden and all ancestor stacking contexts. position:fixed
