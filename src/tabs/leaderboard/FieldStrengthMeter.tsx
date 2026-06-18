@@ -59,13 +59,6 @@ function computeFSI(upEntries: any[], golfers: any[], leaderboard: any[], events
   return Math.round(((clamped + 5) / 10) * 100);
 }
 
-function descriptor(fsi: number): string {
-  if (fsi <= 30) return "Field running cold";
-  if (fsi <= 55) return "Right around average";
-  if (fsi <= 75) return "Field in solid form";
-  return "Loaded field this week";
-}
-
 function dotColor(fsi: number): string {
   if (fsi <= 30) return "#9c7c65";
   if (fsi <= 55) return "#7b6a5a";
@@ -83,7 +76,6 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
 
   const pct = fsi; // 0–100
   const color = dotColor(fsi);
-  const desc = descriptor(fsi);
 
   const glowColor =
     fsi <= 30 ? "rgba(156,124,101,0.45)" :
@@ -103,7 +95,7 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
       {/* Label row */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{
-          fontSize: 10,
+          fontSize: 13,
           fontWeight: 700,
           letterSpacing: "0.1em",
           textTransform: "uppercase",
@@ -111,19 +103,16 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
         }}>
           Field Strength
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{desc}</span>
-          <span style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: color,
-            minWidth: 32,
-            textAlign: "right",
-            fontVariantNumeric: "tabular-nums",
-          }}>
-            {pct}
-          </span>
-        </div>
+        <span style={{
+          fontSize: 16,
+          fontWeight: 700,
+          color: color,
+          minWidth: 32,
+          textAlign: "right",
+          fontVariantNumeric: "tabular-nums",
+        }}>
+          {pct}
+        </span>
       </div>
 
       {/* Bar */}
@@ -181,9 +170,9 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
 
       {/* Zone labels */}
       <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.04em" }}>QUIET</span>
-        <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.04em" }}>AVG</span>
-        <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.04em" }}>LOADED</span>
+        <span style={{ fontSize: 13, color: "var(--text-muted)", letterSpacing: "0.04em" }}>QUIET</span>
+        <span style={{ fontSize: 13, color: "var(--text-muted)", letterSpacing: "0.04em" }}>AVG</span>
+        <span style={{ fontSize: 13, color: "var(--text-muted)", letterSpacing: "0.04em" }}>LOADED</span>
       </div>
     </div>
   );

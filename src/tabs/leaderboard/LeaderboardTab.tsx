@@ -10,6 +10,7 @@ import { WindParticles } from "../../components/weather/WindParticles";
 import { WeatherModal } from "../../components/weather/WeatherModal";
 import { UpcomingCourseCard } from "./UpcomingCourseCard";
 import { FieldStrengthMeter } from "./FieldStrengthMeter";
+import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
 
 // ── EventFeedCard ─────────────────────────────────────────────────────────────
@@ -276,6 +277,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   const [scorecardUploading,setScorecardUploading]=useState(false);
   const [lightboxImg,setLightboxImg]=useState<string|null>(null);
   const [liveExpandedId,setLiveExpandedId]=useState<number|null>(null);
+  const [upcomingExpandedId,setUpcomingExpandedId]=useState<number|null>(null);
   const [liveWeatherOpen,setLiveWeatherOpen]=useState(false);
   const [upcomingWeatherOpen,setUpcomingWeatherOpen]=useState(false);
 
@@ -1460,7 +1462,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
         });
         return(
           <div>
-            <UpcomingCourseCard event={nextEvent} courses={courses} holeImages={holeImages} onClick={()=>setUpcomingWeatherOpen(true)}/>
+            <UpcomingCourseCard event={nextEvent} courses={courses} holeImages={holeImages} onClick={()=>setUpcomingWeatherOpen(true)} fieldCount={upEntries.length}/>
             <FieldStrengthMeter upEntries={upEntries} golfers={golfers} leaderboard={leaderboardCompleted} events={events} season={selSeason}/>
 
             {rows.length===0&&(
@@ -1479,14 +1481,26 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   const g=golfers.find((x:any)=>x.golfer_id===s.golfer_id);
                   const sp=seasonPosMap[s.golfer_id];
                   const posLabel=sp?(sp.tied?`T${sp.pos}`:String(sp.pos)):"--";
+                  const isExp=upcomingExpandedId===s.golfer_id;
                   return(
-                    <div key={s.signup_id} className="lb-live-row">
-                      <div style={{fontSize:16,fontWeight:700,color:"var(--text-secondary)"}}>{posLabel}</div>
-                      <div style={{fontSize:16,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}</div>
-                      <div></div>
-                      <div style={{fontSize:15,fontWeight:600,textAlign:"right",color:s.assigned_tee_time?"var(--text-primary)":"var(--text-muted)"}}>
-                        {s.assigned_tee_time?String(s.assigned_tee_time).slice(0,5):"-"}
+                    <div key={s.signup_id}>
+                      <div className="lb-live-row" onClick={()=>setUpcomingExpandedId(isExp?null:s.golfer_id)}>
+                        <div style={{fontSize:16,fontWeight:700,color:"var(--text-secondary)"}}>{posLabel}</div>
+                        <div style={{fontSize:16,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}</div>
+                        <div></div>
+                        <div style={{fontSize:15,fontWeight:600,textAlign:"right",color:s.assigned_tee_time?"var(--text-primary)":"var(--text-muted)"}}>
+                          {s.assigned_tee_time?String(s.assigned_tee_time).slice(0,5):"-"}
+                        </div>
                       </div>
+                      {isExp&&g&&(
+                        <UpcomingPlayerDrawer
+                          golfer={g}
+                          leaderboard={leaderboard}
+                          events={events}
+                          nextEvent={nextEvent}
+                          seasonPos={sp}
+                        />
+                      )}
                     </div>
                   );
                 })}

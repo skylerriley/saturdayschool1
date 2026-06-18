@@ -75,7 +75,7 @@ const SPLASH_CSS = `
   .ss-splash__container>*{grid-area:1/1;}
 
   :root{
-    --ss-dur:6s;
+    --ss-dur:4.8s;
     --ss-wave-dur:calc(var(--ss-dur)*0.25);
     --ss-text-in-delay:calc(var(--ss-dur)*0.275);
     --ss-text-in-dur:calc(var(--ss-dur)*0.1);

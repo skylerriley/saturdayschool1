@@ -144,7 +144,7 @@ export function WeatherModal({ courseName, onClose }: { courseName: string; onCl
         overflowY: "auto",
         boxShadow: "0 -6px 32px rgba(28,20,16,0.18)",
         fontFamily: "var(--font-sans)",
-        paddingBottom: 84,
+        paddingBottom: 50,
         animation: "weather-slide-up 0.42s cubic-bezier(0.34, 1.18, 0.64, 1) both",
       }}>
         {/* Drag handle */}
