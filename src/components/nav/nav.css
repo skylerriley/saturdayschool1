@@ -79,7 +79,6 @@
    (which has its own overflow: hidden), not by the nav. */
 .is-pwa .bottom-nav {
   padding-bottom: 30px;
-  height: 64px;
 }
 .is-pwa .app-shell {
   height: calc(100dvh - 34px + var(--sab, 0px));
@@ -104,7 +103,7 @@
   z-index: 200;
   overflow: visible;
   padding-top: 0;
-  padding-bottom: 10px;
+  padding-bottom: 30px;
   /* Breathing room from rounded-screen / notch safe areas so the edge tabs
      aren't clipped. */
   padding-left: max(14px, env(safe-area-inset-left, 0px));
