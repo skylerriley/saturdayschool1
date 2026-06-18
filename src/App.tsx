@@ -60,11 +60,17 @@ const SPLASH_LINE2 = Array.from("School");
 const SPLASH_CSS = `
   .ss-splash{
     position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    background:#0B2E1A;overflow:hidden;
+    background:#0B2E1A url('/oakcreek-3.jpg') center/cover no-repeat;overflow:hidden;
+  }
+  .ss-splash::before{
+    content:'';position:absolute;inset:0;
+    background:rgba(11,46,26,0.55);
+    pointer-events:none;
   }
   /* the text block and dot are siblings that overlap via grid */
   .ss-splash__container{
     display:grid;align-items:center;justify-items:center;
+    position:relative;z-index:1;
   }
   .ss-splash__container>*{grid-area:1/1;}
 
@@ -208,6 +214,9 @@ const CSS = `
     --shadow-md:0 4px 16px rgba(28,20,16,0.10);
     --font-sans:'DM Sans',sans-serif;
     --font-serif:'DM Serif Display',serif;
+    --safe-area-top:env(safe-area-inset-top,0px);
+    --safe-area-bottom:var(--sab,0px);
+    --full-screen-h:100dvh;
   }
 
   /* ── GOLDEN HOUR MODE ───────────────────────────────────────────────────
@@ -226,7 +235,8 @@ const CSS = `
   }
 
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-  html,body,#root{width:100%;height:100%;min-height:100%;overflow:hidden;background:linear-gradient(to bottom, var(--green-900) 0%, var(--green-700) 100%);}
+  html.is-pwa{--full-screen-h:calc(100dvh + var(--sab,0px));}
+  html,body,#root{width:100%;height:var(--full-screen-h);min-height:var(--full-screen-h);overflow:hidden;background:linear-gradient(to bottom, var(--green-900) 0%, var(--green-700) 100%);}
   body{overscroll-behavior-y:contain;}
 
   body{
@@ -235,13 +245,12 @@ const CSS = `
     color:var(--text-primary);
     font-size:17px;
     line-height:1.55;
-    min-height:100vh;
-    min-height:100dvh;
+    min-height:var(--full-screen-h);
   }
 
   .app-shell{
     width:100%; max-width:500px; min-width:320px;
-    margin:0 auto; height:100vh; height:100dvh;
+    margin:0 auto; height:var(--full-screen-h);
     display:flex; flex-direction:column;
     background: transparent;
     overflow:hidden;
@@ -1808,7 +1817,7 @@ export default function App(){
   return(
     <>
       <style>{CSS}</style>
-      <div className={`app-shell${appBooting?" app-booting":""}`} ref={shellRef}>
+<div className={`app-shell${appBooting?" app-booting":""}`} ref={shellRef}>
         <AppHeader
           adminMode={adminMode}
           onLogoClick={()=>scrollToTop(0)}

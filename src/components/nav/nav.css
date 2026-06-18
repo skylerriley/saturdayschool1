@@ -77,7 +77,14 @@
    `overflow: visible` lets the floating button poke above the bar; the
    box-shadow that would otherwise bleed upward is clipped by .bnav__cut
    (which has its own overflow: hidden), not by the nav. */
-.bottom-nav {
+.is-pwa .bottom-nav {
+  padding-bottom: 30px;
+  height: 64px;
+}
+.is-pwa .app-shell {
+  height: calc(100dvh - 34px + var(--sab, 0px));
+}
+   .bottom-nav {
   position: absolute;
   left: 0;
   right: 0;
@@ -89,7 +96,7 @@
      the home-indicator strip) and its white surface blends straight into that
      body-white below. Adding the inset here would double-count it and float the
      tabs up — the "huge padding" bug. */
-  height: 84px;
+  height: 64px;
   display: flex;
   justify-content: space-around;
   align-items: stretch;
@@ -97,11 +104,12 @@
   z-index: 200;
   overflow: visible;
   padding-top: 0;
-  padding-bottom: 30px;
+  padding-bottom: 10px;
   /* Breathing room from rounded-screen / notch safe areas so the edge tabs
      aren't clipped. */
   padding-left: max(14px, env(safe-area-inset-left, 0px));
   padding-right: max(14px, env(safe-area-inset-right, 0px));
+  
 }
 
 /* ── THE WHITE SURFACE + FILLETED BOWL CUTOUT ─────────────────
