@@ -1607,7 +1607,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             zIndex:199,
             overflowY:"auto",
             overscrollBehaviorY:"contain",
-            paddingBottom:24,
+            paddingBottom:90,
           }}
         >
           {/* Sticky header -- back button + event title, stays visible while scrolling */}
