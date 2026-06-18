@@ -1602,9 +1602,9 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
           className="feed-overlay"
           style={{
             position:"fixed",
-            top:0,left:0,right:0,bottom:84,
+            top:0,left:0,right:0,bottom:0,
             background:"var(--bg)",
-            zIndex:9000,
+            zIndex:199,
             overflowY:"auto",
             overscrollBehaviorY:"contain",
             paddingBottom:24,

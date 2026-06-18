@@ -219,6 +219,4 @@
 
 /* When the feed detail overlay is open, fill the nav bowl cutout so the
    feed content behind the overlay doesn't show through the transparent hole. */
-.feed-overlay-open .bnav__bowl {
-  fill: #ffffff;
-}
+
