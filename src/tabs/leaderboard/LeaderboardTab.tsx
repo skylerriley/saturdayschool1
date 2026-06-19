@@ -236,7 +236,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     return()=>window.clearInterval(id);
   },[]);
 
-  const [subTab,setSubTab]=useState(initialSubTab||"weekly");
+  const validSubTabs=["live","upcoming","season","top15","weekly"];
+  const [subTab,setSubTab]=useState(validSubTabs.includes(initialSubTab||"")?initialSubTab:"weekly");
   const [selEventId,setSelEventId]=useState<number|null>(null);
   const [expandedId,setExpandedId]=useState<number|null>(null);
   // Switching tabs and collapsing an expanded row used to happen in the
@@ -1477,13 +1478,15 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   <div></div>
                   <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",textTransform:"uppercase",textAlign:"right"}}>Tee Time</div>
                 </div>
-                {rows.map((s:any)=>{
+                {rows.map((s:any,rowIdx:number)=>{
                   const g=golfers.find((x:any)=>x.golfer_id===s.golfer_id);
                   const sp=seasonPosMap[s.golfer_id];
                   const posLabel=sp?(sp.tied?`T${sp.pos}`:String(sp.pos)):"--";
                   const isExp=upcomingExpandedId===s.golfer_id;
+                  const prevRow=rows[rowIdx-1];
+                  const isGroupStart=pairingsSet&&rowIdx>0&&s.assigned_tee_time&&prevRow&&s.assigned_tee_time!==prevRow.assigned_tee_time;
                   return(
-                    <div key={s.signup_id}>
+                    <div key={s.signup_id} style={isGroupStart?{borderTop:"2px solid var(--green-700)"}:undefined}>
                       <div className="lb-live-row" onClick={()=>setUpcomingExpandedId(isExp?null:s.golfer_id)}>
                         <div style={{fontSize:16,fontWeight:700,color:"var(--text-secondary)"}}>{posLabel}</div>
                         <div style={{fontSize:16,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}</div>
@@ -1604,9 +1607,13 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
       </SubTabPanel>
 
-      {upcomingWeatherOpen&&nextEvent&&(
-        <WeatherModal courseName={nextEvent.course_name} onClose={()=>setUpcomingWeatherOpen(false)}/>
-      )}
+      {upcomingWeatherOpen&&nextEvent&&(()=>{
+        const upSignups=signups.filter((s:any)=>s.event_id===nextEvent.event_id&&s.attending==="Yes"&&s.assigned_tee_time);
+        const firstTee=upSignups.length>0
+          ?upSignups.map((s:any)=>String(s.assigned_tee_time)).sort()[0]
+          :undefined;
+        return <WeatherModal courseName={nextEvent.course_name} onClose={()=>setUpcomingWeatherOpen(false)} eventDate={nextEvent.date} firstTeeTime={firstTee}/>;
+      })()}
 
       {/* Portal the overlay to document.body so it escapes .app-shell's
           overflow:hidden and all ancestor stacking contexts. position:fixed

@@ -1,5 +1,6 @@
+import { useState, useEffect } from "react";
 import { useLiveWeather } from "../../hooks/useLiveWeather";
-import { degToCompass } from "./weatherUtils";
+import { COURSE_COORDS, FALLBACK_COORDS, degToCompass } from "./weatherUtils";
 
 // ============================================================
 // WEATHER MODAL -- shown when user taps the live leaderboard header
@@ -12,8 +13,73 @@ const slideUpStyle = `
 }
 `;
 
-export function WeatherModal({ courseName, onClose }: { courseName: string; onClose: () => void }) {
-  const { data, loading } = useLiveWeather(courseName);
+// Fetch forecast for a specific event date, returning conditions at 8AM
+// and hourly slots starting from firstTeeHour onwards for that day.
+function useEventForecast(courseName: string, eventDate: string, firstTeeHour: number) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!courseName || !eventDate) return;
+    const coords = COURSE_COORDS[courseName] || FALLBACK_COORDS;
+    setLoading(true);
+    const params = [
+      "latitude=" + coords.lat,
+      "longitude=" + coords.lon,
+      "hourly=temperature_2m,windspeed_10m,winddirection_10m,weathercode,relativehumidity_2m,precipitation_probability",
+      "temperature_unit=fahrenheit",
+      "windspeed_unit=mph",
+      "forecast_days=16",
+      "timezone=America%2FLos_Angeles",
+    ].join("&");
+    fetch("https://api.open-meteo.com/v1/forecast?" + params)
+      .then(r => r.json())
+      .then(raw => {
+        const times: string[] = raw.hourly.time;
+        const get = (k: string, i: number) => raw.hourly[k]?.[i] ?? null;
+        const am8Idx = times.findIndex((t: string) => t === eventDate + "T08:00");
+        const snapIdx = am8Idx >= 0 ? am8Idx : times.findIndex((t: string) => t.startsWith(eventDate + "T07") || t.startsWith(eventDate + "T09"));
+        const cur = snapIdx >= 0 ? {
+          temp: Math.round(get("temperature_2m", snapIdx) ?? 0),
+          wind: Math.round(get("windspeed_10m", snapIdx) ?? 0),
+          windDeg: get("winddirection_10m", snapIdx) ?? 0,
+          code: get("weathercode", snapIdx) ?? 0,
+          humidity: get("relativehumidity_2m", snapIdx),
+          precip: get("precipitation_probability", snapIdx),
+        } : null;
+        const startHour = Math.max(firstTeeHour, 6);
+        const hourly = [];
+        for (let h = startHour; h < startHour + 4; h++) {
+          const tStr = eventDate + "T" + String(h).padStart(2, "0") + ":00";
+          const idx = times.findIndex((t: string) => t === tStr);
+          if (idx < 0) continue;
+          const ampm = h < 12 ? "AM" : "PM";
+          const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+          hourly.push({
+            label: h12 + ampm,
+            temp: Math.round(get("temperature_2m", idx) ?? 0),
+            wind: Math.round(get("windspeed_10m", idx) ?? 0),
+            windDeg: get("winddirection_10m", idx) ?? 0,
+            code: get("weathercode", idx) ?? 0,
+            humidity: get("relativehumidity_2m", idx),
+            precip: get("precipitation_probability", idx),
+          });
+        }
+        setData({ current: cur, hourly });
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [courseName, eventDate, firstTeeHour]);
+  return { data, loading };
+}
+
+export function WeatherModal({ courseName, onClose, eventDate, firstTeeTime }: { courseName: string; onClose: () => void; eventDate?: string; firstTeeTime?: string }) {
+  const firstTeeHour = firstTeeTime ? parseInt(firstTeeTime.slice(0, 2), 10) : 7;
+  const isUpcoming = !!eventDate;
+
+  const live = useLiveWeather(isUpcoming ? "" : courseName);
+  const forecast = useEventForecast(isUpcoming ? courseName : "", eventDate || "", firstTeeHour);
+
+  const { data, loading } = isUpcoming ? forecast : live;
   const cur = data?.current;
   const hourly: any[] = data?.hourly || [];
 

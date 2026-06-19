@@ -22,19 +22,17 @@ export function useWeather(courseName: string, eventDate: string) {
       .then(r => r.json())
       .then(data => {
         const times: string[] = data.hourly.time;
-        const idxs = times.map((t: string, i: number) => ({ t, i }))
-          .filter(({ t }: any) => t.startsWith(eventDate) && parseInt(t.slice(11, 13)) >= 7 && parseInt(t.slice(11, 13)) <= 12)
-          .map(({ i }: any) => i);
-        if (!idxs.length) { setWx(null); setLoading(false); return; }
-        const avg = (k: string) => {
-          const v = idxs.map((i: number) => data.hourly[k][i]).filter((x: any) => x != null);
-          return v.length ? Math.round(v.reduce((a: number, b: number) => a + b, 0) / v.length) : 0;
-        };
-        const codes: number[] = idxs.map((i: number) => data.hourly.weathercode[i]);
-        const freq: Record<number, number> = {};
-        codes.forEach((c: number) => { freq[c] = (freq[c] || 0) + 1; });
-        const dominant = parseInt(Object.entries(freq).sort((a: any, b: any) => b[1] - a[1])[0][0]);
-        setWx({ temp: avg("temperature_2m"), wind: avg("windspeed_10m"), windDeg: avg("winddirection_10m"), code: dominant });
+        // Target 8AM for the event date — fall back to nearest available morning hour (7–11)
+        const target8 = times.findIndex((t: string) => t === eventDate + "T08:00");
+        let idx = target8;
+        if (idx < 0) {
+          const morning = times.map((t: string, i: number) => ({ t, i }))
+            .filter(({ t }: any) => t.startsWith(eventDate) && parseInt(t.slice(11, 13)) >= 7 && parseInt(t.slice(11, 13)) <= 11);
+          if (!morning.length) { setWx(null); setLoading(false); return; }
+          idx = morning[0].i;
+        }
+        const get = (k: string) => { const v = data.hourly[k]?.[idx]; return v != null ? Math.round(v) : 0; };
+        setWx({ temp: get("temperature_2m"), wind: get("windspeed_10m"), windDeg: get("winddirection_10m"), code: data.hourly.weathercode[idx] });
         setLoading(false);
       })
       .catch(() => setLoading(false));
