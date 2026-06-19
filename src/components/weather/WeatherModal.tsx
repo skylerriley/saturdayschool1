@@ -193,7 +193,7 @@ export function WeatherModal({ courseName, onClose, eventDate, firstTeeTime }: {
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+    <div style={{ position: "fixed", inset: 0, zIndex: 150, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <style>{slideUpStyle}</style>
       {/* Scrim */}

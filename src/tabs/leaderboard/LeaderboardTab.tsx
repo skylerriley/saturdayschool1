@@ -1133,10 +1133,6 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
         return(
           <div>
             <WindParticles windDeg={liveWxData?.current?.windDeg} windSpeed={liveWxData?.current?.wind}/>
-            {/* Weather modal */}
-            {showWeatherModal&&(
-              <WeatherModal courseName={liveEvent.course_name} onClose={()=>setShowWeatherModal(false)}/>
-            )}
             {/* Event header -- tappable to open weather */}
             <div
               onClick={()=>setShowWeatherModal(true)}
@@ -1620,6 +1616,11 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
 
       </SubTabPanel>
+
+      {liveWeatherOpen&&liveEvent&&ReactDOM.createPortal(
+        <WeatherModal courseName={liveEvent.course_name} onClose={()=>setLiveWeatherOpen(false)}/>,
+        document.body
+      )}
 
       {upcomingWeatherOpen&&nextEvent&&(()=>{
         const upSignups=signups.filter((s:any)=>s.event_id===nextEvent.event_id&&s.attending==="Yes"&&s.assigned_tee_time);
