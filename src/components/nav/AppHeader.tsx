@@ -34,7 +34,7 @@ export function AppHeader({ adminMode, onLogoClick, onProfileClick }: AppHeaderP
         aria-label={adminMode ? "Exit admin mode" : "Admin profile"}
         title={adminMode ? "Exit Admin" : "Admin"}
       >
-        <UserCog strokeWidth={2} size={26} />
+        <UserCog strokeWidth={2} size={22} />
       </button>
     </header>
   );

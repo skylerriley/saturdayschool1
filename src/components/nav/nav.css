@@ -15,7 +15,7 @@
   align-items: center;
   justify-content: space-between;
   /* Top padding absorbs the status bar so the logo sits below it. */
-  padding: calc(env(safe-area-inset-top, 14px) + 8px) 18px 12px;
+  padding: calc(env(safe-area-inset-top, 14px) + 8px) 18px 8px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   background: linear-gradient(to bottom, #0B2E1A, #0b311c);
@@ -28,7 +28,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 40px;
+  height: 32px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -48,8 +48,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: transparent;
   border: none;
