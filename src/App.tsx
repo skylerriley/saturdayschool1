@@ -1028,6 +1028,13 @@ export default function App(){
     trackedStatuses:{},
   });
 
+  // Keep a live ref to signups so edge-function calls can include the confirmed field
+  // without those arrays being deps of the odds callbacks (which would cause re-runs).
+  const signupsRef=useRef<any[]>([]);
+  const eventsRef=useRef<any[]>([]);
+  useEffect(()=>{signupsRef.current=signups;},[signups]);
+  useEffect(()=>{eventsRef.current=events;},[events]);
+
   // Core fetch — pure function, no React deps, called imperatively
   const fetchEventOdds=useCallback(async(eid:number)=>{
     setOddsLoading(true);
@@ -1064,16 +1071,22 @@ export default function App(){
         setOddsLastUpdated(new Date());
       } else if(!oddsRef.current.autoTriggered.has(eid)){
         oddsRef.current.autoTriggered.add(eid);
-        console.log("[odds] No odds found — generating pre-round odds for event",eid);
+        // Build the confirmed field from signups so the edge function models all players,
+        // not just those who happen to have hole_scores entries already.
+        const fieldIds=signupsRef.current
+          .filter((s:any)=>s.event_id===eid&&s.attending==="Yes")
+          .map((s:any)=>s.golfer_id)
+          .filter(Boolean);
+        console.log("[odds] No odds found — generating pre-round odds for event",eid,"field:",fieldIds);
         // Fire H0 frozen snapshot (ML calibration baseline)
         fetch(SUPABASE_URL+"/functions/v1/calculate-live-odds",
           {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
-           body:JSON.stringify({event_id:eid,snapshot_hole:0})})
+           body:JSON.stringify({event_id:eid,snapshot_hole:0,...(fieldIds.length?{golfer_ids:fieldIds}:{})})})
           .catch(err=>console.warn("[odds] H0 snapshot:",err));
         // Also write to slot 99 (live display) so it shows immediately
         fetch(SUPABASE_URL+"/functions/v1/calculate-live-odds",
           {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
-           body:JSON.stringify({event_id:eid,snapshot_hole:99,force:true})})
+           body:JSON.stringify({event_id:eid,snapshot_hole:99,force:true,...(fieldIds.length?{golfer_ids:fieldIds}:{})})})
           .then(async r=>{
             const t=await r.text().catch(()=>"");
             console.log("[odds] Pre-round display response:",r.status,t);
@@ -1092,11 +1105,15 @@ export default function App(){
     const eid=oddsRef.current.eventId;
     if(!eid)return;
     setOddsLoading(true);
+    const fieldIds=signupsRef.current
+      .filter((s:any)=>s.event_id===eid&&s.attending==="Yes")
+      .map((s:any)=>s.golfer_id)
+      .filter(Boolean);
     try{
       const _tr=await fetch(
         SUPABASE_URL+"/functions/v1/calculate-live-odds",
         {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
-         body:JSON.stringify({event_id:eid,snapshot_hole:99,force:true})}
+         body:JSON.stringify({event_id:eid,snapshot_hole:99,force:true,...(fieldIds.length?{golfer_ids:fieldIds}:{})})}
       );
       if(!_tr.ok){const t=await _tr.text().catch(()=>"");console.warn("[odds] trigger HTTP",_tr.status,t);}
       setTimeout(()=>fetchEventOdds(eid),1500);
@@ -1147,10 +1164,15 @@ export default function App(){
     // Set up live polling if needed
     if(newLive&&newId&&!o.pollTimer){
       o.pollTimer=setInterval(()=>{
-        // Auto-recalculate live odds (slot 99) then fetch for display
+        // Auto-recalculate live odds (slot 99) then fetch for display.
+        // Include confirmed field so edge function models all signed-up players.
+        const pollFieldIds=signupsRef.current
+          .filter((s:any)=>s.event_id===newId&&s.attending==="Yes")
+          .map((s:any)=>s.golfer_id)
+          .filter(Boolean);
         fetch(SUPABASE_URL+"/functions/v1/calculate-live-odds",
           {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
-           body:JSON.stringify({event_id:newId,snapshot_hole:99,force:true})})
+           body:JSON.stringify({event_id:newId,snapshot_hole:99,force:true,...(pollFieldIds.length?{golfer_ids:pollFieldIds}:{})})})
           .then(()=>setTimeout(()=>fetchEventOdds(newId),1500))
           .catch(err=>console.warn("[odds] live poll:",err));
       },60000);
