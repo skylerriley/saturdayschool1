@@ -214,7 +214,7 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
   );
 }
 
-export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab}:any){
+export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab,onNavigateToAnalyticsGolfer}:any){
   // ── Golden Hour Mode ──────────────────────────────────────────────────
   // Fri/Sat 4-8pm PST: the leaderboard drifts toward amber-tinted greens and
   // warmer whites. Friday afternoon = anticipation; Saturday evening = the
@@ -1512,6 +1512,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                           events={events}
                           nextEvent={nextEvent}
                           seasonPos={sp}
+                          onViewMore={onNavigateToAnalyticsGolfer?()=>onNavigateToAnalyticsGolfer(String(g.golfer_id)):undefined}
                         />
                       )}
                     </div>

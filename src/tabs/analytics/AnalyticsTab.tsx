@@ -10,9 +10,17 @@ import { ScatterChart } from "./ScatterChart";
 import { ChampionsView } from "./ChampionsView";
 import { GolferHistoryChart } from "./GolferHistoryChart";
 
-export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase,refreshLiveData}:any){
+export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase,refreshLiveData,initialGolfer,onInitialGolferConsumed,onBack}:any){
   const [subTab,setSubTab]=useState("overview");
   const [selGolfer,setSelGolfer]=useState("");
+
+  useEffect(()=>{
+    if(initialGolfer){
+      setSelGolfer(String(initialGolfer));
+      setSubTab("golfer");
+      onInitialGolferConsumed?.();
+    }
+  },[initialGolfer]);
   const allSeasons=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
   const [selSeason,setSelSeason]=useState<number>(allSeasons[0]||new Date().getFullYear());
 
@@ -116,6 +124,12 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
 
   return(
     <div>
+      {onBack&&(
+        <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",border:"none",padding:"10px 16px 2px",fontSize:13,fontWeight:600,color:"var(--green-600,#2d6a4f)",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Upcoming field
+        </button>
+      )}
       <div className="section-title">Analytics</div>
       <div className="section-sub">Performance insights</div>
       <div className="form-group" style={{marginBottom:12}}>

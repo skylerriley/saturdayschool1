@@ -6,6 +6,7 @@ interface Props {
   events: any[];
   nextEvent: any;
   seasonPos: any; // from seasonPosMap
+  onViewMore?: () => void;
 }
 
 // Mini sparkline: last N rounds as small bars
@@ -34,7 +35,7 @@ function FormBars({ pts }: { pts: number[] }) {
   );
 }
 
-export function UpcomingPlayerDrawer({ golfer, leaderboard, events, nextEvent, seasonPos }: Props) {
+export function UpcomingPlayerDrawer({ golfer, leaderboard, events, nextEvent, seasonPos, onViewMore }: Props) {
   const gid = golfer.golfer_id;
   const nextMonth = nextEvent?.date ? new Date(nextEvent.date + "T00:00:00").getMonth() : -1;
 
@@ -170,6 +171,30 @@ export function UpcomingPlayerDrawer({ golfer, leaderboard, events, nextEvent, s
           />
         )}
       </div>
+
+      {onViewMore && (
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+          <button
+            onClick={onViewMore}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: "transparent",
+              border: "1.5px solid var(--green-600, #2d6a4f)",
+              borderRadius: 999,
+              padding: "6px 18px",
+              fontSize: 13, fontWeight: 700,
+              color: "var(--green-600, #2d6a4f)",
+              cursor: "pointer",
+              letterSpacing: "0.03em",
+            
+              WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            View Profile
+            
+          </button>
+        </div>
+      )}
     </div>
   );
 }
