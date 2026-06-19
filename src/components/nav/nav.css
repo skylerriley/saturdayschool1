@@ -33,6 +33,7 @@
   border: none;
   cursor: pointer;
   padding: 0;
+  padding-left: 5px;
   -webkit-tap-highlight-color: transparent;
 }
 
