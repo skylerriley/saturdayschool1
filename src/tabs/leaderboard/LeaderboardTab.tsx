@@ -1156,6 +1156,38 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               </div>
             </div>
 
+            {/* ── Live odds status bar + refresh (above leaderboard) ── */}
+            {(()=>{
+              if(!eventOdds?.length)return null;
+              const oddsMap:Record<number,any>={};
+              eventOdds.forEach((o:any)=>{
+                const ex=oddsMap[o.golfer_id];
+                if(!ex){oddsMap[o.golfer_id]=o;return;}
+                if(o.simulation_type==="live"&&ex.simulation_type!=="live"){oddsMap[o.golfer_id]=o;return;}
+                if(o.simulation_type===ex.simulation_type&&new Date(o.computed_at)>new Date(ex.computed_at))oddsMap[o.golfer_id]=o;
+              });
+              const oddsRows=Object.values(oddsMap).filter((o:any)=>o.win_probability>0);
+              if(!oddsRows.length)return null;
+              const updatedAt=oddsLastUpdated?new Date(oddsLastUpdated).toLocaleTimeString():"…";
+              return(
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderRadius:"var(--radius-md)",background:"var(--green-50)",border:"1px solid var(--green-200)",marginBottom:14,fontSize:13}}>
+                  <span style={{display:"flex",alignItems:"center",gap:6,color:"var(--green-800)"}}>
+                    {(()=>{
+                      const sh=oddsRows[0]?.snapshot_hole??0;
+                      if(sh===99)return`Updated ${updatedAt}`;
+                      if(sh===12)return`H12 snapshot · Updated ${updatedAt}`;
+                      if(sh===6)return`H6 snapshot · Updated ${updatedAt}`;
+                      return`Pre-round odds`;
+                    })()}
+                  </span>
+                  <button onClick={()=>{onTriggerOdds();refreshLiveData();}} disabled={oddsLoading}
+                    style={{background:"var(--green-700)",color:"white",border:"none",borderRadius:6,padding:"4px 10px",fontSize:12,cursor:"pointer",opacity:oddsLoading?0.6:1}}>
+                    {oddsLoading?"…":"↻ Refresh"}
+                  </button>
+                </div>
+              );
+            })()}
+
             {liveRows.length===0&&(
               <div className="empty-state">
                 <div className="empty-text">No scores entered yet</div>
@@ -1377,28 +1409,10 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                 })
                 .sort((a:any,b:any)=>b.o.win_probability-a.o.win_probability);
               if(!oddsRows.length)return null;
-              const sh5=oddsRows[0]?.o?.snapshot_hole??0;
-              const simType=sh5===99?"Live":sh5===12?"H12 snapshot":sh5===6?"H6 snapshot":"Pre-round";
-              const updatedAt=oddsLastUpdated?new Date(oddsLastUpdated).toLocaleTimeString():"…";
+              void oddsLastUpdated;
               return(
                 <div style={{marginTop:14}}>
-                  {/* Status bar + refresh — matches OddsTab exactly */}
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderRadius:"var(--radius-md)",background:"var(--green-50)",border:"1px solid var(--green-200)",marginBottom:10,fontSize:13}}>
-                    <span style={{display:"flex",alignItems:"center",gap:6,color:"var(--green-800)"}}>
-                      <span style={{width:8,height:8,borderRadius:"50%",background:"var(--green-500)",display:"inline-block",animation:"livePulse 1.5s infinite"}}/>
-                      {(()=>{
-                      const sh=oddsRows[0]?.o?.snapshot_hole??0;
-                      if(sh===99)return`Live odds · updated ${updatedAt}`;
-                      if(sh===12)return`H12 snapshot · updated ${updatedAt}`;
-                      if(sh===6)return`H6 snapshot · updated ${updatedAt}`;
-                      return`Pre-round odds`;
-                    })()}
-                    </span>
-                    <button onClick={()=>{onTriggerOdds();refreshLiveData();}} disabled={oddsLoading}
-                      style={{background:"var(--green-700)",color:"white",border:"none",borderRadius:6,padding:"4px 10px",fontSize:12,cursor:"pointer",opacity:oddsLoading?0.6:1}}>
-                      {oddsLoading?"…":"↻ Refresh"}
-                    </button>
-                  </div>
+                  <div className="card-title" style={{marginBottom:6}}>Live Odds</div>
                   {/* Odds board — same 4-col grid as OddsTab */}
                   <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",overflow:"hidden",marginBottom:4}}>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 60px 65px 60px",padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>

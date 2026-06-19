@@ -614,7 +614,7 @@ const CSS = `
   .scorecard-table tr:nth-child(even) td:not(.label-col){background:var(--surface2);}
 
   /* ── SCORE GRID ── */
-  .score-grid{width:100%;overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch;max-height:70vh;position:relative;}
+  .score-grid{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;position:relative;}
   .score-table{min-width:300px;border-collapse:separate;border-spacing:0;font-size:14px;width:100%;}
   .score-table th{background:var(--green-900);color:var(--gold-300);font-size:13px;font-weight:700;letter-spacing:0.06em;padding:6px 3px;text-align:center;white-space:nowrap;position:sticky;top:0;z-index:2;}
   .score-table td{padding:6px 2px;text-align:center;border-bottom:1px solid var(--border);font-size:14px;}
