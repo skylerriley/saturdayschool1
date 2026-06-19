@@ -1129,13 +1129,58 @@ export default function App(){
     if(loading)return; // wait for data
     const o=oddsRef.current;
 
-    // Seed calibrated set with all already-completed events (do this once)
+    // Seed calibrated set and backfill historical events (runs once on startup)
     if(!o.initialized){
-      events.forEach((e:any)=>{
-        if(e.status==="Completed")o.calibrated.add(e.event_id);
-        o.trackedStatuses[e.event_id]=e.status;
-      });
+      events.forEach((e:any)=>{o.trackedStatuses[e.event_id]=e.status;});
       o.initialized=true;
+
+      // Completed events that already existed when the app boots should only be
+      // skipped if they are *actually* in model_calibration_log. Query the log
+      // and backfill any completed event that has snapshot data (event_odds rows
+      // with snapshot_hole IN (0,6,12)) but no calibration entry yet.
+      const completedEids=events
+        .filter((e:any)=>e.status==="Completed")
+        .map((e:any)=>e.event_id);
+
+      if(completedEids.length){
+        // Pre-seed calibrated so the completedIdsKey effect (which runs synchronously
+        // in the same flush) doesn't race and double-fire these events.
+        completedEids.forEach((eid:number)=>o.calibrated.add(eid));
+
+        (async()=>{
+          try{
+            // 1. Which event IDs already have calibration records?
+            const calUrl=`${SUPABASE_URL}/rest/v1/model_calibration_log?select=event_id&event_id=in.(${completedEids.join(",")})`;
+            const calRes=await fetch(calUrl,{headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY}});
+            const calRows:any[]=calRes.ok?await calRes.json():[];
+            const calibratedEids=new Set(calRows.map((r:any)=>r.event_id));
+
+            // 2. Which completed events have frozen snapshots (odds were actually run)?
+            const snapUrl=`${SUPABASE_URL}/rest/v1/event_odds?select=event_id&event_id=in.(${completedEids.join(",")})&snapshot_hole=in.(0,6,12)`;
+            const snapRes=await fetch(snapUrl,{headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY}});
+            const snapRows:any[]=snapRes.ok?await snapRes.json():[];
+            const snappedEids=new Set(snapRows.map((r:any)=>r.event_id));
+
+            // 3. Backfill any completed event that has snapshots but no calibration entry
+            for(const eid of completedEids){
+              if(!calibratedEids.has(eid)&&snappedEids.has(eid)){
+                console.log("[odds] Backfilling calibration for completed event",eid);
+                try{
+                  const r=await fetch(SUPABASE_URL+"/functions/v1/post-event-calibration",
+                    {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+                     body:JSON.stringify({event_id:eid})});
+                  const txt=await r.text().catch(()=>"");
+                  if(r.ok)console.log("[odds] calibration OK event",eid,"→",txt.slice(0,300));
+                  else console.warn("[odds] calibration FAILED event",eid,"HTTP",r.status,"→",txt.slice(0,500));
+                }catch(err){console.warn("[odds] backfill calibration event",eid,":",err);}
+              }
+            }
+          }catch(err){
+            console.warn("[odds] startup calibration check:",err);
+            // pre-seed already guards against double-fire — nothing else to do
+          }
+        })();
+      }
     }
 
     // Mirror exactly how OddsTab picks its default event (line ~4609):
