@@ -262,7 +262,11 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
           {(()=>{
             const fieldSignups=[...eventSignups.filter((s:any)=>s.attending==="Yes")]
               .sort((a:any,b:any)=>{
-                if(a.created_at&&b.created_at)return new Date(a.created_at).getTime()-new Date(b.created_at).getTime();
+                const aTime=a.rsvp_updated_at?new Date(a.rsvp_updated_at).getTime():0;
+                const bTime=b.rsvp_updated_at?new Date(b.rsvp_updated_at).getTime():0;
+                if(aTime&&bTime)return aTime-bTime;
+                if(aTime)return -1;
+                if(bTime)return 1;
                 return (a.signup_id||0)-(b.signup_id||0);
               });
             if(fieldSignups.length===0)return null;
@@ -342,7 +346,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                     <button
                       onClick={()=>toggleEarlyTee(signup.signup_id)}
                       style={{padding:"3px 8px",fontSize:10,fontWeight:700,letterSpacing:"0.06em",borderRadius:4,border:`1.5px solid ${signup.early_tee_request?"var(--gold-600)":"var(--border-md)"}`,background:signup.early_tee_request?"var(--gold-100)":"transparent",color:signup.early_tee_request?"var(--gold-800)":"var(--text-muted)",cursor:"pointer",whiteSpace:"nowrap"}}
-                    >EARLY</button>
+                    >{signup.early_tee_request?"EARLY✓":"E?"}</button>
                     {myGuests.length>0&&<span style={{fontSize:12,color:"var(--gold-700)"}}>+{myGuests.length} guest{myGuests.length>1?"s":""}</span>}
                   </div>
                   <div className="rsvp-actions" style={{display:"flex",alignItems:"center",gap:4}}>
