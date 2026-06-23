@@ -957,8 +957,8 @@ export default function App(){
 
   // Tabs defined here (stable useMemo) so effects can safely depend on it
   const tabs=useMemo(()=>adminMode
-    ?[{id:"leaderboard",label:"Leaderboard"},{id:"rsvp",label:"Sign Up"},{id:"score",label:"Scoring"},{id:"admin",label:"Admin"},{id:"analytics",label:"Analytics"},{id:"settings",label:"Settings"}]
-    :[{id:"leaderboard",label:"Leaderboard"},{id:"rsvp",label:"Sign Up"},{id:"score",label:"Scoring"},{id:"analytics",label:"Analytics"},{id:"settings",label:"Settings"}]
+    ?[{id:"rsvp",label:"Sign Up"},{id:"score",label:"Scoring"},{id:"leaderboard",label:"Leaderboard"},{id:"admin",label:"Admin"},{id:"analytics",label:"Analytics"},{id:"settings",label:"Settings"}]
+    :[{id:"rsvp",label:"Sign Up"},{id:"score",label:"Scoring"},{id:"leaderboard",label:"Leaderboard"},{id:"analytics",label:"Analytics"},{id:"settings",label:"Settings"}]
   ,[adminMode]);
   const [eventImages,setEventImages]=useState<any[]>([]);
   const [holeImages,setHoleImages]=useState<any[]>([]); // {hole_image_id, course_name, hole_number, public_url, storage_path}
