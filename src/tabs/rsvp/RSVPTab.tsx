@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { ToggleGroup } from "../../components/common";
+import { PairingPanel } from "../../components/common/PairingPanel";
 import { golferName, formatDate } from "../../lib/formatters";
 import { supabase, sendPush } from "../../lib/supabaseClient";
-import { assignLateAdd, runPairingEngine } from "../../lib/golfMath";
+import { assignLateAdd } from "../../lib/golfMath";
 import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
 
@@ -13,9 +14,6 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
     if(initialSubTab&&["rsvp","pairings"].includes(initialSubTab)) return initialSubTab;
     return "rsvp";
   });
-  const [pairingsConfirmed,setPairingsConfirmed]=useState(false);
-  const [pairingsChanged,setPairingsChanged]=useState(false);
-  const [moving,setMoving]=useState<{signup_id:number,gid:number,fromTee:string}|null>(null);
   const [guestName,setGuestName]=useState("");
   const [guestSponsor,setGuestSponsor]=useState("");
   const [guestHcp,setGuestHcp]=useState("18");
@@ -183,50 +181,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.email_address).map((g:any)=>g.email_address);
   const mailtoLink=`mailto:?cc=${allEmails.join(",")}&subject=Reminder ${selEvent.course_name} ${selEvent.tee_times.join(", ")}&body=${encodeURIComponent(buildReminderBody())}`;
 
-  // Pairing view
-  const pairingsByTee = selEvent?.tee_times
-    ?selEvent.tee_times.map((tt:string)=>({teeTime:tt,players:eventSignups.filter((s:any)=>s.assigned_tee_time===tt&&s.attending==="Yes"&&!s.in_waiting_room)}))
-    :[];
-  const hasPairings=pairingsByTee.some((g:any)=>g.players.length>0);
-  const waitingRoom=eventSignups.filter((s:any)=>s.in_waiting_room&&s.attending==="Yes");
-  useEffect(()=>{setPairingsConfirmed(false);setPairingsChanged(false);setMoving(null);},[selEventId]);
-
   if(upcomingEvents.length===0)return<div className="empty-state"><div className="empty-text">No upcoming events</div></div>;
-
-  const movePlayer=(signup_id:number,toTee:string)=>{
-    setSignups((p:any)=>p.map((s:any)=>s.signup_id===signup_id?{...s,assigned_tee_time:toTee}:s));
-    setMoving(null);
-    setPairingsChanged(true);
-  };
-
-  // Swap all players between two tee times
-  const swapGroups=(teeA:string,teeB:string)=>{
-    if(!selEvent)return;
-    setSignups((p:any)=>p.map((s:any)=>{
-      if(s.event_id!==selEvent.event_id||s.attending!=="Yes"||s.in_waiting_room)return s;
-      if(s.assigned_tee_time===teeA)return{...s,assigned_tee_time:teeB};
-      if(s.assigned_tee_time===teeB)return{...s,assigned_tee_time:teeA};
-      return s;
-    }));
-    setPairingsChanged(true);
-  };
-
-  const allPairingEmails=golfers.filter((g:any)=>!g.is_guest&&g.email_address).map((g:any)=>g.email_address);
-
-  const buildPairingBody=()=>{
-    if(!selEvent)return"";
-    const nl="\n";
-    let b="Pairings for "+formatDate(selEvent.date)+" @ "+selEvent.course_name+nl+nl;
-    pairingsByTee.filter((g:any)=>g.players.length>0).forEach((grp:any,i:number)=>{
-      b+="Group "+(i+1)+" - Tee: "+grp.teeTime+nl;
-      grp.players.forEach((su:any)=>{
-        const gl=golfers.find((x:any)=>x.golfer_id===su.golfer_id);
-        b+="  * "+(gl?gl.first_name+" "+gl.last_name:"Guest")+(gl?.is_guest?" (Guest)":"")+nl;
-      });
-      b+=nl;
-    });
-    return b;
-  };
   return(
     <div>
       <div className="section-title">Sign Up</div>
@@ -547,190 +502,18 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
       )}
 
       {subTab==="pairings"&&(
-        <>
-          {/* Generate / Re-generate button */}
-          {adminMode&&selEvent&&(
-            <button
-              className="btn btn-gold btn-full"
-              style={{marginBottom:14,fontWeight:700}}
-              onClick={()=>{
-                const attending=eventSignups.filter((s:any)=>s.attending==="Yes");
-                if(attending.length<2){alert("Need at least 2 players confirmed In to generate pairings.");return;}
-                const attendees=attending.map((s:any)=>({golfer_id:s.golfer_id,sponsor_golfer_id:s.sponsor_golfer_id,early_tee_request:!!s.early_tee_request}));
-                const newPairings=runPairingEngine(attendees,selEvent.tee_times||[]);
-                const teeByGolfer:Record<number,string>={};
-                newPairings.forEach((grp:any)=>grp.players.forEach((pid:number)=>{teeByGolfer[pid]=grp.teeTime;}));
-                setSignups((su:any)=>su.map((s:any)=>{
-                  return teeByGolfer[s.golfer_id]!==undefined?{...s,assigned_tee_time:teeByGolfer[s.golfer_id]}:s;
-                }));
-                setMoving(null);setPairingsConfirmed(false);setPairingsChanged(true);
-              }}
-            >🎲 {hasPairings?"Re-generate Pairings":"Generate Pairings"}</button>
-          )}
-
-          {/* Move hint */}
-          {adminMode&&hasPairings&&(
-            <div style={{fontSize:13,color:"var(--text-muted)",marginBottom:8}}>
-              {moving
-                ?<span style={{color:"var(--gold-700)",fontWeight:600}}>
-                    Moving {golferName(golfers,moving.gid).split(" ")[0]} -- tap a group to move them there
-                    {" "}<button style={{background:"none",border:"none",color:"var(--red-600)",cursor:"pointer",fontSize:13,fontWeight:600}} onClick={()=>setMoving(null)}>Cancel</button>
-                  </span>
-                :"Tap a player name to move them to another group"}
-            </div>
-          )}
-
-          {/* Pairing groups */}
-          {!hasPairings
-            ?<div className="empty-state"><div className="empty-text">Pairings not yet set</div><div className="empty-sub">{adminMode?"Tap Generate Pairings above":"Check back after the admin sets pairings"}</div></div>
-            :(()=>{
-              const activeGroups=pairingsByTee.filter((g:any)=>g.players.length>0);
-              return activeGroups.map((group:any,gi:number)=>{
-              const isDropTarget=adminMode&&moving&&moving.fromTee!==group.teeTime;
-              return(
-                <div
-                  key={gi}
-                  className="pairing-card"
-                  style={isDropTarget?{borderColor:"var(--green-400)",cursor:"pointer"}:{}}
-                  onClick={()=>{if(isDropTarget&&moving)movePlayer(moving.signup_id,group.teeTime);}}
-                >
-                  <div className="pairing-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div>
-                      <span className="pairing-time">⏱ {group.teeTime} </span>
-                      <span className="pairing-group">
-                        Group {gi+1} · {group.players.length} players
-                        {isDropTarget?" -- tap to move here":""}
-                      </span>
-                    </div>
-                    {adminMode&&activeGroups.length>1&&!moving&&(
-                      <div style={{display:"flex",gap:4}}>
-                        {gi>0&&<button onClick={(e:any)=>{e.stopPropagation();swapGroups(group.teeTime,activeGroups[gi-1].teeTime);}} style={{background:"var(--green-700)",color:"white",border:"none",borderRadius:4,padding:"2px 8px",fontSize:11,cursor:"pointer",fontWeight:700}}>▲</button>}
-                        {gi<activeGroups.length-1&&<button onClick={(e:any)=>{e.stopPropagation();swapGroups(group.teeTime,activeGroups[gi+1].teeTime);}} style={{background:"var(--green-700)",color:"white",border:"none",borderRadius:4,padding:"2px 8px",fontSize:11,cursor:"pointer",fontWeight:700}}>▼</button>}
-                      </div>
-                    )}
-                  </div>
-                  <div className="pairing-body">
-                    {group.players.map((su:any)=>{
-                      const g=golfers.find((x:any)=>x.golfer_id===su.golfer_id);
-                      const isMoving=moving?.signup_id===su.signup_id;
-                      return(
-                        <div
-                          key={su.signup_id}
-                          className="pairing-player"
-                          style={{background:isMoving?"var(--gold-50)":undefined,cursor:adminMode?"pointer":"default"}}
-                          onClick={(e:any)=>{
-                            e.stopPropagation();
-                            if(!adminMode)return;
-                            if(moving&&moving.signup_id===su.signup_id){setMoving(null);return;}
-                            if(!moving)setMoving({signup_id:su.signup_id,gid:su.golfer_id,fromTee:group.teeTime});
-                          }}
-                        >
-                          <div>
-                            <span style={{fontWeight:500,color:isMoving?"var(--gold-700)":undefined}}>
-                              {g?`${g.first_name} ${g.last_name}`:"Guest"}{isMoving?" ✋":""}
-                            </span>
-                            {su.early_tee_request&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--gold-600)",color:"white",fontSize:8,fontWeight:800,lineHeight:1,marginLeft:5,flexShrink:0}}>E</span>}
-                            {su.is_guest_entry&&<span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px",marginLeft:6,color:"var(--gold-800)"}}>guest</span>}
-                          </div>
-                          <span className="pairing-hcp" style={{color:"var(--text-muted)",fontSize:13}}>HCP {g?.current_handicap_index?.toFixed(1)??""}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            });
-            })()
-          }
-
-          {/* Waiting room — players confirmed Yes but no tee time available */}
-          {waitingRoom.length>0&&(
-            <div style={{marginTop:14,border:"2px dashed var(--gold-300)",borderRadius:"var(--radius-md)",padding:"12px 14px",background:"var(--gold-50)"}}>
-              <div style={{fontSize:13,fontWeight:700,color:"var(--gold-700)",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
-                🕐 Waiting Room <span style={{fontSize:11,fontWeight:500,color:"var(--gold-600)"}}>({waitingRoom.length} player{waitingRoom.length!==1?"s":""} · waiting for a spot to open)</span>
-              </div>
-              {waitingRoom.map((su:any)=>{
-                const g=golfers.find((x:any)=>x.golfer_id===su.golfer_id);
-                return(
-                  <div key={su.signup_id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid var(--gold-100)"}}>
-                    <span style={{fontWeight:500,fontSize:14}}>{g?`${g.first_name} ${g.last_name}`:"Guest"}
-                      {su.is_guest_entry&&<span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px",marginLeft:6,color:"var(--gold-800)"}}>guest</span>}
-                    </span>
-                    {adminMode&&(
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                        {pairingsByTee.filter((g:any)=>g.players.length<4).map((grp:any)=>(
-                          <button key={grp.teeTime}
-                            style={{fontSize:11,padding:"3px 8px",background:"var(--green-50)",border:"1px solid var(--green-300)",borderRadius:6,cursor:"pointer",color:"var(--green-700)",fontWeight:600}}
-                            onClick={()=>{
-                              setSignups((p:any)=>p.map((s:any)=>s.signup_id===su.signup_id?{...s,assigned_tee_time:grp.teeTime,in_waiting_room:false}:s));
-                              if(su.signup_id<1e12)supabase.from("event_signups").update({assigned_tee_time:grp.teeTime,in_waiting_room:false},{signup_id:su.signup_id}).catch(()=>{});
-                            }}
-                          >→ {grp.teeTime}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              <div style={{fontSize:11,color:"var(--gold-600)",marginTop:8,fontStyle:"italic"}}>
-                If a player drops out, use their tee time slot to move a waiting room player in.
-              </div>
-            </div>
-          )}
-
-          {/* Confirm + Email + Push Notification */}
-          {adminMode && hasPairings && (
-  <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:12}}>
-    <button
-      className="btn btn-primary"
-      style={{opacity:(pairingsConfirmed&&!pairingsChanged)?0.45:1,cursor:(pairingsConfirmed&&!pairingsChanged)?"default":"pointer"}}
-      disabled={pairingsConfirmed&&!pairingsChanged}
-      onClick={() => {
-        if(!selEvent)return;
-        setEvents((p:any) => p.map((e:any) => e.event_id===selEvent.event_id ? {...e, status:"Pairings Set"} : e));
-        if(selEvent.event_id<1e12)
-          supabase.from("events").update({status:"Pairings Set"},{event_id:selEvent.event_id}).catch(()=>{});
-        eventSignups.filter((s:any)=>s.assigned_tee_time).forEach((s:any)=>{
-          if(s.signup_id<1e12)
-            supabase.from("event_signups").update({assigned_tee_time:s.assigned_tee_time},{signup_id:s.signup_id}).catch(()=>{});
-        });
-        setPairingsConfirmed(true);
-        setPairingsChanged(false);
-        showSuccess("Pairings confirmed");
-        scrollToTop();
-      }}
-    >
-      {pairingsConfirmed&&!pairingsChanged ? "✓ Pairings Saved" : pairingsConfirmed ? "↻ Update Pairings" : "Confirm Pairings"}
-    </button>
-
-    <div style={{display:"flex",gap:8}}>
-      <a
-        href={"mailto:?cc="+allPairingEmails.join(",")+"&subject="+encodeURIComponent("Pairings - "+selEvent.course_name)+"&body="+encodeURIComponent(buildPairingBody())+"%0D%0A View pairings in the app: https://saturdayschool.vercel.app/?tab=rsvp%26subtab=pairings"}
-        className="btn btn-outline"
-        style={{flex:1,textDecoration:"none"}}
-      >✉ Email Pairings</a>
-
-      <button
-        className="btn btn-outline"
-        style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
-        onClick={async () => {
-          try {
-            await sendPush(
-              "Pairings are set",
-              `Check the pairings for the upcoming round @ ${selEvent?.course_name} on ${formatDate(selEvent?.date)}`,
-              "/?tab=rsvp&subtab=pairings"
-            );
-            showSuccess("Pairings notification sent!");
-            scrollToTop();
-          } catch {
-            showError("Failed to send push notification");
-          }
-        }}
-      >🔔 Notify</button>
-    </div>
-  </div>
-)}
-        </>
+        <PairingPanel
+          golfers={golfers}
+          events={events}
+          setEvents={setEvents}
+          signups={signups}
+          setSignups={setSignups}
+          selEventId={selEventId}
+          adminMode={adminMode}
+          showSuccess={showSuccess}
+          showError={showError}
+          scrollToTop={scrollToTop}
+        />
       )}
       {/* ── Push notification opt-in moved to Settings tab ── */}
     </div>
