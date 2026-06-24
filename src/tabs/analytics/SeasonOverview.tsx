@@ -1,3 +1,4 @@
+import { useState as useStateOv } from "react";
 import { CountUp } from "../../App";
 import { formatDate } from "../../lib/formatters";
 import { ChartCanvas } from "./ChartCanvas";
@@ -42,12 +43,22 @@ function interpColor(delta:number):{bg:string;text:string}{
 }
 
 function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
+  const [deselected,setDeselected]=useStateOv<Set<number>>(()=>new Set());
+
+  const togglePlayer=(gid:number)=>{
+    setDeselected(prev=>{
+      const next=new Set(prev);
+      if(next.has(gid))next.delete(gid);else next.add(gid);
+      return next;
+    });
+  };
+
   // Sort events chronologically
   const sortedEvents=[...seasonEvents].sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
 
   // Build per-player round data, filter to players with >=3 rounds
   type PlayerRow={golfer:any;avg:number;rounds:{[eid:number]:number}};
-  const rows:PlayerRow[]=[];
+  const allRows:PlayerRow[]=[];
   const eligibleGolfers=golfers.filter((g:any)=>!g.is_guest);
   for(const g of eligibleGolfers){
     const myEntries=leaderboard.filter((r:any)=>r.golfer_id===g.golfer_id&&sortedEvents.some((e:any)=>e.event_id===r.event_id));
@@ -56,11 +67,14 @@ function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
     for(const e of myEntries){roundMap[e.event_id]=e.total_stableford_points;}
     const total=myEntries.reduce((s:number,r:any)=>s+r.total_stableford_points,0);
     const avg=total/myEntries.length;
-    rows.push({golfer:g,avg,rounds:roundMap});
+    allRows.push({golfer:g,avg,rounds:roundMap});
   }
 
-  // Sort by season average descending
-  rows.sort((a,b)=>b.avg-a.avg);
+  // Active rows sorted by avg desc; deselected rows at bottom
+  allRows.sort((a,b)=>b.avg-a.avg);
+  const activeRows=allRows.filter(r=>!deselected.has(r.golfer.golfer_id));
+  const mutedRows=allRows.filter(r=>deselected.has(r.golfer.golfer_id));
+  const rows=[...activeRows,...mutedRows];
 
   if(rows.length===0||sortedEvents.length===0){
     return(
@@ -70,11 +84,11 @@ function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
     );
   }
 
-  // Cell sizing
+  // Cell sizing — bigger than before
   const numCols=sortedEvents.length;
-  const cellSize=numCols>16?Math.max(20,Math.floor(480/numCols)):28;
-  const gap=2;
-  const nameColW=100;
+  const cellSize=numCols>14?Math.max(28,Math.floor(520/numCols)):36;
+  const gap=3;
+  const nameColW=116;
 
   // Month abbreviations for header
   const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -99,13 +113,13 @@ function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
                   width:cellSize,
                   minWidth:cellSize,
                   marginRight:gap,
-                  fontSize:11,
+                  fontSize:12,
                   color:"var(--text-secondary)",
                   textAlign:"center",
                   transform:"rotate(-45deg)",
                   transformOrigin:"bottom left",
                   whiteSpace:"nowrap",
-                  height:50,
+                  height:56,
                   display:"flex",
                   alignItems:"flex-end",
                   paddingBottom:2,
@@ -119,27 +133,53 @@ function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
 
           {/* Data rows */}
           {rows.map((row)=>{
+            const isMuted=deselected.has(row.golfer.golfer_id);
             const initLast=(row.golfer.first_name?.[0]||"")+"."+" "+(row.golfer.last_name||"");
             return(
-              <div key={row.golfer.golfer_id} style={{display:"flex",alignItems:"center",marginBottom:gap}}>
-                {/* Sticky name */}
-                <div style={{
-                  width:nameColW,
-                  minWidth:nameColW,
-                  fontSize:12,
-                  color:"var(--text-primary)",
-                  whiteSpace:"nowrap",
-                  overflow:"hidden",
-                  textOverflow:"ellipsis",
-                  paddingRight:6,
-                  position:"sticky",
-                  left:0,
-                  zIndex:2,
-                  background:"var(--bg)",
-                  lineHeight:`${cellSize}px`,
-                  fontWeight:500,
-                }}>
-                  {initLast}
+              <div
+                key={row.golfer.golfer_id}
+                style={{
+                  display:"flex",alignItems:"center",marginBottom:gap,
+                  opacity:isMuted?0.35:1,
+                  transition:"opacity 0.25s ease",
+                }}
+              >
+                {/* Clickable name — column 1 */}
+                <div
+                  onClick={()=>togglePlayer(row.golfer.golfer_id)}
+                  title={isMuted?"Click to show":"Click to hide"}
+                  style={{
+                    width:nameColW,
+                    minWidth:nameColW,
+                    fontSize:13,
+                    color:isMuted?"var(--text-muted)":"var(--text-primary)",
+                    whiteSpace:"nowrap",
+                    overflow:"hidden",
+                    textOverflow:"ellipsis",
+                    paddingRight:6,
+                    position:"sticky",
+                    left:0,
+                    zIndex:2,
+                    background:"var(--bg)",
+                    lineHeight:`${cellSize}px`,
+                    fontWeight:isMuted?400:600,
+                    cursor:"pointer",
+                    userSelect:"none",
+                    display:"flex",
+                    alignItems:"center",
+                    gap:5,
+                  }}
+                >
+                  <span style={{
+                    display:"inline-flex",alignItems:"center",justifyContent:"center",
+                    width:14,height:14,borderRadius:3,flexShrink:0,
+                    background:isMuted?"transparent":"var(--green-700)",
+                    border:`1.5px solid ${isMuted?"var(--border)":"var(--green-700)"}`,
+                    transition:"all 0.2s",
+                  }}>
+                    {!isMuted&&<svg width="9" height="9" viewBox="0 0 9 9"><polyline points="1.5,4.5 3.5,6.5 7.5,2.5" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </span>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{initLast}</span>
                 </div>
                 {/* Cells */}
                 {sortedEvents.map((ev:any)=>{
@@ -155,7 +195,7 @@ function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
                           height:cellSize,
                           minWidth:cellSize,
                           marginRight:gap,
-                          borderRadius:3,
+                          borderRadius:4,
                           background:"var(--surface)",
                           border:"1px solid var(--border)",
                           flexShrink:0,
@@ -166,7 +206,7 @@ function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
                     );
                   }
                   const delta=pts-row.avg;
-                  const {bg,text}=interpColor(delta);
+                  const {bg,text}=interpColor(isMuted?0:delta);
                   const label=pts.toString();
                   return(
                     <div
@@ -177,20 +217,22 @@ function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
                         height:cellSize,
                         minWidth:cellSize,
                         marginRight:gap,
-                        borderRadius:3,
-                        background:bg,
-                        color:text,
-                        fontSize:10,
+                        borderRadius:4,
+                        background:isMuted?"var(--surface)":bg,
+                        color:isMuted?"var(--text-muted)":text,
+                        fontSize:cellSize>=32?13:11,
                         display:"flex",
                         alignItems:"center",
                         justifyContent:"center",
                         flexShrink:0,
                         cursor:"default",
-                        fontWeight:500,
+                        fontWeight:600,
                         lineHeight:1,
+                        border:isMuted?"1px solid var(--border)":"none",
+                        transition:"background 0.25s,color 0.25s",
                       }}
                     >
-                      {cellSize>=24?label:""}
+                      {cellSize>=26?label:""}
                     </div>
                   );
                 })}
@@ -202,16 +244,16 @@ function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
 
       {/* Legend */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:10}}>
-        <span style={{fontSize:10,color:"var(--text-secondary)",whiteSpace:"nowrap"}}>Below avg</span>
-        <div style={{display:"flex",gap:1}}>
+        <span style={{fontSize:11,color:"var(--text-secondary)",whiteSpace:"nowrap"}}>Below avg</span>
+        <div style={{display:"flex",gap:2}}>
           {HEAT_STOPS.map((s,i)=>(
-            <div key={i} style={{width:16,height:12,background:s.bg,borderRadius:2}}/>
+            <div key={i} style={{width:18,height:14,background:s.bg,borderRadius:2}}/>
           ))}
         </div>
-        <span style={{fontSize:10,color:"var(--text-secondary)",whiteSpace:"nowrap"}}>Above avg</span>
+        <span style={{fontSize:11,color:"var(--text-secondary)",whiteSpace:"nowrap"}}>Above avg</span>
       </div>
-      <div style={{textAlign:"center",fontSize:10,color:"var(--text-muted)",marginTop:3}}>
-        Color relative to each player's personal {season} season average
+      <div style={{textAlign:"center",fontSize:11,color:"var(--text-muted)",marginTop:3}}>
+        Color relative to each player's personal {season} season average · tap name to hide/show
       </div>
     </div>
   );
@@ -250,21 +292,37 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
       return{date:ev.date,avg,course:ev.course_name};
     });
 
+  const overallLeagueAvg = eventTrend.length ? parseFloat((eventTrend.reduce((s:number,e:any)=>s+e.avg,0)/eventTrend.length).toFixed(1)) : 0;
+
   const trendConfig = {
     type:"line" as const,
     data:{
       labels:eventTrend.map((_:any,i:number)=>"Rd "+(i+1)),
-      datasets:[{
-        label:"Field Avg",
-        data:eventTrend.map((e:any)=>parseFloat(e.avg.toFixed(1))),
-        borderColor:"#1a7340",backgroundColor:"rgba(26,115,64,0.08)",
-        pointBackgroundColor:"#1a7340",pointRadius:5,fill:true,tension:0.35
-      }]
+      datasets:[
+        {
+          label:"Field Avg",
+          data:eventTrend.map((e:any)=>parseFloat(e.avg.toFixed(1))),
+          borderColor:"#1a7340",backgroundColor:"rgba(26,115,64,0.08)",
+          pointBackgroundColor:"#1a7340",pointRadius:5,fill:true,tension:0.35,
+          order:1,
+        },
+        {
+          label:"Season Avg",
+          data:Array(eventTrend.length).fill(overallLeagueAvg),
+          borderColor:"#c47800",backgroundColor:"transparent",
+          borderDash:[6,4],pointRadius:0,fill:false,tension:0,
+          borderWidth:2,order:2,
+        },
+      ]
     },
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},
+      plugins:{
+        legend:{display:true,labels:{color:"#6b5240",font:{size:11},boxWidth:20,usePointStyle:true}},
         tooltip:{callbacks:{
-          label:(c:any)=>(" "+c.parsed.y.toFixed(1)+" pts avg"),
+          label:(c:any)=>{
+            if(c.dataset.label==="Season Avg")return(" Season avg: "+c.parsed.y.toFixed(1)+" pts");
+            return(" "+c.parsed.y.toFixed(1)+" pts avg");
+          },
           title:(items:any)=>{const ev=eventTrend[items[0].dataIndex];return formatDate(ev.date);}
         }}
       },

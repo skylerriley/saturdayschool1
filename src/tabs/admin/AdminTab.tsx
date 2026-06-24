@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { SubTabPanel, FinanceView } from "../../App";
 import { EventCreator } from "./EventCreator";
 import { PairingDashboard } from "./PairingDashboard";
@@ -11,6 +11,17 @@ import { MessageBlast } from "./MessageBlast";
 
 export function AdminTab({ golfers, setGolfers, courses, setCourses, events, setEvents, signups, setSignups, leaderboard, setLeaderboard, holeScores, setHoleScores, dbUpsertLeaderboard, dbUpsertHoleScore, charityDonations, setCharityDonations, holeImages, setHoleImages, showSuccess, scrollToTop }: any) {
   const [subTab, setSubTab] = useState("events");
+  const pillSentinelRef = useRef<HTMLDivElement|null>(null);
+  const pillRowRef = useRef<HTMLDivElement|null>(null);
+  useEffect(()=>{
+    const sentinel = pillSentinelRef.current;
+    if(!sentinel) return;
+    const obs = new IntersectionObserver(([entry])=>{
+      pillRowRef.current?.classList.toggle("stuck", !entry.isIntersecting);
+    },{threshold:0,rootMargin:"0px"});
+    obs.observe(sentinel);
+    return()=>obs.disconnect();
+  },[]);
   const ADMIN_TABS = [
     { id: "events" }, { id: "pairings" }, { id: "hcp" }, { id: "coursehcp" }, { id: "scores" }, { id: "payouts" }, { id: "courses" }, { id: "roster" }, { id: "message" },
   ];
@@ -18,7 +29,8 @@ export function AdminTab({ golfers, setGolfers, courses, setCourses, events, set
     <div>
       <div className="section-title">Admin</div>
       <div className="section-sub">League management tools</div>
-      <div className="tab-sub">
+      <div ref={pillSentinelRef} style={{height:1,marginBottom:-1}}/>
+      <div ref={pillRowRef} className="tab-sub">
         {[
           { id: "events", label: "Events" },
           { id: "pairings", label: "Pairings" },

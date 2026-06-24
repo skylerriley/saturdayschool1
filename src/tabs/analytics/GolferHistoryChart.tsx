@@ -120,10 +120,31 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
       {/* Scoring Fingerprint */}
       {(()=>{
         const fp=computeScoringFingerprint(golfer.golfer_id,seasonEvents,leaderboard,holeScores,courses);
+        // Compute league average fingerprint across all non-guest golfers with hole data
+        const leagueGolferIds=[...new Set(
+          leaderboard
+            .filter((r:any)=>seasonEvents.some((e:any)=>e.event_id===r.event_id))
+            .map((r:any)=>r.golfer_id)
+        )].filter((gid:any)=>!golfers.find((g:any)=>g.golfer_id===gid)?.is_guest);
+        const leagueFingerprints=leagueGolferIds
+          .map((gid:any)=>computeScoringFingerprint(gid,seasonEvents,leaderboard,holeScores,courses))
+          .filter((f:any)=>f.sampleSize>=1);
+        const leagueAvgFp=leagueFingerprints.length?{
+          par3:leagueFingerprints.reduce((s:number,f:any)=>s+f.par3,0)/leagueFingerprints.length,
+          par4:leagueFingerprints.reduce((s:number,f:any)=>s+f.par4,0)/leagueFingerprints.length,
+          par5:leagueFingerprints.reduce((s:number,f:any)=>s+f.par5,0)/leagueFingerprints.length,
+          front9:leagueFingerprints.reduce((s:number,f:any)=>s+f.front9,0)/leagueFingerprints.length,
+          back9:leagueFingerprints.reduce((s:number,f:any)=>s+f.back9,0)/leagueFingerprints.length,
+          consistency:leagueFingerprints.reduce((s:number,f:any)=>s+f.consistency,0)/leagueFingerprints.length,
+          sampleSize:leagueFingerprints.length,
+        }:null;
         return(
           <div className="card" style={{textAlign:"center"}}>
             <div className="card-title" style={{marginBottom:8}}>Scoring Fingerprint</div>
-            <ScoringFingerprintRadar datasets={[{label:`${golfer.first_name} ${golfer.last_name}`,color:"var(--green-600)",values:fp}]}/>
+            <ScoringFingerprintRadar datasets={[
+              ...(leagueAvgFp?[{label:"League Avg",color:"rgba(180,130,40,0.85)",values:leagueAvgFp}]:[]),
+              {label:`${golfer.first_name} ${golfer.last_name}`,color:"var(--green-600)",values:fp},
+            ]}/>
             <div style={{fontSize:12,color:"var(--text-muted)",marginTop:6}}>Avg Stableford points per hole by category, plus consistency (based on {fp.sampleSize} round{fp.sampleSize===1?"":"s"})</div>
           </div>
         );

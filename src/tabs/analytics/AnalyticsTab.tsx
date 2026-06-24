@@ -96,7 +96,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
       return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned};
     }).filter(Boolean):[];
 
-  const SUBTABS=[{id:"overview",label:"Overview"},{id:"odds",label:"Odds"},{id:"golfer",label:"By Golfer"},{id:"consistency",label:"Consistency"},{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"},{id:"champions",label:"Champions"}];
+  const SUBTABS=[{id:"overview",label:"Overview"},{id:"golfer",label:"By Golfer"},{id:"odds",label:"Odds"},{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"},{id:"consistency",label:"Consistency"},{id:"champions",label:"Champions"}];
 
   const switchSubTab=(id:string)=>{
     setSubTab(id);
