@@ -512,7 +512,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             const ga=golfers.find((x:any)=>x.golfer_id===a.golfer_id);
             const gb=golfers.find((x:any)=>x.golfer_id===b.golfer_id);
             if(!ga||!gb)return 0;
-            return (ga.first_name||"").localeCompare(gb.first_name||"");
+            return (ga.last_name||"").localeCompare(gb.last_name||"") || (ga.first_name||"").localeCompare(gb.first_name||"");
           }).map((signup:any)=>{
             const g=golfers.find((x:any)=>x.golfer_id===signup.golfer_id);
             if(!g)return null;

@@ -21,7 +21,7 @@ export function HandicapManager({ golfers, setGolfers, showSuccess }: any) {
       <div className="card-title" style={{ marginBottom: 4 }}>Weekly Handicap Update</div>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>Edit handicap indices. Press Save when done.</p>
       <div style={{ background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", overflow: "hidden", marginBottom: 16 }}>
-        {golfers.filter((g: any) => !g.is_guest && g.status === "Active").map((g: any, i: number, arr: any[]) => (
+        {golfers.filter((g: any) => !g.is_guest && g.status === "Active").sort((a: any, b: any) => (a.last_name || "").localeCompare(b.last_name || "") || (a.first_name || "").localeCompare(b.first_name || "")).map((g: any, i: number, arr: any[]) => (
           <div key={g.golfer_id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", borderBottom: i < arr.length - 1 ? "1.5px solid var(--border-md)" : "none", background: i % 2 === 0 ? "var(--surface)" : "var(--surface2)" }}>
             <div>
               <div style={{ fontSize: 16, textAlign: "left", fontWeight: 600, color: "var(--text-primary)" }}>{g.first_name} {g.last_name}</div>

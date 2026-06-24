@@ -8,7 +8,10 @@ export function GolferRoster({ golfers, setGolfers, showSuccess }: any) {
   const [editId, setEditId] = useState<number | null>(null);
   const editFormTopRef = useRef<HTMLDivElement>(null);
 
-  const members = golfers.filter((g: any) => !g.is_guest);
+  const byLastName = (a: any, b: any) => (a.last_name || "").localeCompare(b.last_name || "") || (a.first_name || "").localeCompare(b.first_name || "");
+  const nonGuests = golfers.filter((g: any) => !g.is_guest);
+  const activeMembers = nonGuests.filter((g: any) => g.status === "Active").sort(byLastName);
+  const inactiveMembers = nonGuests.filter((g: any) => g.status !== "Active").sort(byLastName);
 
   const save = () => {
     if (!form.first_name.trim() || !form.last_name.trim()) return;
@@ -60,17 +63,33 @@ export function GolferRoster({ golfers, setGolfers, showSuccess }: any) {
       </div>
 
       <div className="card-title" style={{ marginBottom: 8 }}>Members</div>
-      {members.map((g: any) => (
+      {activeMembers.map((g: any) => (
         <div key={g.golfer_id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 15 }}>{g.first_name} {g.last_name}{g.status === "Inactive" && <span className="pill pill-red" style={{ fontSize: 10, marginLeft: 6 }}>Inactive</span>}</div>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>{g.first_name} {g.last_name}</div>
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>HCP {g.current_handicap_index?.toFixed(1)} · {g.email_address || "no email"}</div>
           </div>
           <button title="Toggle $300 fee" onClick={() => toggleFee(g.golfer_id)} className={`btn btn-sm${g.season_fee_paid ? " btn-primary" : " btn-outline"}`}>{g.season_fee_paid ? "$✓" : "$?"}</button>
           <button className="btn btn-sm btn-outline" onClick={() => startEdit(g)}>Edit</button>
-          <button className={`btn btn-sm${g.status === "Active" ? " btn-danger" : " btn-primary"}`} onClick={() => toggleStatus(g.golfer_id, g.status)}>{g.status === "Active" ? "Deactivate" : "Activate"}</button>
+          <button className="btn btn-sm btn-danger" onClick={() => toggleStatus(g.golfer_id, g.status)}>Deactivate</button>
         </div>
       ))}
+      {inactiveMembers.length > 0 && (
+        <>
+          <div className="card-title" style={{ marginTop: 24, marginBottom: 8 }}>Inactive</div>
+          {inactiveMembers.map((g: any) => (
+            <div key={g.golfer_id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{g.first_name} {g.last_name}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>HCP {g.current_handicap_index?.toFixed(1)} · {g.email_address || "no email"}</div>
+              </div>
+              <button title="Toggle $300 fee" onClick={() => toggleFee(g.golfer_id)} className={`btn btn-sm${g.season_fee_paid ? " btn-primary" : " btn-outline"}`}>{g.season_fee_paid ? "$✓" : "$?"}</button>
+              <button className="btn btn-sm btn-outline" onClick={() => startEdit(g)}>Edit</button>
+              <button className="btn btn-sm btn-primary" onClick={() => toggleStatus(g.golfer_id, g.status)}>Activate</button>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
