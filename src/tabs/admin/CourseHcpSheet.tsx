@@ -40,13 +40,13 @@ export function CourseHcpSheet({ golfers, courses, showSuccess }: any) {
         new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([html], { type: "text/plain" }) })
       ]);
       setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
+      setTimeout(() => setCopied(false), 6000);
     } catch {
       // Fallback: copy plain HTML string
       try {
         await navigator.clipboard.writeText(html);
         setCopied(true);
-        setTimeout(() => setCopied(false), 3000);
+        setTimeout(() => setCopied(false), 6000);
       } catch {
         showSuccess("Could not access clipboard -- try on a different browser");
       }

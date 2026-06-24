@@ -81,6 +81,17 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
     return()=>clearInterval(id);
   },[]);
 
+  // Scroll to score table when any scorer starts (or on resume)
+  const anyStarted=scorers.some((s:any)=>s.started);
+  useEffect(()=>{
+    if(!anyStarted)return;
+    // Small delay so the table has rendered
+    const id=setTimeout(()=>{
+      scoreTableRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
+    },120);
+    return()=>clearTimeout(id);
+  },[anyStarted]);
+
   const activeEvents=events.filter((e:any)=>e.status==="Pairings Set"||e.status==="In-Progress");
   const selEvent=events.find((e:any)=>e.event_id===parseInt(selEventId));
   const availableTees=selEvent?courses.filter((c:any)=>c.course_name===selEvent.course_name):[];
@@ -108,6 +119,18 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       setScorers([emptyScorer()]);
     }
   },[selEventId,mode,scorers,signups]);
+
+  // Ref for the score table so we can scroll to it when resuming
+  const scoreTableRef=useRef<HTMLDivElement|null>(null);
+
+  // ── Slide-to-submit state ────────────────────────────────────
+  const [slideSubmitX,setSlideSubmitX]=useState(0);
+  const [slideFinalizeX,setSlideFinalizeX]=useState(0);
+  const slideSubmitRef=useRef<HTMLDivElement|null>(null);
+  const slideFinalizeRef=useRef<HTMLDivElement|null>(null);
+  const slidingSubmit=useRef(false);
+  const slidingFinalize=useRef(false);
+  const SLIDE_THRESHOLD=200;
 
   // ── Score entry modal (hole-by-hole "+" tap) ────────────────────
   const [scoreModal,setScoreModal]=useState<{scorerIdx:number,holeIdx:number}|null>(null);
@@ -717,7 +740,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         const refCourse=activeScorersFull[0].course;
         const ptsClass=(pts:number|null)=>{if(pts===null||pts===undefined)return"";if(pts>=4)return"pts-eagle";if(pts===3)return"pts-birdie";if(pts===2)return"pts-par";if(pts===1)return"pts-bogey";return"pts-zero";};
         return(
-          <div style={{marginTop:8}}>
+          <div style={{marginTop:8}} ref={scoreTableRef}>
             <div className="card-title" style={{marginBottom:8}}>Score Sheet</div>
             <div className="score-grid">
               <table className="score-table" style={{minWidth:`${80+activeScorersFull.length*52}px`}}>
@@ -725,6 +748,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                   <tr>
                     <th style={{width:36}}>Hole</th>
                     <th style={{width:32}}>Par</th>
+                    <th style={{width:28,color:"var(--green-300)",fontSize:11}}>SI</th>
                     {activeScorersFull.map((s,i)=>(
                       <th key={i} style={{minWidth:48}}>
                         {s.g?.first_name||`P${i+1}`}
@@ -739,6 +763,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                       <tr key={`h${holeIdx}`} style={holeIdx===8?{borderBottom:"3px solid var(--green-600)"}:{}}>
                         <td style={{fontWeight:600}}>{holeIdx+1}</td>
                         <td>{refCourse?.hole_pars[holeIdx]}</td>
+                        <td style={{color:"var(--text-muted)",fontSize:12}}>{refCourse?.hole_stroke_indices?.[holeIdx]??""}</td>
                         {activeScorersFull.map((s,si)=>{
                           const h=s.holeCalcs[holeIdx]||{} as {points?:number|null,gross?:number|null,par?:number};
                           const pts=h.points;
@@ -762,7 +787,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                     if(holeIdx===8){
                       const subtotalRow=(
                         <tr key="front9" style={{background:"var(--green-100)",borderTop:"2px solid var(--green-600)"}}>
-                          <td colSpan={2} style={{fontWeight:700,fontSize:15,textAlign:"left",paddingLeft:6,color:"var(--green-800)",textTransform:"uppercase",letterSpacing:"0.05em"}}>F9</td>
+                          <td colSpan={3} style={{fontWeight:700,fontSize:15,textAlign:"left",paddingLeft:6,color:"var(--green-800)",textTransform:"uppercase",letterSpacing:"0.05em"}}>F9</td>
                           {activeScorersFull.map((s,si)=>{
                             const front9=s.holeCalcs.slice(0,9).reduce((sum:number,h:any)=>sum+(h.points??0),0);
                             return<td key={si} style={{textAlign:"center",fontWeight:700,fontSize:19,color:"var(--green-800)"}}>{front9||""}</td>;
@@ -775,7 +800,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                     if(holeIdx===17){
                       const subtotalRow=(
                         <tr key="back9" style={{background:"var(--green-100)",borderTop:"1px solid var(--green-400)"}}>
-                          <td colSpan={2} style={{fontWeight:700,fontSize:15,textAlign:"left",paddingLeft:6,color:"var(--green-800)",textTransform:"uppercase",letterSpacing:"0.05em"}}>B9</td>
+                          <td colSpan={3} style={{fontWeight:700,fontSize:15,textAlign:"left",paddingLeft:6,color:"var(--green-800)",textTransform:"uppercase",letterSpacing:"0.05em"}}>B9</td>
                           {activeScorersFull.map((s,si)=>{
                             const back9=s.holeCalcs.slice(9,18).reduce((sum:number,h:any)=>sum+(h.points??0),0);
                             return<td key={si} style={{textAlign:"center",fontWeight:700,fontSize:19,color:"var(--green-800)"}}>{back9||""}</td>;
@@ -787,7 +812,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                     return holeRow;
                   })}
                   <tr style={{background:"var(--green-50)",borderTop:"2px solid var(--green-600)"}}>
-                    <td colSpan={2} style={{fontWeight:700,textAlign:"left",paddingLeft:6,fontSize:15,textTransform:"uppercase"}}>Total</td>
+                    <td colSpan={3} style={{fontWeight:700,textAlign:"left",paddingLeft:6,fontSize:15,textTransform:"uppercase"}}>Total</td>
                     {activeScorersFull.map((s,si)=>{
                       const total=s.holeCalcs.reduce((sum:number,h:any)=>sum+(h.points??0),0);
                       return<td key={si} style={{textAlign:"center",fontWeight:700,fontSize:19,color:"var(--green-700)"}}>{total||""}</td>;
@@ -800,11 +825,63 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         );
       })()}
 
-      <button className="btn btn-primary btn-full" disabled={!selEventId||!canSubmit} onClick={handleSubmitAll} style={{marginTop:4}}>
-        {canSubmit
+      {/* ── Slide-to-Submit ── */}
+      {(()=>{
+        const label=canSubmit
           ?`Submit Score${readyToSubmitCount>1?"s":""} (${readyToSubmitCount})`
-          :mode==="hole"?"Submit Scores":"Submit Score"}
-      </button>
+          :mode==="hole"?"Submit Scores":"Submit Score";
+        const pct=Math.min(slideSubmitX/SLIDE_THRESHOLD,1);
+        const confirmed=pct>=1;
+        return(
+          <div
+            style={{marginTop:4,position:"relative",height:52,borderRadius:"var(--radius-lg)",background:canSubmit?"var(--green-800)":"var(--border-md)",overflow:"hidden",touchAction:"none",userSelect:"none",opacity:canSubmit?1:0.55,cursor:canSubmit?"pointer":"not-allowed"}}
+            ref={slideSubmitRef}
+            onPointerDown={e=>{
+              if(!canSubmit)return;
+              e.currentTarget.setPointerCapture(e.pointerId);
+              slidingSubmit.current=true;
+              setSlideSubmitX(0);
+            }}
+            onPointerMove={e=>{
+              if(!slidingSubmit.current||!canSubmit)return;
+              const rect=slideSubmitRef.current?.getBoundingClientRect();
+              if(!rect)return;
+              setSlideSubmitX(Math.max(0,e.clientX-rect.left-26));
+            }}
+            onPointerUp={()=>{
+              if(!slidingSubmit.current)return;
+              slidingSubmit.current=false;
+              if(slideSubmitX>=SLIDE_THRESHOLD){
+                handleSubmitAll();
+              }
+              setSlideSubmitX(0);
+            }}
+            onPointerCancel={()=>{slidingSubmit.current=false;setSlideSubmitX(0);}}
+          >
+            {/* track fill */}
+            <div style={{position:"absolute",inset:0,background:"var(--green-600)",width:`${pct*100}%`,transition:slidingSubmit.current?"none":"width 0.3s ease"}}/>
+            {/* thumb */}
+            <div style={{
+              position:"absolute",top:4,bottom:4,left:4+slideSubmitX,
+              width:44,borderRadius:"var(--radius-md)",
+              background:confirmed?"white":"var(--green-400)",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:20,transition:slidingSubmit.current?"none":"left 0.3s ease",
+              boxShadow:"0 2px 8px rgba(0,0,0,0.25)"
+            }}>
+              {confirmed?"✓":"›"}
+            </div>
+            {/* label */}
+            <div style={{
+              position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:15,fontWeight:700,color:"white",letterSpacing:"0.02em",
+              opacity:1-pct*0.7,pointerEvents:"none",paddingLeft:48
+            }}>
+              {label}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Finalize Event — shown once the event is In-Progress and has scored entries */}
       {selEvent&&(selEvent.status==="In-Progress"||selEvent.status==="Pairings Set")&&
@@ -815,19 +892,59 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
             All scores entered? Mark this event <strong>Completed</strong> to lock it in, calculate payouts, and move it off the active scoring list.
             <br/><span style={{fontSize:13,color:"var(--text-muted)"}}>{leaderboard.filter((r:any)=>r.event_id===selEvent.event_id).length} score{leaderboard.filter((r:any)=>r.event_id===selEvent.event_id).length!==1?"s":""} recorded.</span>
           </p>
-          <button
-            className="btn btn-full"
-            style={{background:"var(--green-800)",color:"white",fontWeight:700,fontSize:16,padding:"14px",borderRadius:"var(--radius-md)",border:"none",cursor:"pointer",letterSpacing:"0.02em"}}
-            onClick={()=>{
-              if(!window.confirm("Finalize \""+formatDate(selEvent.date)+" - "+selEvent.course_name+"\"? This marks it Completed and locks scoring."))return;
-              setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Completed"}:e));
-              setScoreEventId("");
-              setScorers([emptyScorer()]);
-              showSuccess("Event finalized and marked Completed!");
-            }}
-          >
-            ✓ Finalize Event
-          </button>
+          {/* ── Slide-to-Finalize ── */}
+          {(()=>{
+            const pct=Math.min(slideFinalizeX/SLIDE_THRESHOLD,1);
+            const confirmed=pct>=1;
+            return(
+              <div
+                style={{position:"relative",height:56,borderRadius:"var(--radius-lg)",background:"var(--green-900)",overflow:"hidden",touchAction:"none",userSelect:"none"}}
+                ref={slideFinalizeRef}
+                onPointerDown={e=>{
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  slidingFinalize.current=true;
+                  setSlideFinalizeX(0);
+                }}
+                onPointerMove={e=>{
+                  if(!slidingFinalize.current)return;
+                  const rect=slideFinalizeRef.current?.getBoundingClientRect();
+                  if(!rect)return;
+                  setSlideFinalizeX(Math.max(0,e.clientX-rect.left-26));
+                }}
+                onPointerUp={()=>{
+                  if(!slidingFinalize.current)return;
+                  slidingFinalize.current=false;
+                  if(slideFinalizeX>=SLIDE_THRESHOLD){
+                    setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Completed"}:e));
+                    setScoreEventId("");
+                    setScorers([emptyScorer()]);
+                    showSuccess("Event finalized and marked Completed!");
+                  }
+                  setSlideFinalizeX(0);
+                }}
+                onPointerCancel={()=>{slidingFinalize.current=false;setSlideFinalizeX(0);}}
+              >
+                <div style={{position:"absolute",inset:0,background:"var(--green-700)",width:`${pct*100}%`,transition:slidingFinalize.current?"none":"width 0.3s ease"}}/>
+                <div style={{
+                  position:"absolute",top:5,bottom:5,left:4+slideFinalizeX,
+                  width:46,borderRadius:"var(--radius-md)",
+                  background:confirmed?"var(--gold-400)":"var(--green-500)",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:20,transition:slidingFinalize.current?"none":"left 0.3s ease",
+                  boxShadow:"0 2px 8px rgba(0,0,0,0.3)"
+                }}>
+                  {confirmed?"✓":"›"}
+                </div>
+                <div style={{
+                  position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:15,fontWeight:700,color:"white",letterSpacing:"0.02em",
+                  opacity:1-pct*0.7,pointerEvents:"none",paddingLeft:52
+                }}>
+                  Slide to Finalize Event
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -860,6 +977,10 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
           updateGross(scoreModal.scorerIdx,scoreModal.holeIdx,String(val));
           setScoreModal(null);
         };
+        const clearScore=()=>{
+          updateGross(scoreModal.scorerIdx,scoreModal.holeIdx,"");
+          setScoreModal(null);
+        };
         return(
           <div className="modal-overlay" onClick={()=>setScoreModal(null)}>
             <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
@@ -872,7 +993,12 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                   </div>
                 ))}
               </div>
-              <button className="btn btn-outline btn-full" onClick={()=>setScoreModal(null)}>Cancel</button>
+              <div style={{display:"flex",gap:8,marginBottom:0}}>
+                {currentVal&&(
+                  <button className="btn btn-danger" style={{flex:1}} onClick={clearScore}>Clear Score</button>
+                )}
+                <button className="btn btn-outline" style={{flex:1}} onClick={()=>setScoreModal(null)}>Cancel</button>
+              </div>
             </div>
           </div>
         );

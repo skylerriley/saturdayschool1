@@ -970,14 +970,14 @@ export default function App(){
   const [successMsg,setSuccessMsg]=useState("");
   const [errorMsg,setErrorMsg]=useState("");
   const [scoreMsg,setScoreMsg]=useState<{text:string,ok:boolean}|null>(null);
-  const showScoreMsg=useCallback((text:string,ok=true)=>{setScoreMsg({text,ok});setTimeout(()=>setScoreMsg(null),3500);},[]);
+  const showScoreMsg=useCallback((text:string,ok=true)=>{setScoreMsg({text,ok});setTimeout(()=>setScoreMsg(null),6000);},[]);
 
   // Lifted score-entry state -- survives tab navigation
   const [scoreMode,setScoreMode]=useState("hole");
   const [scoreEventId,setScoreEventId]=useState("");
   const [scorers,setScorers]=useState<any[]>([{golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false}]);
 
-  const showSuccess=useCallback((msg:string)=>{setSuccessMsg(msg);setTimeout(()=>setSuccessMsg(""),3500);},[]);
+  const showSuccess=useCallback((msg:string)=>{setSuccessMsg(msg);setTimeout(()=>setSuccessMsg(""),6000);},[]);
   const showError=useCallback((msg:string)=>{setErrorMsg(msg);setTimeout(()=>setErrorMsg(""),5000);},[]);
 
   // Event alert banner -- dismissed persists until midnight of the day it was dismissed

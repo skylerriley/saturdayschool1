@@ -497,7 +497,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
       {/* #3b - two sub-tabs: RSVP | View Pairings */}
       <ToggleGroup
-        options={[{value:"rsvp",label:"RSVP"},{value:"pairings",label:"View Pairings"}]}
+        options={[{value:"rsvp",label:"RSVPs"},{value:"pairings",label:"View Pairings"}]}
         value={subTab}
         onChange={setSubTab}
       />
