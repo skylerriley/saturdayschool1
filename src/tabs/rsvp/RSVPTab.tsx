@@ -7,6 +7,7 @@ import { supabase, sendPush } from "../../lib/supabaseClient";
 import { assignLateAdd } from "../../lib/golfMath";
 import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
+import { WeatherAmbience, getWeatherCardBg } from "../../components/WeatherAmbience";
 
 const swipeEarlyStyles = `
 .rsvp-swipe-outer {
@@ -239,9 +240,16 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   const [guestHcp,setGuestHcp]=useState("18");
   const [guestSelectedId,setGuestSelectedId]=useState<number|null>(null); // null = create new; number = reuse existing
 
+  const cardRef=useRef<HTMLDivElement>(null);
+  const [cardHeight,setCardHeight]=useState(340);
+
   const selEvent=events.find((e:any)=>e.event_id===selEventId);
   const eventSignups=signups.filter((s:any)=>s.event_id===selEventId);
   const {wx:forecastWx}=useWeather(selEvent?.course_name||"",selEvent?.date||"");
+
+  useEffect(()=>{
+    if(cardRef.current)setCardHeight(cardRef.current.offsetHeight);
+  },[selEventId,forecastWx]);
   const yesCount=eventSignups.filter((s:any)=>s.attending==="Yes").length;
   const noCount=eventSignups.filter((s:any)=>s.attending==="No").length;
   const unconfCount=eventSignups.filter((s:any)=>s.attending==="Unconfirmed").length;
@@ -402,8 +410,23 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   const mailtoLink=`mailto:?cc=${allEmails.join(",")}&subject=Reminder ${selEvent.course_name} ${selEvent.tee_times.join(", ")}&body=${encodeURIComponent(buildReminderBody())}`;
 
   if(upcomingEvents.length===0)return<div className="empty-state"><div className="empty-text">No upcoming events</div></div>;
+  const wxBg = getWeatherCardBg(forecastWx?.code);
+
   return(
-    <div>
+    <div style={{position:"relative"}}>
+      {wxBg&&(
+        <div aria-hidden="true" style={{
+          position:"absolute", left:-12, right:-12, top:-16, height:520,
+          background:wxBg, transition:"background 0.7s ease",
+          WebkitMaskImage:"linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
+          maskImage:"linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
+          pointerEvents:"none", zIndex:0,
+          overflow:"hidden",
+        }}>
+          <WeatherAmbience weatherCode={forecastWx?.code} cardHeight={520} />
+        </div>
+      )}
+      <div style={{position:"relative",zIndex:1}}>
       <div className="section-title">Sign Up</div>
       <div className="section-sub">RSVP for upcoming rounds</div>
 
@@ -416,7 +439,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
       {/* Event summary card -- status, tee times, and inline weather row */}
       {selEvent&&(
-        <div className="card" style={{padding:"12px 16px",marginBottom:16}}>
+        <div ref={cardRef} className="card" style={{padding:"12px 16px",marginBottom:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
             <div style={{fontWeight:700,fontSize:17}}>{selEvent.course_name}</div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -723,6 +746,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
         />
       )}
       {/* ── Push notification opt-in moved to Settings tab ── */}
+      </div>
     </div>
   );
 }
