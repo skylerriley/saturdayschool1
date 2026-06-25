@@ -564,7 +564,7 @@ const CSS = `
   .lb-detail{
     background:var(--surface2);
     border-bottom:1px solid var(--border);
-    padding:14px 5px;
+    padding:0;
     transform-origin:top center;
     animation:detailZoom 0.34s cubic-bezier(0.34,1.28,0.5,1);
   }
@@ -575,6 +575,39 @@ const CSS = `
   .lb-detail-item{}
   .lb-detail-key{font-size:12px;color:var(--text-muted);font-weight:500;text-transform:uppercase;letter-spacing:0.06em;}
   .lb-detail-val{font-size:18px;font-weight:700;color:var(--text-primary);line-height:1.2;}
+
+  /* Unified drawer shell — full-bleed background, padding on inner zones only */
+  .drawer-shell{background:linear-gradient(160deg,#eef4ea 0%,#f5f7f2 60%,#ede9e1 100%);margin:0;padding-top:8px;}
+  .drawer-chart-zone{padding:10px 10px 4px;}
+  .drawer-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:0 10px 8px;background:transparent;}
+  .drawer-tile{background:#fff;border:0.5px solid var(--border,#ddd8ce);border-radius:8px;padding:8px 6px 7px;text-align:center;display:flex;flex-direction:column;align-items:center;}
+  /* value renders first (top), label below */
+  .drawer-tile-value{font-size:18px;text-align:center;font-weight:700;color:var(--green-900,#1e3320);line-height:1.1;margin-top:6px;}
+  .drawer-tile-value.val-gold{color:var(--gold-600,#c9a227);}
+  .drawer-tile-value.val-green{color:var(--green-600,#2d7a4a);}
+  .drawer-tile-value.val-red{color:#b94040;}
+  /* fixed two-line height so long labels never stretch the tile */
+  .drawer-tile-label{font-size:11px;font-weight:600;color:var(--text-muted,#6a6050);letter-spacing:0.06em;text-transform:uppercase;line-height:1.25;min-height:calc(9px * 1.25 * 2);display:flex;align-items:flex-start;justify-content:center;text-align:center;}
+  .drawer-card{margin:0 9px 9px;background:#fff;border:0.5px solid var(--border,#ddd8ce);border-radius:9px;overflow:hidden;}
+  .drawer-card-body{padding:9px 10px;}
+  .drawer-card-footer{padding:0 9px 10px;}
+  .drawer-card-section-label{font-size:12px;font-weight:600;color:var(--text-muted,#6a6050);letter-spacing:0.07em;text-transform:uppercase;margin-bottom:5px;}
+  /* profile pill: matches .tab-sub-btn style — pill shape, centred, shrinks to content */
+  .drawer-profile-pill{display:block;margin:8px auto 10px;padding:8px 24px;width:auto;background:transparent;border:1.5px solid var(--green-600,#2d7a4a);border-radius:999px;font-size:13px;font-weight:600;color:var(--green-600,#2d7a4a);cursor:pointer;letter-spacing:0.03em;text-align:center;-webkit-tap-highlight-color:transparent;}
+  .drawer-insight{display:flex;align-items:flex-start;gap:6px;background:#f8f6f0;border-radius:6px;padding:7px 8px;margin-top:8px;}
+  .drawer-insight-label{font-size:9px;color:var(--text-muted,#6a6050);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;}
+  .drawer-insight-text{font-size:11px;color:var(--green-900,#1e3320);line-height:1.4;}
+  .drawer-tag-red{display:flex;align-items:center;gap:4px;background:#fce8e8;border:0.5px solid #f09595;border-radius:5px;padding:4px 7px;font-size:10px;color:#791f1f;}
+  .drawer-tag-green{display:flex;align-items:center;gap:4px;background:#eaf3de;border:0.5px solid #97c459;border-radius:5px;padding:4px 7px;font-size:10px;color:#27500a;}
+  .drawer-bars{display:flex;gap:3px;align-items:flex-end;height:44px;}
+  .drawer-bar-wrap{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;}
+  .drawer-bar-val{font-size:12px;font-weight:600;color:var(--text-muted,#6a6050);line-height:1;}
+  .drawer-bar-val.bar-gold{color:var(--gold-600,#c9a227);font-weight:900;}
+  .drawer-bar-label{font-size:7px;color:var(--text-muted,#6a6050);}
+  .drawer-bar{border-radius:3px 3px 0 0;width:100%;}
+  .drawer-badge-win{margin:0px 10px;display:inline-flex;align-items:center;gap:4px;background:#fffbe6;border:0.5px solid #d4b840;border-radius:5px;padding:3px 8px;font-size:12px;text-transform:uppercase;font-weight:600;color:#7a5000;}
+  .drawer-badge-pod{display:inline-flex;align-items:center;gap:4px;background:#eaf3de;border:0.5px solid #8bc44a;border-radius:5px;padding:3px 8px;font-size:12px;text-transform:uppercase;font-weight:600;color:#27500a;}
+  .lb-row.lb-row-open{background:var(--green-50,#e8efe5);border-left:3px solid var(--green-600,#2d7a4a);padding-left:11px;}
 
   /* hole-by-hole mini grid inside detail panel */
   .hbh-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:3px;margin-top:10px;}

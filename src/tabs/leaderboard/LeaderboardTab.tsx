@@ -788,7 +788,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     return(
       <div key={gid}>
         <div
-          className={`lb-row${isExpanded?" expanded":""}${decayOpacity>0?" post-win":""}`}
+          className={`lb-row${isExpanded?" expanded lb-row-open":""}${decayOpacity>0?" post-win":""}`}
           style={decayOpacity>0?{["--decay-opacity" as any]:decayOpacity.toFixed(3)}:undefined}
           onClick={()=>{
             // Preserve overlay scroll position -- expanding a row changes layout
@@ -831,22 +831,229 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
         </div>
         {isExpanded&&(
           <div className="lb-detail">
-            {mode==="season"?(
-              <div className="lb-detail-grid">
-                <div className="lb-detail-item"><div className="lb-detail-key">HCP Index</div><div className="lb-detail-val">{g?.current_handicap_index?.toFixed(1)}</div></div>
-                <div className="lb-detail-item"><div className="lb-detail-key">Rounds</div><div className="lb-detail-val">{stats.rounds}{!row.qualified?"*":""}</div></div>
-                <div className="lb-detail-item"><div className="lb-detail-key">1st Place Wins</div><div className="lb-detail-val">{stats.wins}</div></div>
-                <div className="lb-detail-item"><div className="lb-detail-key">2nd Place</div><div className="lb-detail-val">{stats.seconds}</div></div>
-                <div className="lb-detail-item"><div className="lb-detail-key">Best Round</div><div className="lb-detail-val" style={{color:"var(--gold-600)"}}>{stats.best}</div></div>
-                <div className="lb-detail-item"><div className="lb-detail-key">Worst Round</div><div className="lb-detail-val" style={{color:"var(--red-600)"}}>{stats.worst}</div></div>
-                <div className="lb-detail-item" style={{gridColumn:"1/-1"}}>
-                  <div className="lb-detail-key">Net Earnings</div>
-                  <div className="lb-detail-val" style={{color:stats.netEarnings>=0?"var(--green-700)":"var(--red-600)",fontSize:22}}>
-                    {stats.netEarnings>=0?"+$"+stats.netEarnings.toFixed(0):"-$"+Math.abs(stats.netEarnings).toFixed(0)}
+            {mode==="season"?(()=>{
+              const chronoRounds:number[]=seasonEventsAsc
+                .map((e:any)=>seasonPointsByEvent[gid]?.[e.event_id])
+                .filter((v:any)=>v!=null) as number[];
+
+              if(subTab==="top15"){
+                // Top 15 avg — scoring band donut above tiles + revised tile metrics
+                const sorted=[...chronoRounds].sort((a,b)=>b-a);
+                const top15Rounds=sorted.slice(0,15);
+                const myTop15Row=top15AvgWithTiesReplay.find((r:any)=>r.golfer_id===gid);
+                // Tile 3: Worst round counting toward top 15 avg (lowest score in top15Rounds)
+                const worstTop15=top15Rounds.length>0?top15Rounds[top15Rounds.length-1]:null;
+                const worstTop15Val=worstTop15!=null?String(worstTop15):"--";
+                // Tile 4: Gap to 1st place avg
+                const myAvg=myTop15Row?.avg??null;
+                const firstRow=top15AvgWithTiesReplay[0];
+                let gapTo1st:"—"|string="—";
+                if(myAvg!=null&&firstRow&&firstRow.golfer_id!==gid&&firstRow.avg!=null){
+                  gapTo1st=`−${(firstRow.avg-myAvg).toFixed(2)}`;
+                }
+                // Donut chart data
+                const bandDefs=[
+                  {count:top15Rounds.filter(p=>p>=40).length,color:"#c9a227",label:"40+"},
+                  {count:top15Rounds.filter(p=>p>=35&&p<40).length,color:"#1e3320",label:"35–39"},
+                  {count:top15Rounds.filter(p=>p>=30&&p<35).length,color:"#4a7a5a",label:"30–34"},
+                  {count:top15Rounds.filter(p=>p<30).length,color:"#b94040",label:"<30"},
+                ];
+                const totalBands=top15Rounds.length||1;
+                const showDonut=top15Rounds.length>0;
+                return(
+                  <div className="drawer-shell">
+                    {showDonut&&(()=>{
+                      const CX=56,CY=56,R=38,SW=22;
+                      let cursor=-90;
+                      const arcs=bandDefs.map((b,i)=>{
+                        if(b.count===0)return null;
+                        const sweep=Math.min((b.count/totalBands)*360,359.999);
+                        const startRad=cursor*Math.PI/180;
+                        const endRad=(cursor+sweep)*Math.PI/180;
+                        const sx=CX+R*Math.cos(startRad),sy=CY+R*Math.sin(startRad);
+                        const ex=CX+R*Math.cos(endRad),ey=CY+R*Math.sin(endRad);
+                        const large=sweep>180?1:0;
+                        cursor+=sweep;
+                        return<path key={i} d={`M${sx.toFixed(2)},${sy.toFixed(2)} A${R},${R} 0 ${large},1 ${ex.toFixed(2)},${ey.toFixed(2)}`} fill="none" stroke={b.color} strokeWidth={SW}/>;
+                      });
+                      return(
+                        <div className="drawer-chart-zone">
+                          <div className="drawer-card-section-label" style={{textAlign:"center"}}>TOP 15 SCORING</div>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16}}>
+                            <svg width={112} height={112} style={{flexShrink:0}}>
+                              {arcs}
+                              <text x={CX} y={CY-5} textAnchor="middle" fontSize="18" fontWeight="800" fill="var(--text-primary)">{top15Rounds.length}</text>
+                              <text x={CX} y={CY+12} textAnchor="middle" fontSize="10" fill="var(--text-muted)">rounds</text>
+                            </svg>
+                            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                              {bandDefs.map(b=>(
+                                <div key={b.label} style={{display:"flex",alignItems:"center",gap:7}}>
+                                  <div style={{width:10,height:10,borderRadius:"50%",background:b.color,flexShrink:0}}/>
+                                  <span style={{fontSize:12,fontWeight: 600,color:"var(--text-muted)",minWidth:38}}>{b.label}</span>
+                                  <span style={{fontSize:13,fontWeight:700,color:"var(--text-primary)"}}>{b.count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    <div className="drawer-tiles">
+                      <div className="drawer-tile">
+                        <div className="drawer-tile-value">{g?.current_handicap_index?.toFixed(1)??"--"}</div>
+                        <div className="drawer-tile-label">HCP</div>
+                      </div>
+                      <div className="drawer-tile">
+                        <div className="drawer-tile-value val-gold">{top15Rounds[0]??stats.best}</div>
+                        <div className="drawer-tile-label">Best</div>
+                      </div>
+                      <div className="drawer-tile">
+                        <div className="drawer-tile-value val-red">{worstTop15Val}</div>
+                        <div className="drawer-tile-label">Low</div>
+                      </div>
+                      <div className="drawer-tile">
+                        <div className="drawer-tile-value">{gapTo1st}</div>
+                        <div className="drawer-tile-label">Gap to 1st</div>
+                      </div>
+                    </div>
+                    {onNavigateToAnalyticsGolfer&&(
+                      <div style={{paddingBottom:5}}>
+                        <div className="">
+                          <button className="drawer-profile-pill" onClick={(e:any)=>{e.stopPropagation();onNavigateToAnalyticsGolfer(String(gid));}}>
+                            View Profile
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              // Season avg drawer — HCP trend sparkline above tile strip
+              const evDateMap2:Record<number,string>={};
+              events.forEach((e:any)=>{evDateMap2[e.event_id]=e.date;});
+              const hcpPts=signups
+                .filter((s:any)=>s.golfer_id===gid&&s.playing_handicap!=null&&evDateMap2[s.event_id])
+                .map((s:any)=>({
+                  hcp:s.playing_handicap,
+                  pts:seasonPointsByEvent[gid]?.[s.event_id]??null,
+                  eventId:s.event_id,
+                  date:evDateMap2[s.event_id],
+                }))
+                .sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
+              // Require at least 3 distinct data points for a meaningful trend
+              const showHcpChart=hcpPts.length>=3;
+              // Trend direction: compare last value to first
+              const hcpFirst=hcpPts.length>0?hcpPts[0].hcp:null;
+              const hcpLast=hcpPts.length>0?hcpPts[hcpPts.length-1].hcp:null;
+              const hcpDelta=hcpFirst!=null&&hcpLast!=null?hcpLast-hcpFirst:null;
+              const trendDown=hcpDelta!=null&&hcpDelta<-0.4;
+              const trendUp=hcpDelta!=null&&hcpDelta>0.4;
+              const trendColor=trendDown?"var(--green-600)":trendUp?"#b94040":"var(--text-muted)";
+              const trendArrow=trendDown?"↓":trendUp?"↑":"→";
+              const trendLabel=hcpDelta!=null
+                ?(trendDown?`↓ ${Math.abs(hcpDelta).toFixed(1)} this season`:trendUp?`↑ ${Math.abs(hcpDelta).toFixed(1)} this season`:"Stable this season")
+                :"";
+              // Best-round event annotation
+              const bestPtsEntry=hcpPts.length>0?hcpPts.reduce((best:any,h:any)=>h.pts!=null&&(best==null||h.pts>best.pts)?h:best,null):null;
+              // SVG sparkline math (only computed when showHcpChart)
+              const spW=160,spH=52,spPad=4;
+              const hcpVals=hcpPts.map((h:any)=>h.hcp);
+              const hcpMinV=showHcpChart?Math.min(...hcpVals)-0.5:0;
+              const hcpMaxV=showHcpChart?Math.max(...hcpVals)+0.5:1;
+              const hcpRange=Math.max(hcpMaxV-hcpMinV,0.5);
+              const xOf=(i:number)=>spPad+(i/(hcpPts.length-1))*(spW-spPad*2);
+              const yOf=(hcp:number)=>spH-spPad-((hcp-hcpMinV)/hcpRange)*(spH-spPad*2);
+              const polyPoints=hcpPts.map((h:any,i:number)=>`${xOf(i).toFixed(1)},${yOf(h.hcp).toFixed(1)}`).join(" ");
+              const lineCol=trendDown?"#b94040":trendUp?"#4a7a5a":"#9c7c65";
+              const netSign=stats.netEarnings>=0;
+              const netLabel=netSign?`+$${stats.netEarnings.toFixed(0)}`:`-$${Math.abs(stats.netEarnings).toFixed(0)}`;
+              return(
+                <div className="drawer-shell">
+                  {showHcpChart&&(
+                    <div className="drawer-chart-zone">
+                      {(stats.wins>0||stats.seconds>0)&&(
+                        <div style={{gap:6,flexWrap:"wrap",marginBottom:6}}>
+                          {stats.wins>0&&<span className="drawer-badge-win">&#127942; {stats.wins} win{stats.wins>1?"s":""}</span>}
+                          {stats.seconds>0&&<span className="drawer-badge-pod">&#129352; {stats.seconds}x 2nd</span>}
+                        </div>
+                      )}
+                      <div className="drawer-card-section-label" style={{textAlign:"center"}}>HANDICAP TREND</div>
+                      
+                      <svg viewBox={`0 0 ${spW} ${spH}`} width="100%" height={spH} style={{overflow:"visible",display:"block"}}>
+                        <defs>
+                          <linearGradient id={`hcpfill-${gid}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={lineCol} stopOpacity="0.12"/>
+                            <stop offset="100%" stopColor={lineCol} stopOpacity="0"/>
+                          </linearGradient>
+                        </defs>
+                        <polygon
+                          points={`${polyPoints} ${xOf(hcpPts.length-1).toFixed(1)},${spH} ${xOf(0).toFixed(1)},${spH}`}
+                          fill={`url(#hcpfill-${gid})`}
+                        />
+                        <polyline points={polyPoints} fill="none"
+                          stroke={lineCol} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        {hcpPts.map((h:any,i:number)=>{
+                          const isRecent=i===hcpPts.length-1;
+                          const isBest=bestPtsEntry&&h.eventId===bestPtsEntry.eventId;
+                          const cx=xOf(i),cy=yOf(h.hcp);
+                          return(
+                            <g key={i}>
+                              <circle cx={cx} cy={cy} r={isRecent?5:isBest?4.5:3}
+                                fill={isRecent?"#c9a227":lineCol}
+                                stroke="#fff" strokeWidth={isRecent?2:1.5}
+                              />
+                            </g>
+                          );
+                        })}
+                        <text x={xOf(0)} y={spH+12} textAnchor="middle" fontSize="12" fontWeight="600" fill="var(--text-muted)">{hcpVals[0]}</text>
+                        <text x={xOf(hcpPts.length-1)} y={spH+12} textAnchor="middle" fontWeight="600" fontSize="12" fill="var(--text-muted)">{hcpVals[hcpVals.length-1]}</text>
+                      </svg>
+                      {trendLabel&&(
+                        <div style={{marginTop:25,fontSize:12,color:trendColor,fontWeight:600,textAlign:"center"}}>
+                          {trendLabel}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {!showHcpChart&&(stats.wins>0||stats.seconds>0)&&(
+                    <div style={{gap:6,flexWrap:"wrap",padding:"0 10px 8px"}}>
+                      {stats.wins>0&&<span className="drawer-badge-win">&#127942; {stats.wins} win{stats.wins>1?"s":""}</span>}
+                      {stats.seconds>0&&<span className="drawer-badge-pod">&#129352; {stats.seconds}x 2nd</span>}
+                    </div>
+                  )}
+                  <div className="drawer-tiles">
+                    
+                    <div className="drawer-tile">
+                      <div className="drawer-tile-value">{g?.current_handicap_index?.toFixed(1)??"--"}</div>
+                      <div className="drawer-tile-label">HCP</div>
+                    </div>
+                    <div className="drawer-tile">
+                      <div className="drawer-tile-value val-gold">{stats.best}</div>
+                      <div className="drawer-tile-label">Best</div>
+                    </div>
+                    <div className="drawer-tile">
+                      <div className="drawer-tile-value val-red">{stats.worst}</div>
+                      <div className="drawer-tile-label">Worst</div>
+                    </div>
+                    <div className="drawer-tile">
+                      <div className={`drawer-tile-value${netSign?" val-gold":" val-red"}`}>{netLabel}</div>
+                      <div className="drawer-tile-label">Net Earnings</div>
+                    </div>
+                  </div>
+                  
+                  <div style={{paddingBottom:5}}>
+                    <div className="">
+                      {onNavigateToAnalyticsGolfer&&(
+                        <button className="drawer-profile-pill" onClick={(e:any)=>{e.stopPropagation();onNavigateToAnalyticsGolfer(String(gid));}}>
+                          View Profile
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ):(()=>{
+              );
+            })():(()=>{
               // 5: weekly detail with total score + proper scorecard
               const course=teePlayed||courses.find((c:any)=>c.course_name===displayEvent?.course_name);
               const front9=hbhScores.slice(0,9);
@@ -857,23 +1064,29 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               const back9Pts=back9.reduce((s:number,h:any)=>s+(h.stableford_points||0),0);
               return(
                 <>
-                  {/* Weekly metrics: Total Score, HCP, Tees, Earnings */}
-                  <div className="lb-detail-grid" style={{marginBottom:10,justifyItems:"center",textAlign:"center"}}>
-                    
-                    {/* 3: Total Gross only shown when H×H data exists */}
-                    
-                    <div className="lb-detail-item"><div className="lb-detail-key">Playing HCP</div><div className="lb-detail-val">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&teePlayed?calcPlayingHandicap(g.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"--")}</div></div>
-                    <div className="lb-detail-item"><div className="lb-detail-key">Tees Played</div><div className="lb-detail-val">{teePlayed?.tee_box_name??"--"}</div></div>
-                    {hbhScores.length>0&&<div className="lb-detail-item"><div className="lb-detail-key">Total Gross</div><div className="lb-detail-val" style={{fontWeight:700,fontSize:22}}>{front9Gross+back9Gross}</div></div>}
-                    {/* 3: Show stableford and skins winnings as separate lines */}
-                    {weeklyEntry?.weekly_payout_won>0&&<div className="lb-detail-item"><div className="lb-detail-key">Stableford Won</div><div className="lb-detail-val" style={{color:"var(--gold-600)",fontWeight:700}}>${Number(weeklyEntry.weekly_payout_won).toFixed(0)}</div></div>}
-                    {(()=>{
-                      const skinAmt=hasLiveSkins?(liveSkinPayouts[gid]||0):Number(weeklyEntry?.skins_payout_won||0);
-                      return skinAmt>0?<div className="lb-detail-item"><div className="lb-detail-key">Skins Won</div><div className="lb-detail-val" style={{color:"var(--green-700)",fontWeight:700}}>${skinAmt.toFixed(0)}</div></div>:null;
-                    })()}
-                  </div>
+                  <div className="drawer-shell">
+                    <div className="drawer-tiles">
+                      <div className="drawer-tile">
+                        <div className="drawer-tile-value">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&teePlayed?calcPlayingHandicap(g.current_handicap_index,teePlayed.tee_slope,teePlayed.tee_rating,teePlayed.par):"--")}</div>
+                        <div className="drawer-tile-label">Course HCP</div>
+                      </div>
+                      <div className="drawer-tile">
+                        <div className="drawer-tile-value">{teePlayed?.tee_box_name??"--"}</div>
+                        <div className="drawer-tile-label">Tees</div>
+                      </div>
+                      <div className="drawer-tile">
+                        <div className="drawer-tile-value">{hbhScores.length>0?front9Gross+back9Gross:"--"}</div>
+                        <div className="drawer-tile-label">Gross</div>
+                      </div>
+                      <div className="drawer-tile">
+                        <div className={`drawer-tile-value${(hasLiveSkins?(liveSkinPayouts[gid]||0):Number(weeklyEntry?.skins_payout_won||0))>0?" val-gold":""}`}>
+                          {(()=>{const s=hasLiveSkins?(liveSkinPayouts[gid]||0):Number(weeklyEntry?.skins_payout_won||0);return s>0?`$${s.toFixed(0)}`:"--";})()}
+                        </div>
+                        <div className="drawer-tile-label">Skins</div>
+                      </div>
+                    </div>
 
-                  {/* 5: Full golf scorecard table */}
+                  {/* Full golf scorecard table */}
                   {hbhScores.length>0&&course&&(()=>{
                     // Build a single unified 11-column table (label + 9 holes + OUT/IN + TOT)
                     // F9 rows on top, B9 rows below — columns align so hole 1 is above hole 10, etc.
@@ -887,7 +1100,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     return(
                       <div>
                         <div style={{fontSize:14,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textAlign:"center",textTransform:"uppercase",marginBottom:4}}>Scorecard</div>
-                        <div style={{overflowX:"auto"}}>
+                        <div style={{overflowX:"auto",margin:8}}>
                           <table className="scorecard-table" style={{minWidth:0,width:"100%"}}>
                             {/* ── COL sizing: label | 9 hole cols | summary | tot ── */}
                             <colgroup>
@@ -985,7 +1198,31 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                       </div>
                     );
                   })()}
-                  {hbhScores.length===0&&<div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",marginTop:4}}>Total-only entry -- no hole-by-hole data</div>}
+                  {hbhScores.length===0&&<div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",marginTop:4,padding:"0 9px 9px"}}>Total-only entry -- no hole-by-hole data</div>}
+                  {(()=>{
+                    const evPts=weeklyEntry?.total_stableford_points;
+                    const seasonAvgForGolfer=byG[gid]?.length?(byG[gid].reduce((a:number,b:number)=>a+b,0)/byG[gid].length):null;
+                    const diff=evPts!=null&&seasonAvgForGolfer!=null?evPts-seasonAvgForGolfer:null;
+                    const absDiff=diff!=null?Math.abs(diff).toFixed(1):null;
+                    const insightText=diff!=null&&evPts!=null&&seasonAvgForGolfer!=null
+                      ?(diff>=0
+                        ?`${evPts} pts is +${absDiff} above their ${seasonAvgForGolfer.toFixed(1)} season avg`
+                        :`${evPts} pts, ${absDiff} below their ${seasonAvgForGolfer.toFixed(1)} season avg`)
+                      :null;
+                    return(
+                      <div className="" style={{marginTop:12}}>
+                        
+                        <div className="drawer-card-footer">
+                          {onNavigateToAnalyticsGolfer&&(
+                            <button className="drawer-profile-pill" onClick={(e:any)=>{e.stopPropagation();onNavigateToAnalyticsGolfer(String(gid));}}>
+                              View Profile
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  </div>{/* end drawer-shell */}
                 </>
               );
             })()}
@@ -1247,26 +1484,47 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                         </div>
                       </div>
 
-                      {isExp&&(
+                      {isExp&&(()=>{
+                        const sk2=(hNum:number)=>liveSkinHoleWinners[hNum]===row.golfer_id;
+                        const f9cells=Array.from({length:9},(_,i)=>row.hs.find((h:any)=>h.hole_number===i+1)||null);
+                        const b9cells=Array.from({length:9},(_,i)=>row.hs.find((h:any)=>h.hole_number===i+10)||null);
+                        const f9gross=f9cells.reduce((s:number,h:any)=>s+(h?.gross_score||0),0);
+                        const b9gross=b9cells.reduce((s:number,h:any)=>s+(h?.gross_score||0),0);
+                        const f9pts=f9cells.reduce((s:number,h:any)=>s+(h?.stableford_points||0),0);
+                        const b9pts=b9cells.reduce((s:number,h:any)=>s+(h?.stableford_points||0),0);
+                        const totGross=(f9gross+b9gross)||"";
+                        const totPts=f9pts+b9pts;
+                        const hasF9=front.length>0;
+                        const hasB9=back.length>0;
+                        return(
                         <div className="lb-detail">
+                          <div className="drawer-shell">
+                            <div className="drawer-tiles">
+                              <div className="drawer-tile">
+                                <div className="drawer-tile-value">{g?.current_handicap_index?.toFixed(1)??"--"}</div>
+                                <div className="drawer-tile-label">HCP</div>
+                              </div>
+                              <div className="drawer-tile">
+                                <div className="drawer-tile-value">{playerCourse?.tee_box_name??"--"}</div>
+                                <div className="drawer-tile-label">Tees</div>
+                              </div>
+                              <div className="drawer-tile">
+                                <div className="drawer-tile-value">{row.hs.length>0?(f9gross+b9gross)||"--":"--"}</div>
+                                <div className="drawer-tile-label">Gross*</div>
+                              </div>
+                              <div className="drawer-tile">
+                                <div className={`drawer-tile-value${(liveSkinPayoutsLocal[row.golfer_id]||0)>0?" val-gold":""}`}>
+                                  {(()=>{const s=liveSkinPayoutsLocal[row.golfer_id]||0;return s>0?`$${s.toFixed(0)}`:"--";})()}
+                                </div>
+                                <div className="drawer-tile-label">Skins</div>
+                              </div>
+                            </div>
                           {row.hs.length>0&&playerCourse?(
                             <div>
                               <div style={{fontSize:12,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>
                                 Live Scorecard · {playerCourse.tee_box_name} tees
                               </div>
                               {(()=>{
-                                // Single unified table: F9 on top, B9 below, columns aligned, TOT at far right
-                                const sk2=(hNum:number)=>liveSkinHoleWinners[hNum]===row.golfer_id;
-                                const f9cells=Array.from({length:9},(_,i)=>row.hs.find((h:any)=>h.hole_number===i+1)||null);
-                                const b9cells=Array.from({length:9},(_,i)=>row.hs.find((h:any)=>h.hole_number===i+10)||null);
-                                const f9gross=f9cells.reduce((s:number,h:any)=>s+(h?.gross_score||0),0);
-                                const b9gross=b9cells.reduce((s:number,h:any)=>s+(h?.gross_score||0),0);
-                                const f9pts=f9cells.reduce((s:number,h:any)=>s+(h?.stableford_points||0),0);
-                                const b9pts=b9cells.reduce((s:number,h:any)=>s+(h?.stableford_points||0),0);
-                                const totGross=(f9gross+b9gross)||"";
-                                const totPts=f9pts+b9pts;
-                                const hasF9=front.length>0;
-                                const hasB9=back.length>0;
                                 return(
                                   <div style={{overflowX:"auto"}}>
                                     <table className="scorecard-table" style={{minWidth:0,width:"100%"}}>
@@ -1368,10 +1626,12 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                               })()}
                             </div>
                           ):(
-                            <div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic"}}>No hole-by-hole data yet</div>
+                            <div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",padding:"8px 9px"}}>No hole-by-hole data yet</div>
                           )}
+                          </div>{/* end drawer-shell */}
                         </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -1496,7 +1756,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   const prevRow=rows[rowIdx-1];
                   const isGroupStart=pairingsSet&&rowIdx>0&&s.assigned_tee_time&&prevRow&&s.assigned_tee_time!==prevRow.assigned_tee_time;
                   return(
-                    <div key={s.signup_id} style={isGroupStart?{borderTop:"2px solid var(--green-700)"}:undefined}>
+                    <div key={s.signup_id} className={isExp?"lb-row-open":undefined} style={isGroupStart?{borderTop:"2px solid var(--green-700)"}:undefined}>
                       <div className="lb-live-row" onClick={()=>setUpcomingExpandedId(isExp?null:s.golfer_id)}>
                         <div style={{fontSize:16,fontWeight:700,color:"var(--text-secondary)"}}>{posLabel}</div>
                         <div style={{fontSize:16,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}</div>

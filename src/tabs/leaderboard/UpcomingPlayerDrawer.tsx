@@ -140,35 +140,31 @@ export function UpcomingPlayerDrawer({ golfer, leaderboard, events, nextEvent, s
         </div>
       )}
 
-      {/* Stat grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      {/* Stat grid — 4 tiles in one row */}
+      <div className="drawer-tiles">
         {monthAvg != null && monthRounds >= 1 && (
-          <StatTile
-            label={`${monthName} hist. avg`}
-            value={fmt(monthAvg)}
-            sub={`${monthRounds} round${monthRounds !== 1 ? "s" : ""}`}
-          />
+          <div className="drawer-tile">
+            <div className="drawer-tile-value">{fmt(monthAvg)}</div>
+            <div className="drawer-tile-label">{monthName} avg</div>
+          </div>
         )}
         {courseAvg != null && courseRounds >= 1 && (
-          <StatTile
-            label="Course avg"
-            value={fmt(courseAvg)}
-            sub={`${courseRounds} round${courseRounds !== 1 ? "s" : ""}`}
-          />
+          <div className="drawer-tile">
+            <div className="drawer-tile-value">{fmt(courseAvg)}</div>
+            <div className="drawer-tile-label">Course avg</div>
+          </div>
         )}
         {seasonAvg != null && seasonRounds >= 1 && (
-          <StatTile
-            label="Season avg"
-            value={fmt(seasonAvg)}
-            sub={`${seasonRounds} round${seasonRounds !== 1 ? "s" : ""}`}
-          />
+          <div className="drawer-tile">
+            <div className="drawer-tile-value">{fmt(seasonAvg)}</div>
+            <div className="drawer-tile-label">Season avg</div>
+          </div>
         )}
         {golfer.current_handicap_index != null && (
-          <StatTile
-            label="Handicap"
-            value={Number(golfer.current_handicap_index).toFixed(1)}
-            sub=""
-          />
+          <div className="drawer-tile">
+            <div className="drawer-tile-value">{Number(golfer.current_handicap_index).toFixed(1)}</div>
+            <div className="drawer-tile-label">Handicap</div>
+          </div>
         )}
       </div>
 
@@ -195,21 +191,6 @@ export function UpcomingPlayerDrawer({ golfer, leaderboard, events, nextEvent, s
           </button>
         </div>
       )}
-    </div>
-  );
-}
-
-function StatTile({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <div style={{
-      background: "var(--surface)",
-      border: "1px solid var(--border)",
-      borderRadius: "var(--radius-md)",
-      padding: "8px 10px",
-    }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 3 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text-primary)", lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
