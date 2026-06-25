@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useLayoutEffect, useEffect } from "react";
 import { buildProfile, calcFieldOdds, toAmericanOdds, h2hHistory, h2hWinProb, MC_TRIALS, VIG, randNorm } from "../../lib/monteCarlo";
 import { TonyInsight } from "./TonyInsight";
 
@@ -243,26 +243,59 @@ function OddsViewNav({ view, setView, showGroups }: { view: string; setView: (v:
     ...(showGroups ? [{ id: "groups", label: "GROUPS" }] : []),
     { id: "matchups", label: "MATCHUPS" },
   ];
+
+  const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [inkStyle, setInkStyle] = useState<{ left: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const idx = tabs.findIndex(t => t.id === view);
+    const el = btnRefs.current[idx];
+    if (!el) return;
+    const parent = el.parentElement;
+    if (!parent) return;
+    const parentRect = parent.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    setInkStyle({ left: elRect.left - parentRect.left, width: elRect.width });
+  }, [view, showGroups]);
+
   return (
-    <div style={{ display: "flex", justifyContent: "center", gap: 20, marginBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
-      {tabs.map(t => (
+    <div style={{ position: "relative", display: "flex", justifyContent: "center", gap: 24, marginBottom: 0, paddingBottom: 0 }}>
+      {tabs.map((t, i) => (
         <button
           key={t.id}
+          ref={el => { btnRefs.current[i] = el; }}
           onClick={() => setView(t.id)}
           style={{
             background: "none", border: "none", cursor: "pointer",
-            padding: "0 0 10px", fontSize: 15, fontWeight: view === t.id ? 700 : 700,
-            color: view === t.id ? "white" : "rgba(255,255,255,0.45)",
-            borderBottom: view === t.id ? "2px solid var(--gold-400)" : "2px solid transparent",
-            marginBottom: -1,
+            padding: "0 4px 12px",
+            fontSize: 13, fontWeight: 700,
+            color: view === t.id ? "white" : "rgba(255,255,255,0.4)",
             WebkitTapHighlightColor: "transparent",
-            transition: "color 0.15s",
-            letterSpacing: "0.01em",
+            transition: "color 0.2s",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
           }}
         >
           {t.label}
         </button>
       ))}
+      {/* Track line */}
+      <div style={{
+        position: "absolute", bottom: 0, left: 0, right: 0,
+        height: 1, background: "rgba(255,255,255,0.12)",
+      }} />
+      {/* Ink indicator */}
+      {inkStyle && (
+        <div style={{
+          position: "absolute", bottom: 0,
+          left: inkStyle.left,
+          width: inkStyle.width,
+          height: 2,
+          background: "var(--gold-400)",
+          borderRadius: 2,
+          transition: "left 0.28s cubic-bezier(0.4,0,0.2,1), width 0.28s cubic-bezier(0.4,0,0.2,1)",
+        }} />
+      )}
     </div>
   );
 }
@@ -333,64 +366,125 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
   const pairingsSet = event?.status === "Pairings Set";
   const hasGroups = pairingsSet && signups.some((s: any) => s.event_id === event?.event_id && s.group_num != null);
 
+  // ── Slide transition + skeleton ──────────────────────────────────────────────
+  const tabOrder = ["field", ...(hasGroups ? ["groups"] : []), "matchups"];
+  const prevViewRef = useRef(oddsView);
+  const [displayView, setDisplayView] = useState(oddsView);
+  const [slideDir, setSlideDir] = useState<"left" | "right">("right");
+  const [phase, setPhase] = useState<"idle" | "skeleton" | "sliding">("idle");
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const lockedHeightRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (oddsView === displayView) return;
+    const prevIdx = tabOrder.indexOf(prevViewRef.current);
+    const nextIdx = tabOrder.indexOf(oddsView);
+    setSlideDir(nextIdx > prevIdx ? "left" : "right");
+    prevViewRef.current = oddsView;
+
+    // Lock the container height so the page doesn't jump when content changes size
+    if (contentRef.current) {
+      lockedHeightRef.current = contentRef.current.getBoundingClientRect().height;
+    }
+
+    // Phase 1: show skeleton (holds height via locked min-height)
+    setPhase("skeleton");
+    if (timerRef.current != null) clearTimeout(timerRef.current);
+
+    // After 180ms skeleton, swap in real content and play slide-in
+    timerRef.current = window.setTimeout(() => {
+      setDisplayView(oddsView);
+      setPhase("sliding");
+      lockedHeightRef.current = null;
+      timerRef.current = window.setTimeout(() => setPhase("idle"), 320);
+    }, 180);
+  }, [oddsView]);
+
+  useEffect(() => () => { if (timerRef.current != null) clearTimeout(timerRef.current); }, []);
+
+  const slideIn = phase === "sliding" ? {
+    animation: `odds-slide-${slideDir} 0.30s cubic-bezier(0.22,1,0.36,1) both`,
+  } : {};
+
+  // Skeleton rows
+  const SkeletonRows = ({ count = 5 }: { count?: number }) => (
+    <div style={{ padding: "8px 0" }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div style={{ height: 14, borderRadius: 7, background: "rgba(255,255,255,0.08)", width: `${48 + (i % 3) * 14}%`, animation: "odds-shimmer 1.4s ease-in-out infinite", animationDelay: `${i * 0.07}s` }} />
+          <div style={{ height: 28, width: 56, borderRadius: 14, background: "rgba(255,255,255,0.08)", animation: "odds-shimmer 1.4s ease-in-out infinite", animationDelay: `${i * 0.07 + 0.1}s` }} />
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div style={{ marginTop: 14 }}>
+      <style>{`
+        @keyframes odds-slide-left {
+          from { opacity: 0; transform: translateX(18px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes odds-slide-right {
+          from { opacity: 0; transform: translateX(-18px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes odds-shimmer {
+          0%, 100% { opacity: 0.5; }
+          50%       { opacity: 1; }
+        }
+      `}</style>
       <div className="card-title" style={{ marginBottom: 10 }}>Event Odds</div>
 
       {/* Odds view nav — rendered on dark background */}
       <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 4 }}>
-        <div style={{ padding: "12px 14px 0" }}>
+        <div style={{ padding: "14px 14px 0" }}>
           <OddsViewNav view={oddsView} setView={setOddsView} showGroups={hasGroups} />
         </div>
 
-        {/* Field view */}
-        {oddsView === "field" && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 60px 65px 60px", padding: "8px 20px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textAlign: "left", textTransform: "uppercase" }}>Golfer</div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "center" }}>Proj</div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "center" }}>Win %</div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "right" }}>Odds</div>
-            </div>
-            {ranked.map((r: any, i: number) => {
-              const rawOdds = r.oddsAmerican ?? toAmericanOdds(r.prob);
-              const odds = (r.prob === 0 || rawOdds === "N/A" || rawOdds === "EVEN") ? "N/A" : rawOdds;
-              const isFav = i === 0;
-              return (
-                <div key={r.golfer.golfer_id} style={{ display: "grid", gridTemplateColumns: "1fr 60px 65px 60px", padding: "11px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: isFav ? "rgba(196,120,0,0.12)" : "transparent", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: 15, textAlign: "left", fontWeight: isFav ? 700 : 500, color: isFav ? "var(--gold-300)" : "rgba(255,255,255,0.88)" }}>
-                      {r.golfer.first_name} {r.golfer.last_name}{isFav ? " 🏆" : ""}
-                      {r.golfer.is_guest && <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(196,120,0,0.25)", color: "var(--gold-300)", borderRadius: 4, padding: "1px 5px", marginLeft: 5 }}>guest</span>}
+        {/* Animated content area */}
+        <div ref={contentRef} style={{ marginTop: 12, minHeight: lockedHeightRef.current ?? undefined, ...slideIn }}>
+          {phase === "skeleton" ? (
+            <SkeletonRows count={displayView === "matchups" ? ranked.length : displayView === "groups" ? 3 : 5} />
+          ) : displayView === "field" ? (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 60px 65px 60px", padding: "8px 20px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textAlign: "left", textTransform: "uppercase" }}>Golfer</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "center" }}>Proj</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "center" }}>Win %</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "right" }}>Odds</div>
+              </div>
+              {ranked.map((r: any, i: number) => {
+                const rawOdds = r.oddsAmerican ?? toAmericanOdds(r.prob);
+                const odds = (r.prob === 0 || rawOdds === "N/A" || rawOdds === "EVEN") ? "N/A" : rawOdds;
+                const isFav = i === 0;
+                return (
+                  <div key={r.golfer.golfer_id} style={{ display: "grid", gridTemplateColumns: "1fr 60px 65px 60px", padding: "11px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: isFav ? "rgba(196,120,0,0.12)" : "transparent", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 15, textAlign: "left", fontWeight: isFav ? 700 : 500, color: isFav ? "var(--gold-300)" : "rgba(255,255,255,0.88)" }}>
+                        {r.golfer.first_name} {r.golfer.last_name}{isFav ? " 🏆" : ""}
+                        {r.golfer.is_guest && <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(196,120,0,0.25)", color: "var(--gold-300)", borderRadius: 4, padding: "1px 5px", marginLeft: 5 }}>guest</span>}
+                      </div>
+                      {r.projLow != null && r.projHigh != null && (
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 1 }}>{r.projLow}–{r.projHigh} pts</div>
+                      )}
                     </div>
-                    {r.projLow != null && r.projHigh != null && (
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 1 }}>{r.projLow}–{r.projHigh} pts</div>
-                    )}
-                  </div>
-                  <div style={{ textAlign: "center", fontSize: 17, fontWeight: 700, color: "var(--green-300)" }}>{r.projMean ?? r.proj}</div>
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>{(r.prob * 100).toFixed(1)}%</div>
-                    <div style={{ height: 4, background: "rgba(255,255,255,0.15)", borderRadius: 2, marginTop: 3 }}>
-                      <div style={{ height: 4, borderRadius: 2, background: "var(--gold-400)", width: (r.prob * 100) + "%" }} />
+                    <div style={{ textAlign: "center", fontSize: 17, fontWeight: 700, color: "var(--green-300)" }}>{r.projMean ?? r.proj}</div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>{(r.prob * 100).toFixed(1)}%</div>
+                      <div style={{ height: 4, background: "rgba(255,255,255,0.15)", borderRadius: 2, marginTop: 3 }}>
+                        <div style={{ height: 4, borderRadius: 2, background: "var(--gold-400)", width: (r.prob * 100) + "%" }} />
+                      </div>
                     </div>
+                    <div style={{ textAlign: "right", fontSize: 15, fontWeight: 700, color: parseFloat(odds) < 0 ? "var(--gold-300)" : "var(--green-300)" }}>{odds}</div>
                   </div>
-                  <div style={{ textAlign: "right", fontSize: 15, fontWeight: 700, color: parseFloat(odds) < 0 ? "var(--gold-300)" : "var(--green-300)" }}>{odds}</div>
-                </div>
-              );
-            })}
-          </>
-        )}
-
-        {/* Groups view */}
-        {oddsView === "groups" && hasGroups && (
-          <div style={{ padding: "0 0 4px" }}>
+                );
+              })}
+            </>
+          ) : displayView === "groups" && hasGroups ? (
             <GroupsView signups={signups} golfers={golfers} event={event} ranked={ranked} />
-          </div>
-        )}
-
-        {/* Matchups view */}
-        {oddsView === "matchups" && (
-          <div style={{ padding: "0 0 4px" }}>
+          ) : displayView === "matchups" ? (
             <MatchupsView
               ranked={ranked}
               golfers={golfers}
@@ -399,11 +493,11 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
               signups={signups}
               courseName={courseName}
             />
-          </div>
-        )}
+          ) : null}
+        </div>
       </div>
 
-      {oddsView === "field" && fieldConfirmed && (
+      {displayView === "field" && fieldConfirmed && phase === "idle" && (
         <TonyInsight ranked={ranked} selEventId={String(event?.event_id)} selEvent={event} fieldConfirmed={fieldConfirmed} hasBackend={hasBackend}
           leaderboard={leaderboard} events={events} signups={signups} golfers={golfers} courseName={courseName} hideRecord />
       )}
