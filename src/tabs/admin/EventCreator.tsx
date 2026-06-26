@@ -88,7 +88,7 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{ev.course_name} · <span className={`pill ${ev.status === "Completed" ? "pill-green" : ev.status === "Upcoming" ? "pill-gold" : "pill-blue"}`} style={{ fontSize: 10 }}>{ev.status}</span></div>
           </div>
           {ev.season === currentYear && <button className="btn btn-sm btn-outline" onClick={() => startEdit(ev)}>Edit</button>}
-          {ev.season === currentYear && ev.status === "Completed" && <button className="btn btn-sm btn-outline" style={{ color: "var(--gold-500)", borderColor: "var(--gold-500)" }} onClick={() => reopenEvent(ev.event_id, ev.date)}>Reopen</button>}
+          {ev.season === currentYear && ev.status === "Completed" && (Date.now() - new Date(ev.date).getTime() < 7 * 24 * 60 * 60 * 1000) && <button className="btn btn-sm btn-outline" style={{ color: "var(--gold-500)", borderColor: "var(--gold-500)" }} onClick={() => reopenEvent(ev.event_id, ev.date)}>Reopen</button>}
           {ev.season === currentYear && ev.status !== "Completed" && <button className="btn btn-sm btn-danger" onClick={() => deleteEvent(ev.event_id, ev.date)}>Del</button>}
           {ev.season !== currentYear && <span style={{ fontSize: 11, color: "var(--text-muted)", padding: "4px 8px" }}>view only</span>}
         </div>
