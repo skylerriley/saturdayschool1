@@ -295,6 +295,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   const [upcomingExpandedId,setUpcomingExpandedId]=useState<number|null>(null);
   const [liveWeatherOpen,setLiveWeatherOpen]=useState(false);
   const [upcomingWeatherOpen,setUpcomingWeatherOpen]=useState(false);
+  const [liveSkinsRevealedHole,setLiveSkinsRevealedHole]=useState<number|null>(null);
+  const [weeklySkinsRevealedHole,setWeeklySkinsRevealedHole]=useState<number|null>(null);
 
   // Feed overlay state: which event's full detail is open
   const [feedOverlayEvent,setFeedOverlayEvent]=useState<any|null>(null);
@@ -1654,6 +1656,90 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                 })()}
               </div>
             )}
+            {/* ── Live skins board ── */}
+            {liveSkinsEligible&&(()=>{
+              const skinsPaid=liveEntries.filter((e:any)=>e.skins_paid);
+              if(!skinsPaid.length)return null;
+              // Rebuild playerHoleMap to know which holes each player has scored
+              const playerHoleMap2:Record<number,Record<number,number>>={};
+              skinsPaid.forEach((entry:any)=>{
+                const hs=holeScores.filter((h:any)=>h.summary_id===entry.summary_id);
+                hs.forEach((h:any)=>{
+                  if(h.stableford_points==null)return;
+                  if(!playerHoleMap2[entry.golfer_id])playerHoleMap2[entry.golfer_id]={};
+                  playerHoleMap2[entry.golfer_id][h.hole_number]=h.stableford_points;
+                });
+              });
+              const playerIds2=Object.keys(playerHoleMap2).map(Number);
+              const totalPlayers=playerIds2.length;
+
+              // Per-hole state: "pending" | "tied" | golfer_id (winner)
+              const holeState:(number|"tied"|"pending")[]=Array.from({length:18},(_,i)=>{
+                const hNum=i+1;
+                const scored=playerIds2.filter(id=>playerHoleMap2[id]?.[hNum]!=null).length;
+                if(scored<totalPlayers||scored===0)return"pending";
+                return liveSkinHoleWinners[hNum]!=null?liveSkinHoleWinners[hNum]:"tied";
+              });
+
+              const revealedHole=liveSkinsRevealedHole;
+              const setRevealedHole=setLiveSkinsRevealedHole;
+
+              return(
+                <div style={{marginTop:14,marginBottom:4}}>
+                  <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",padding:"14px 12px",boxShadow:"var(--shadow-sm)"}}>
+                    <div className="card-title" style={{marginBottom:10}}>Live Skins</div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:6}}>
+                      {holeState.map((state,i)=>{
+                        const hNum=i+1;
+                        const isGold=typeof state==="number";
+                        const isTied=state==="tied";
+                        const isPending=state==="pending";
+                        const isRevealed=revealedHole===hNum;
+                        const winnerName=isGold
+                          ?(()=>{const g=golfers.find((x:any)=>x.golfer_id===state);return g?g.first_name+(g.last_name?" "+g.last_name[0]+".":""):"?";})()
+                          :null;
+                        return(
+                          <div key={hNum} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                            <div style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.04em"}}>{hNum}</div>
+                            <div
+                              onClick={()=>setRevealedHole(isRevealed?null:hNum)}
+                              style={{
+                                width:"100%",aspectRatio:"1",borderRadius:5,cursor:isGold?"pointer":"default",
+                                background:isGold?"var(--gold-400)":isTied?"var(--surface2)":"transparent",
+                                border:isPending?"2px dashed #e05050":isTied?"2px solid var(--border)":"2px solid transparent",
+                                display:"flex",alignItems:"center",justifyContent:"center",
+                                WebkitTapHighlightColor:"transparent",
+                                position:"relative",
+                                transition:"transform 0.1s",
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {revealedHole!=null&&(()=>{
+                      const state=holeState[revealedHole-1];
+                      const isGold=typeof state==="number";
+                      const winnerName=isGold
+                        ?(()=>{const g=golfers.find((x:any)=>x.golfer_id===state);return g?g.first_name+" "+g.last_name:"?";})()
+                        :null;
+                      return winnerName?(
+                        <div style={{marginTop:10,padding:"8px 12px",borderRadius:"var(--radius-sm)",background:"var(--gold-50,#fffaf0)",border:"1px solid var(--gold-300)",textAlign:"center"}}>
+                          <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Hole {revealedHole} · Skin</span>
+                          <div style={{fontSize:22,fontWeight:700,color:"var(--gold-600)",marginTop:2}}>{winnerName}</div>
+                        </div>
+                      ):null;
+                    })()}
+                  <div style={{display:"flex",alignItems:"center",gap:14,marginTop:10,fontSize:12,color:"var(--text-muted)"}}>
+                    <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{display:"inline-block",width:12,height:12,borderRadius:3,background:"var(--gold-400)",flexShrink:0}}/>Skin won</span>
+                    <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{display:"inline-block",width:12,height:12,borderRadius:3,background:"var(--surface2)",border:"1.5px solid var(--border)",flexShrink:0}}/>Tied</span>
+                    <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{display:"inline-block",width:12,height:12,borderRadius:3,border:"1.5px dashed #e05050",flexShrink:0}}/>In progress</span>
+                  </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* ── Live odds board ── */}
             {(()=>{
               if(!eventOdds?.length)return null;
@@ -2022,6 +2108,82 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               </div>
             ))}
           </div>
+
+          {skinsEligible&&hasLiveSkins&&(()=>{
+            // Build playerHoleMap for all skins-paid entries
+            const skinsPaidEntries=eventEntries.filter((e:any)=>e.skins_paid);
+            const wPlayerHoleMap:Record<number,Record<number,number>>={};
+            skinsPaidEntries.forEach((entry:any)=>{
+              const hs=holeScores.filter((h:any)=>h.summary_id===entry.summary_id);
+              hs.forEach((h:any)=>{
+                if(h.stableford_points==null)return;
+                if(!wPlayerHoleMap[entry.golfer_id])wPlayerHoleMap[entry.golfer_id]={};
+                wPlayerHoleMap[entry.golfer_id][h.hole_number]=h.stableford_points;
+              });
+            });
+            const wPlayerIds=Object.keys(wPlayerHoleMap).map(Number);
+            const wTotal=wPlayerIds.length;
+            const wHoleState:(number|"tied"|"pending")[]=Array.from({length:18},(_,i)=>{
+              const hNum=i+1;
+              const scored=wPlayerIds.filter(id=>wPlayerHoleMap[id]?.[hNum]!=null).length;
+              if(scored<wTotal||scored===0)return"pending";
+              return skinHoleWinners[hNum]!=null?skinHoleWinners[hNum]:"tied";
+            });
+            return(
+              <div style={{marginTop:14,marginBottom:4}}>
+                <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",padding:"14px 12px",boxShadow:"var(--shadow-sm)"}}>
+                  <div className="card-title" style={{marginBottom:10,textAlign:"center"}}>Skins Won</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:6}}>
+                    {wHoleState.map((state,i)=>{
+                      const hNum=i+1;
+                      const isGold=typeof state==="number";
+                      const isTied=state==="tied";
+                      const isPending=state==="pending";
+                      const isRevealed=weeklySkinsRevealedHole===hNum;
+                      return(
+                        <div key={hNum} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                          <div style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.04em"}}>{hNum}</div>
+                          <div
+                            onClick={(e:any)=>{
+                              e.stopPropagation();
+                              const saved=overlayScrollRef.current?.scrollTop??0;
+                              setWeeklySkinsRevealedHole(isRevealed?null:hNum);
+                              requestAnimationFrame(()=>{if(overlayScrollRef.current)overlayScrollRef.current.scrollTop=saved;});
+                            }}
+                            style={{
+                              width:"100%",aspectRatio:"1",borderRadius:5,cursor:isGold?"pointer":"default",
+                              background:isGold?"var(--gold-400)":isTied?"var(--surface2)":"transparent",
+                              border:isPending?"2px dashed #e05050":isTied?"2px solid var(--border)":"2px solid transparent",
+                              display:"flex",alignItems:"center",justifyContent:"center",
+                              WebkitTapHighlightColor:"transparent",
+                              transition:"transform 0.1s",
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {weeklySkinsRevealedHole!=null&&(()=>{
+                    const state=wHoleState[weeklySkinsRevealedHole-1];
+                    const isGold=typeof state==="number";
+                    const winnerName=isGold
+                      ?(()=>{const g=golfers.find((x:any)=>x.golfer_id===state);return g?g.first_name+" "+g.last_name:"?";})()
+                      :null;
+                    return winnerName?(
+                      <div style={{marginTop:10,padding:"8px 12px",borderRadius:"var(--radius-sm)",background:"var(--gold-50,#fffaf0)",border:"1px solid var(--gold-300)",textAlign:"center"}}>
+                        <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Hole {weeklySkinsRevealedHole} · Skin</span>
+                        <div style={{fontSize:22,fontWeight:700,color:"var(--gold-600)",marginTop:2}}>{winnerName}</div>
+                      </div>
+                    ):null;
+                  })()}
+                  <div style={{display:"flex",alignItems:"center",gap:14,marginTop:10,fontSize:12,color:"var(--text-muted)"}}>
+                    <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{display:"inline-block",width:12,height:12,borderRadius:3,background:"var(--gold-400)",flexShrink:0}}/>Skin won</span>
+                    <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{display:"inline-block",width:12,height:12,borderRadius:3,background:"var(--surface2)",border:"1.5px solid var(--border)",flexShrink:0}}/>Tied — no skin</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {adminMode&&eventEntries.length>=2&&(()=>{
             const md=(()=>{const dt=new Date(displayEvent.date+"T00:00:00");return String(dt.getMonth()+1).padStart(2,"0")+"/"+String(dt.getDate()).padStart(2,"0");})();
