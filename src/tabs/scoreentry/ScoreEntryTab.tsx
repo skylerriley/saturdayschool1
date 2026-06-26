@@ -118,7 +118,9 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   const slideFinalizeRef=useRef<HTMLDivElement|null>(null);
   const slidingSubmit=useRef(false);
   const slidingFinalize=useRef(false);
-  const SLIDE_THRESHOLD=200;
+  const SLIDE_THRESHOLD=280;
+  const SLIDE_FINALIZE_THRESHOLD=320;
+  const [showFinalizeConfirm,setShowFinalizeConfirm]=useState(false);
 
   // ── Score entry modal (hole-by-hole "+" tap) ────────────────────
   const [scoreModal,setScoreModal]=useState<{scorerIdx:number,holeIdx:number}|null>(null);
@@ -547,6 +549,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                           }
                         });
                         setScorers(groupScorers.length?groupScorers:[emptyScorer()]);
+                        if(hasInProgress){setSetupCollapsed(true);scrollMainTop();}
                       }}
                       style={{
                         padding:"10px 8px",borderRadius:"var(--radius-md)",border:`2px solid ${isSelected?"var(--green-600)":"var(--border)"}`,
@@ -942,6 +945,34 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         );
       })()}
 
+      {/* ── Finalize confirmation modal ── */}
+      {showFinalizeConfirm&&selEvent&&(
+        <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)",padding:24}}>
+          <div style={{background:"var(--surface)",borderRadius:"var(--radius-lg)",padding:28,maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.35)"}}>
+            <div style={{fontSize:20,fontWeight:800,color:"var(--green-900)",marginBottom:8}}>Finalize Event?</div>
+            <p style={{fontSize:14,color:"var(--text-secondary)",lineHeight:1.6,marginBottom:20}}>
+              This will mark <strong>{selEvent.event_name||"this event"}</strong> as <strong>Completed</strong>, locking all scores and calculating payouts. This cannot be undone.
+            </p>
+            <div style={{display:"flex",gap:10}}>
+              <button
+                onClick={()=>setShowFinalizeConfirm(false)}
+                style={{flex:1,padding:"12px 0",borderRadius:"var(--radius-md)",border:"1.5px solid var(--border)",background:"var(--surface)",fontSize:15,fontWeight:700,color:"var(--text-secondary)",cursor:"pointer"}}
+              >Cancel</button>
+              <button
+                onClick={()=>{
+                  setShowFinalizeConfirm(false);
+                  setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Completed"}:e));
+                  setScoreEventId("");
+                  setScorers([emptyScorer()]);
+                  showSuccess("Event finalized and marked Completed!");
+                }}
+                style={{flex:1,padding:"12px 0",borderRadius:"var(--radius-md)",border:"none",background:"#78350f",fontSize:15,fontWeight:700,color:"white",cursor:"pointer"}}
+              >Yes, Finalize</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Finalize Event — shown once the event is In-Progress and has scored entries */}
       {selEvent&&(selEvent.status==="In-Progress"||selEvent.status==="Pairings Set")&&
        leaderboard.filter((r:any)=>r.event_id===selEvent.event_id).length>0&&(
@@ -953,7 +984,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
           </p>
           {/* ── Slide-to-Finalize ── */}
           {(()=>{
-            const pct=Math.min(slideFinalizeX/SLIDE_THRESHOLD,1);
+            const pct=Math.min(slideFinalizeX/SLIDE_FINALIZE_THRESHOLD,1);
             const confirmed=pct>=1;
             return(
               <div
@@ -973,11 +1004,8 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                 onPointerUp={()=>{
                   if(!slidingFinalize.current)return;
                   slidingFinalize.current=false;
-                  if(slideFinalizeX>=SLIDE_THRESHOLD){
-                    setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Completed"}:e));
-                    setScoreEventId("");
-                    setScorers([emptyScorer()]);
-                    showSuccess("Event finalized and marked Completed!");
+                  if(slideFinalizeX>=SLIDE_FINALIZE_THRESHOLD){
+                    setShowFinalizeConfirm(true);
                   }
                   setSlideFinalizeX(0);
                 }}
