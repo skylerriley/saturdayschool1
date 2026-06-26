@@ -1214,18 +1214,13 @@ export default function App(){
           try{
             // 1. Which event IDs already have calibration records?
             // Use service-role via supabase client to avoid RLS blocking anon reads.
-            const {data:calRows=[]}=await supabase
-              .from("model_calibration_log")
-              .select("event_id")
-              .in("event_id",completedEids);
+            const calQ:any=supabase.from("model_calibration_log").select("event_id");
+            const {data:calRows=[]}=await calQ.in("event_id",completedEids);
             const calibratedEids=new Set(calRows.map((r:any)=>r.event_id));
 
             // 2. Which completed events have frozen snapshots (odds were actually run)?
-            const {data:snapRows=[]}=await supabase
-              .from("event_odds")
-              .select("event_id")
-              .in("event_id",completedEids)
-              .in("snapshot_hole",[0,6,12]);
+            const snapQ:any=supabase.from("event_odds").select("event_id");
+            const {data:snapRows=[]}=await snapQ.in("event_id",completedEids).in("snapshot_hole",[0,6,12]);
             const snappedEids=new Set(snapRows.map((r:any)=>r.event_id));
 
             // 3. Backfill any completed event that has snapshots but no calibration entry
