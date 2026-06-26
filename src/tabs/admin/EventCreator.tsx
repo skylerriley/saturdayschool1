@@ -43,6 +43,12 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
     setTimeout(() => scrollMainTop(), 50);
   };
 
+  const reopenEvent = (evId: number, evDate: string) => {
+    if (!window.confirm(`Reopen "${formatDate(evDate)}" as In-Progress?`)) return;
+    setEvents((p: any) => p.map((e: any) => e.event_id === evId ? { ...e, status: "In-Progress" } : e));
+    showSuccess("Event reopened");
+  };
+
   const currentYear = new Date().getFullYear();
   const allSeasonsList = [...new Set(events.map((e: any) => e.season))].sort((a: any, b: any) => b - a) as number[];
   const [filterSeason, setFilterSeason] = useState<number | "all">(allSeasonsList[0] || currentYear);
@@ -82,6 +88,7 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{ev.course_name} · <span className={`pill ${ev.status === "Completed" ? "pill-green" : ev.status === "Upcoming" ? "pill-gold" : "pill-blue"}`} style={{ fontSize: 10 }}>{ev.status}</span></div>
           </div>
           {ev.season === currentYear && <button className="btn btn-sm btn-outline" onClick={() => startEdit(ev)}>Edit</button>}
+          {ev.season === currentYear && ev.status === "Completed" && <button className="btn btn-sm btn-outline" style={{ color: "var(--gold-500)", borderColor: "var(--gold-500)" }} onClick={() => reopenEvent(ev.event_id, ev.date)}>Reopen</button>}
           {ev.season === currentYear && ev.status !== "Completed" && <button className="btn btn-sm btn-danger" onClick={() => deleteEvent(ev.event_id, ev.date)}>Del</button>}
           {ev.season !== currentYear && <span style={{ fontSize: 11, color: "var(--text-muted)", padding: "4px 8px" }}>view only</span>}
         </div>

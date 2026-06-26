@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { ScoreSymbol, ToggleGroup } from "../../components/common";
-import { golferName, formatDate, teeBoxesForCourse } from "../../lib/formatters";
+import { golferName, formatDate, teeBoxesForCourse, scrollMainTop } from "../../lib/formatters";
 import { calcPlayingHandicap, calcHoleNetScore, calcStablefordPoints, calcHoleScores } from "../../lib/golfMath";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -81,17 +81,6 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
     return()=>clearInterval(id);
   },[]);
 
-  // Scroll to score table when any scorer starts (or on resume)
-  const anyStarted=scorers.some((s:any)=>s.started);
-  useEffect(()=>{
-    if(!anyStarted)return;
-    setHeaderCollapsed(true);
-    // Small delay so the table has rendered
-    const id=setTimeout(()=>{
-      scoreTableRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
-    },120);
-    return()=>clearTimeout(id);
-  },[anyStarted]);
 
   const activeEvents=events.filter((e:any)=>e.status==="Pairings Set"||e.status==="In-Progress");
   const selEvent=events.find((e:any)=>e.event_id===parseInt(selEventId));
@@ -121,8 +110,6 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
     }
   },[selEventId,mode,scorers,signups]);
 
-  // Ref for the score table so we can scroll to it when resuming
-  const scoreTableRef=useRef<HTMLDivElement|null>(null);
 
   // ── Slide-to-submit state ────────────────────────────────────
   const [slideSubmitX,setSlideSubmitX]=useState(0);
@@ -137,8 +124,8 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   const [scoreModal,setScoreModal]=useState<{scorerIdx:number,holeIdx:number}|null>(null);
   // ── Which golfer setup cards are expanded (once scoring started, default collapsed) ──
   const [expandedScorers,setExpandedScorers]=useState<Record<number,boolean>>({});
-  // ── Collapse header controls when scoring is active ──
-  const [headerCollapsed,setHeaderCollapsed]=useState(false);
+  // ── Collapse event/group/player-row section ──
+  const [setupCollapsed,setSetupCollapsed]=useState(false);
 
 
   // Build groups from signups: one group per tee time, golfers attending Yes.
@@ -505,10 +492,9 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         onChange={setMode}
       />
 
-      {/* ── Collapsible: event selector + group picker + scorer mini-rows ── */}
-      {(!anyStarted||!headerCollapsed)&&(
-        <>
-          <div className="form-group">
+      {/* ── Collapsible setup section: always in DOM, hidden via overflow ── */}
+      <div style={{overflow:"hidden",transition:"height 0.25s ease",height:setupCollapsed?"0":"auto"}}>
+      <div className="form-group">
             <label className="form-label">Event</label>
             <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setScorers([emptyScorer()]);setSelectedGroup("");}}>
               <option value="">Select event…</option>
@@ -601,11 +587,9 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
             <div className="skins-warning"><span>⚠</span><span>This event already has hole-by-hole entries. Submitting total-only scores will prevent skins from being calculated.</span></div>
           )}
 
-          {/* Add Another Golfer — above cards */}
-          {selEvent&&scorers.length<4&&(
-            <button className="btn btn-outline btn-full" style={{marginBottom:10}} onClick={addScorer}>+ Add Another Golfer ({scorers.length}/4)</button>
-          )}
-        </>
+      {/* Add Another Golfer — above cards */}
+      {selEvent&&scorers.length<4&&(
+        <button className="btn btn-outline btn-full" style={{marginBottom:10}} onClick={addScorer}>+ Add Another Golfer ({scorers.length}/4)</button>
       )}
 
       {/* Scorer setup cards */}
@@ -626,9 +610,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         const isExpanded=!!expandedScorers[idx];
 
         // Collapsed mini row once scoring has started (hole-by-hole mode)
-        // Hidden when the header is collapsed so only the score table stays visible
         if(mode==="hole"&&scorer.started&&!isExpanded){
-          if(headerCollapsed)return null;
           return(
             <div key={idx} className="scorer-row-mini" onClick={()=>setExpandedScorers(p=>({...p,[idx]:true}))}>
               <div>
@@ -733,6 +715,25 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
           </button>
         );
       })()}
+      </div>{/* end collapsible setup section */}
+
+      {/* ── Chevron toggle — always visible once an event is selected ── */}
+      {selEvent&&(
+        <button
+          onClick={()=>setSetupCollapsed(c=>{if(!c)scrollMainTop();return!c;})}
+          style={{
+            display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+            width:"100%",padding:"7px 0",marginBottom:8,
+            background:"none",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",
+            color:"var(--text-muted)",fontSize:13,fontWeight:600,cursor:"pointer",
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{transform:setupCollapsed?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s"}}>
+            <polyline points="18 15 12 9 6 15"/>
+          </svg>
+          {setupCollapsed?"Show event & group selection":"Hide event & group selection"}
+        </button>
+      )}
 
       {/* 3: Unified stacked H×H table -- one row per hole, one column per golfer */}
       {mode==="hole"&&selEvent&&scorers.some(s=>s.golferId&&s.courseId&&s.started)&&(()=>{
@@ -750,22 +751,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         const refCourse=activeScorersFull[0].course;
         const ptsClass=(pts:number|null)=>{if(pts===null||pts===undefined)return"";if(pts>=4)return"pts-eagle";if(pts===3)return"pts-birdie";if(pts===2)return"pts-par";if(pts===1)return"pts-bogey";return"pts-zero";};
         return(
-          <div style={{marginTop:8}} ref={scoreTableRef}>
-            {/* ── Chevron toggle: collapses event + group + scorer rows ── */}
-            <button
-              onClick={()=>setHeaderCollapsed(c=>!c)}
-              style={{
-                display:"flex",alignItems:"center",justifyContent:"center",gap:6,
-                width:"100%",padding:"7px 0",marginBottom:8,
-                background:"none",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",
-                color:"var(--text-muted)",fontSize:13,fontWeight:600,cursor:"pointer",
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{transform:headerCollapsed?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s"}}>
-                <polyline points="18 15 12 9 6 15"/>
-              </svg>
-              {headerCollapsed?"Show event & group selection":"Hide event & group selection"}
-            </button>
+          <div style={{marginTop:8}}>
             <div className="card-title" style={{marginBottom:8}}>Score Sheet</div>
             <div className="score-grid">
               <table className="score-table" style={{minWidth:`${80+activeScorersFull.length*52}px`}}>

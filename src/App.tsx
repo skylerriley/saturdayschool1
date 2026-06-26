@@ -622,11 +622,11 @@ const CSS = `
 
   /* Golf scorecard -- score symbols */
   .sc-score{display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:19px;width:24px;height:24px;line-height:1;}
-  .sc-eagle{border-radius:50%;border:2px solid var(--gold-500);outline:2px solid var(--gold-500);outline-offset:2px;background:var(--gold-50);color:var(--gold-800);}
-  .sc-birdie{border-radius:50%;border:2px solid var(--green-500);background:var(--green-50);color:var(--green-700);}
+  .sc-eagle{border-radius:50%;border:2px solid var(--gold-500);outline:2px solid var(--gold-500);outline-offset:2px;color:var(--gold-800);}
+  .sc-birdie{border-radius:50%;border:2px solid var(--green-500);color:var(--green-700);}
   .sc-par{color:var(--text-primary);}
-  .sc-bogey{border:2px solid var(--earth-600);background:var(--earth-50);color:var(--earth-800);}
-  .sc-dbl{border:2px solid var(--red-600);outline:2px solid var(--red-600);outline-offset:2px;background:var(--red-100);color:var(--red-800);}
+  .sc-bogey{border:2px solid var(--earth-600);color:var(--earth-800);}
+  .sc-dbl{border:2px solid var(--red-600);outline:2px solid var(--red-600);outline-offset:2px;color:var(--red-800);}
   .sc-triple{background:var(--red-800);color:white;border-radius:2px;}
   .hcard-back .sc-par{color:rgba(255,255,255,0.85);}
   .hcard-back .sc-score{width:20px;height:20px;font-size:15px;}
@@ -664,8 +664,8 @@ const CSS = `
   .score-input-cell input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
   .score-input-cell input[type=number]{-moz-appearance:textfield;appearance:textfield;}
   .score-input-cell input:focus{border-color:var(--green-500);outline:none;box-shadow:0 0 0 2px rgba(34,139,80,0.15);}
-  .pts-eagle{background:var(--gold-100);color:var(--gold-800);font-weight:700;}
-  .pts-birdie{background:var(--green-100);color:var(--green-700);font-weight:700;}
+  .pts-eagle{font-weight:700;}
+  .pts-birdie{font-weight:700;}
   /* Tappable cell that opens the score-entry modal */
   .score-tap-cell{width:36px;height:30px;display:flex;align-items:center;justify-content:center;border:1.5px dashed var(--border-md);border-radius:5px;background:var(--surface);cursor:pointer;margin:0 auto;font-size:20px;font-weight:600;color:var(--text-muted);transition:background 0.15s,border-color 0.15s;}
   .score-tap-cell:hover{border-color:var(--green-500);color:var(--green-600);background:var(--green-50);}
@@ -683,9 +683,9 @@ const CSS = `
   .score-pick-btn{display:flex;align-items:center;justify-content:center;height:54px;border-radius:var(--radius-md);border:1.5px solid var(--border-md);background:var(--surface);font-size:20px;font-weight:700;cursor:pointer;color:var(--text-primary);}
   .score-pick-btn .sc-score{font-size:20px;width:36px;height:36px;}
   .score-pick-btn:active{background:var(--green-50);}
-  .pts-par{background:#f0f0f0;color:#555;}
-  .pts-bogey{background:#fff3e0;color:#b35c00;}
-  .pts-zero{background:var(--red-100);color:var(--red-600);}
+  .pts-par{}
+  .pts-bogey{}
+  .pts-zero{}
 
   /* ── STAT CARDS ── */
   .stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:16px;}
