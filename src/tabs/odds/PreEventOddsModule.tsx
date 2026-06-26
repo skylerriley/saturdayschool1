@@ -449,7 +449,12 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
       {/* Odds view nav — rendered on dark background */}
       <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 4 }}>
         <div style={{ padding: "14px 14px 0" }}>
-          <OddsViewNav view={oddsView} setView={setOddsView} showGroups={hasGroups} />
+          <OddsViewNav view={oddsView} setView={(v) => {
+            const mc = document.querySelector(".main-content") as HTMLElement | null;
+            const saved = mc?.scrollTop ?? 0;
+            setOddsView(v);
+            requestAnimationFrame(() => { if (mc) mc.scrollTop = saved; });
+          }} showGroups={hasGroups} />
         </div>
 
         {/* Animated content area */}
