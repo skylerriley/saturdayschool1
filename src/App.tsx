@@ -1085,6 +1085,12 @@ export default function App(){
       }
       const data:any[]=await res.json();
       console.log(`[odds] event_odds rows for event ${eid}:`,data.length);
+      // Build the confirmed field from signups (used for both display and auto-trigger decisions)
+      const fieldIds=signupsRef.current
+        .filter((s:any)=>s.event_id===eid&&s.attending==="Yes")
+        .map((s:any)=>s.golfer_id)
+        .filter(Boolean);
+
       if(data.length){
         // Display priority: snapshot_hole=99 (live, freely updated) wins over
         // frozen snapshots (12 > 6 > 0) which are preserved for ML calibration.
@@ -1105,14 +1111,25 @@ export default function App(){
         }
         setEventOdds(Object.values(latest));
         setOddsLastUpdated(new Date());
+
+        // If existing odds cover fewer players than the current field, the rows are
+        // stale (e.g. generated before all pairings were saved). Re-trigger once.
+        const coveredGids=new Set(Object.keys(latest).map(Number));
+        const missingFromField=fieldIds.filter((gid:number)=>!coveredGids.has(gid));
+        if(missingFromField.length>0&&!oddsRef.current.autoTriggered.has(eid)){
+          oddsRef.current.autoTriggered.add(eid);
+          console.log("[odds] Odds incomplete — missing",missingFromField.length,"field players, regenerating for event",eid,"field:",fieldIds);
+          fetch(SUPABASE_URL+"/functions/v1/calculate-live-odds",
+            {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+             body:JSON.stringify({event_id:eid,snapshot_hole:99,force:true,...(fieldIds.length?{golfer_ids:fieldIds}:{})})})
+            .then(async r=>{
+              const t=await r.text().catch(()=>"");
+              console.log("[odds] Regen display response:",r.status,t);
+              setTimeout(()=>fetchEventOdds(eid),3000);
+            }).catch(err=>console.warn("[odds] regen trigger:",err));
+        }
       } else if(!oddsRef.current.autoTriggered.has(eid)){
         oddsRef.current.autoTriggered.add(eid);
-        // Build the confirmed field from signups so the edge function models all players,
-        // not just those who happen to have hole_scores entries already.
-        const fieldIds=signupsRef.current
-          .filter((s:any)=>s.event_id===eid&&s.attending==="Yes")
-          .map((s:any)=>s.golfer_id)
-          .filter(Boolean);
         console.log("[odds] No odds found — generating pre-round odds for event",eid,"field:",fieldIds);
         // Fire H0 frozen snapshot (ML calibration baseline)
         fetch(SUPABASE_URL+"/functions/v1/calculate-live-odds",
@@ -1219,6 +1236,20 @@ export default function App(){
       }
     }
 
+    // Detect events that transitioned to "Pairings Set" since last render.
+    // When pairings are finalized the confirmed field is fully known — clear
+    // autoTriggered so the next fetchEventOdds call regenerates odds for all players.
+    let pairingsJustSet=false;
+    events.forEach((e:any)=>{
+      const prev=o.trackedStatuses[e.event_id];
+      if(prev&&prev!==e.status&&e.status==="Pairings Set"){
+        console.log("[odds] Event",e.event_id,"transitioned to Pairings Set — clearing autoTriggered for full field regen");
+        o.autoTriggered.delete(e.event_id);
+        pairingsJustSet=true;
+      }
+      o.trackedStatuses[e.event_id]=e.status;
+    });
+
     // Mirror exactly how OddsTab picks its default event (line ~4609):
     // Filter to active statuses, sort ASC by date, take [0] = soonest.
     // In-Progress takes absolute priority (live round beats future events).
@@ -1240,6 +1271,9 @@ export default function App(){
       o.isLive=true;
       if(o.pollTimer){clearInterval(o.pollTimer);o.pollTimer=null;}
       if(newId)fetchEventOdds(newId);
+    } else if(pairingsJustSet&&newId){
+      // Pairings just finalized — refetch so we regenerate odds for the full confirmed field
+      fetchEventOdds(newId);
     }
 
     // Set up live polling if needed

@@ -37,12 +37,13 @@ function Chevron({ open }: { open: boolean }) {
 
 // ── Groups view ───────────────────────────────────────────────────────────────
 function GroupsView({ signups, golfers, event, ranked }: any) {
-  const [openGroup, setOpenGroup] = useState<number | null>(null);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
-  const eventSignups = signups.filter((s: any) => s.event_id === event?.event_id && s.attending === "Yes" && s.group_num != null);
-  const groupNums = ([...new Set(eventSignups.map((s: any) => s.group_num as number))] as number[]).sort((a, b) => a - b);
+  // Groups are defined by tee time — group_num is not written to signups
+  const eventSignups = signups.filter((s: any) => s.event_id === event?.event_id && s.attending === "Yes" && s.assigned_tee_time != null);
+  const teeTimes = ([...new Set(eventSignups.map((s: any) => s.assigned_tee_time as string))] as string[]).sort();
 
-  if (!groupNums.length) return (
+  if (!teeTimes.length) return (
     <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, padding: "16px 0", textAlign: "center" }}>
       No groups assigned yet
     </div>
@@ -55,18 +56,18 @@ function GroupsView({ signups, golfers, event, ranked }: any) {
   return (
     <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
       {/* Header */}
-      <div style={{ padding: "8px 14px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase" }}>
-          GROUP
+      <div style={{ padding: "8px 20px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "left" }}>
+          Group
         </div>
       </div>
 
-      {groupNums.map((gNum) => {
-        const members = eventSignups.filter((s: any) => s.group_num === gNum);
+      {teeTimes.map((teeTime, idx) => {
+        const members = eventSignups.filter((s: any) => s.assigned_tee_time === teeTime);
         const memberGolfers = members
           .map((s: any) => golfers.find((g: any) => g.golfer_id === s.golfer_id))
           .filter(Boolean);
-        const isOpen = openGroup === gNum;
+        const isOpen = openGroup === teeTime;
 
         // Within-group odds: run MC only among this group's players
         // using their field-level probs as relative weights (simple renormalization)
@@ -84,23 +85,31 @@ function GroupsView({ signups, golfers, event, ranked }: any) {
           return pb - pa;
         });
 
+        // Build display names: show last initial if two players share a first name in the full event field
+        const allEventFirstNames = eventSignups
+          .map((s: any) => golfers.find((g: any) => g.golfer_id === s.golfer_id))
+          .filter(Boolean)
+          .map((g: any) => g.first_name as string);
+        const firstNameCounts: Record<string, number> = {};
+        allEventFirstNames.forEach((n: string) => { firstNameCounts[n] = (firstNameCounts[n] ?? 0) + 1; });
+
         const nameList = memberGolfers
-          .map((g: any) => g.first_name + " " + g.last_name)
+          .map((g: any) => firstNameCounts[g.first_name] > 1 ? `${g.first_name} ${g.last_name.charAt(0)}.` : g.first_name)
           .join(" / ");
 
         return (
-          <div key={gNum as number} style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div key={teeTime} style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             {/* Group row */}
             <div
-              onClick={() => setOpenGroup(isOpen ? null : gNum as number)}
+              onClick={() => setOpenGroup(isOpen ? null : teeTime)}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "12px 14px", cursor: "pointer", WebkitTapHighlightColor: "transparent",
+                padding: "12px 20px", cursor: "pointer", WebkitTapHighlightColor: "transparent",
               }}
             >
-              <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.88)", flex: 1, minWidth: 0, marginRight: 10 }}>
-                <span style={{ fontWeight: 700, color: "var(--gold-300)" }}>Group {gNum as number}</span>
-                {" — "}
+              <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.88)", flex: 1, minWidth: 0, marginRight: 10, textAlign: "left" }}>
+                <span style={{ fontWeight: 700, color: "var(--gold-300)" }}>Group {idx + 1}</span>
+                {" - "}
                 <span style={{ color: "rgba(255,255,255,0.7)" }}>{nameList}</span>
               </div>
               <Chevron open={isOpen} />
@@ -112,7 +121,7 @@ function GroupsView({ signups, golfers, event, ranked }: any) {
                 {sortedMembers.map((g: any) => (
                   <div key={g.golfer_id} style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.05)",
+                    padding: "8px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)",
                   }}>
                     <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.88)" }}>
                       {g.first_name} {g.last_name}
@@ -364,7 +373,7 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
   if (allProfiles.length < 2) return null;
 
   const pairingsSet = event?.status === "Pairings Set";
-  const hasGroups = pairingsSet && signups.some((s: any) => s.event_id === event?.event_id && s.group_num != null);
+  const hasGroups = pairingsSet && signups.some((s: any) => s.event_id === event?.event_id && s.attending === "Yes" && s.assigned_tee_time != null);
 
   // ── Slide transition + skeleton ──────────────────────────────────────────────
   const tabOrder = ["field", ...(hasGroups ? ["groups"] : []), "matchups"];
@@ -467,7 +476,7 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
                         {r.golfer.is_guest && <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(196,120,0,0.25)", color: "var(--gold-300)", borderRadius: 4, padding: "1px 5px", marginLeft: 5 }}>guest</span>}
                       </div>
                       {r.projLow != null && r.projHigh != null && (
-                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 1 }}>{r.projLow}–{r.projHigh} pts</div>
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", textAlign: "left", marginTop: 1 }}>{r.projLow}–{r.projHigh} pts</div>
                       )}
                     </div>
                     <div style={{ textAlign: "center", fontSize: 17, fontWeight: 700, color: "var(--green-300)" }}>{r.projMean ?? r.proj}</div>
