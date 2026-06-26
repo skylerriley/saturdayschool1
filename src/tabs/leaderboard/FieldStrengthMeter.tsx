@@ -54,9 +54,11 @@ function computeFSI(upEntries: any[], golfers: any[], leaderboard: any[], events
   if (deltas.length === 0) return null;
 
   const avgDelta = deltas.reduce((a, b) => a + b, 0) / deltas.length;
-  // Clamp to [-5, +5], map to [0, 100]
-  const clamped = Math.max(-5, Math.min(5, avgDelta));
-  return Math.round(((clamped + 5) / 10) * 100);
+  // Snap to exactly 50 when the field is genuinely average (within ±0.35 pts)
+  if (Math.abs(avgDelta) < 0.35) return 50;
+  // Tight clamp [-1, +1] so even modest deltas read as clearly quiet/loaded
+  const clamped = Math.max(-1, Math.min(1, avgDelta));
+  return Math.round(((clamped + 1) / 2) * 100);
 }
 
 function dotColor(fsi: number): string {
@@ -93,7 +95,7 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
       boxShadow: "var(--shadow-sm)",
     }}>
       {/* Label row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+      <div style={{ marginBottom: 10 }}>
         <span style={{
           fontSize: 13,
           fontWeight: 700,
@@ -102,16 +104,6 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
           color: "var(--text-muted)",
         }}>
           Field Strength
-        </span>
-        <span style={{
-          fontSize: 16,
-          fontWeight: 700,
-          color: color,
-          minWidth: 32,
-          textAlign: "right",
-          fontVariantNumeric: "tabular-nums",
-        }}>
-          {pct}
         </span>
       </div>
 
