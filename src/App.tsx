@@ -230,7 +230,7 @@ const CSS = `
     --green-900:#2e2a0f; --green-800:#3f3a14; --green-700:#5c5219;
     --green-600:#73651e; --green-500:#8d7b22; --green-400:#a8932b;
     --green-300:#c9b75c; --green-100:#f5ecd4; --green-50:#fcf6e8;
-    --bg:#fbf2e4; --surface:#fffaf2; --surface2:#fdf3e2;
+    --bg:#F4F1EC; --surface:#fffaf2; --surface2:#fdf3e2;
     --border:rgba(120,80,30,0.16); --border-md:rgba(120,80,30,0.26);
   }
 
