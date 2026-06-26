@@ -94,8 +94,8 @@ function TrailRow({ trail, events }: { trail: TrailDot[]; events: any[] }) {
         <div
           style={{
             position: "fixed",
-            left: Math.min(tooltip.x, window.innerWidth - 160),
-            top: tooltip.y - 36,
+            left: Math.min(Math.max(tooltip.x, 80), window.innerWidth - 80),
+            top: tooltip.y - 42,
             transform: "translateX(-50%)",
             background: "var(--green-900)",
             color: "var(--gold-300)",
@@ -109,6 +109,18 @@ function TrailRow({ trail, events }: { trail: TrailDot[]; events: any[] }) {
           }}
         >
           {tooltip.text}
+          {/* Downward tail pointing at the tapped dot */}
+          <span style={{
+            position: "absolute",
+            bottom: -12,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 0,
+            height: 0,
+            borderLeft: "8px solid transparent",
+            borderRight: "8px solid transparent",
+            borderTop: "12px solid var(--green-900)",
+          }} />
         </div>
       )}
     </div>
