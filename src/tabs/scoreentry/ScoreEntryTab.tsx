@@ -828,13 +828,14 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       {/* ── Slide-to-Submit ── */}
       {(()=>{
         const label=canSubmit
-          ?`Submit Score${readyToSubmitCount>1?"s":""} (${readyToSubmitCount})`
-          :mode==="hole"?"Submit Scores":"Submit Score";
+          ?`Submit Scores (${readyToSubmitCount})`
+          :"Submit Scores";
         const pct=Math.min(slideSubmitX/SLIDE_THRESHOLD,1);
         const confirmed=pct>=1;
+        const thumbSize=44+pct*16;
         return(
           <div
-            style={{marginTop:4,position:"relative",height:52,borderRadius:"var(--radius-lg)",background:canSubmit?"var(--green-800)":"var(--border-md)",overflow:"hidden",touchAction:"none",userSelect:"none",opacity:canSubmit?1:0.55,cursor:canSubmit?"pointer":"not-allowed"}}
+            style={{marginTop:4,position:"relative",height:56,borderRadius:28,background:canSubmit?"var(--green-800)":"var(--border-md)",overflow:"hidden",touchAction:"none",userSelect:"none",opacity:canSubmit?1:0.55,cursor:canSubmit?"pointer":"not-allowed"}}
             ref={slideSubmitRef}
             onPointerDown={e=>{
               if(!canSubmit)return;
@@ -860,22 +861,35 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
           >
             {/* track fill */}
             <div style={{position:"absolute",inset:0,background:"var(--green-600)",width:`${pct*100}%`,transition:slidingSubmit.current?"none":"width 0.3s ease"}}/>
-            {/* thumb */}
+            {/* thumb — golf ball */}
             <div style={{
-              position:"absolute",top:4,bottom:4,left:4+slideSubmitX,
-              width:44,borderRadius:"var(--radius-md)",
-              background:confirmed?"white":"var(--green-400)",
+              position:"absolute",
+              top:"50%",left:4+slideSubmitX,
+              width:thumbSize,height:thumbSize,
+              transform:"translateY(-50%)",
+              borderRadius:"50%",
+              background:"white",
               display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:20,transition:slidingSubmit.current?"none":"left 0.3s ease",
-              boxShadow:"0 2px 8px rgba(0,0,0,0.25)"
+              transition:slidingSubmit.current?"none":"left 0.3s ease",
+              boxShadow:"0 2px 10px rgba(0,0,0,0.35)",
             }}>
-              {confirmed?"✓":"›"}
+              {confirmed
+                ? <svg width={thumbSize*0.55} height={thumbSize*0.55} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                : <svg width={thumbSize*0.82} height={thumbSize*0.82} viewBox="0 0 100 100" fill="none">
+                    <circle cx="50" cy="50" r="44" stroke="black" strokeWidth="8"/>
+                    <circle cx="62" cy="38" r="5" fill="black"/>
+                    <circle cx="54" cy="52" r="5" fill="black"/>
+                    <circle cx="68" cy="54" r="5" fill="black"/>
+                    <circle cx="46" cy="65" r="5" fill="black"/>
+                    <circle cx="60" cy="67" r="5" fill="black"/>
+                  </svg>
+              }
             </div>
-            {/* label */}
+            {/* label — truly centered, no padding offset */}
             <div style={{
               position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
               fontSize:15,fontWeight:700,color:"white",letterSpacing:"0.02em",
-              opacity:1-pct*0.7,pointerEvents:"none",paddingLeft:48
+              opacity:1-pct*0.7,pointerEvents:"none"
             }}>
               {label}
             </div>
@@ -898,7 +912,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
             const confirmed=pct>=1;
             return(
               <div
-                style={{position:"relative",height:56,borderRadius:"var(--radius-lg)",background:"var(--green-900)",overflow:"hidden",touchAction:"none",userSelect:"none"}}
+                style={{position:"relative",height:56,borderRadius:28,background:"#78350f",overflow:"hidden",touchAction:"none",userSelect:"none"}}
                 ref={slideFinalizeRef}
                 onPointerDown={e=>{
                   e.currentTarget.setPointerCapture(e.pointerId);
@@ -924,21 +938,33 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                 }}
                 onPointerCancel={()=>{slidingFinalize.current=false;setSlideFinalizeX(0);}}
               >
-                <div style={{position:"absolute",inset:0,background:"var(--green-700)",width:`${pct*100}%`,transition:slidingFinalize.current?"none":"width 0.3s ease"}}/>
+                <div style={{position:"absolute",inset:0,background:"#d97706",width:`${pct*100}%`,transition:slidingFinalize.current?"none":"width 0.3s ease"}}/>
+                {/* thumb — golf ball */}
+                {(()=>{const ts=44+pct*16;return(
                 <div style={{
-                  position:"absolute",top:5,bottom:5,left:4+slideFinalizeX,
-                  width:46,borderRadius:"var(--radius-md)",
-                  background:confirmed?"var(--gold-400)":"var(--green-500)",
+                  position:"absolute",top:"50%",left:4+slideFinalizeX,
+                  width:ts,height:ts,transform:"translateY(-50%)",
+                  borderRadius:"50%",background:"white",
                   display:"flex",alignItems:"center",justifyContent:"center",
-                  fontSize:20,transition:slidingFinalize.current?"none":"left 0.3s ease",
-                  boxShadow:"0 2px 8px rgba(0,0,0,0.3)"
+                  transition:slidingFinalize.current?"none":"left 0.3s ease",
+                  boxShadow:"0 2px 10px rgba(0,0,0,0.35)"
                 }}>
-                  {confirmed?"✓":"›"}
-                </div>
+                  {confirmed
+                    ? <svg width={ts*0.55} height={ts*0.55} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    : <svg width={ts*0.82} height={ts*0.82} viewBox="0 0 100 100" fill="none">
+                        <circle cx="50" cy="50" r="44" stroke="black" strokeWidth="8"/>
+                        <circle cx="62" cy="38" r="5" fill="black"/>
+                        <circle cx="54" cy="52" r="5" fill="black"/>
+                        <circle cx="68" cy="54" r="5" fill="black"/>
+                        <circle cx="46" cy="65" r="5" fill="black"/>
+                        <circle cx="60" cy="67" r="5" fill="black"/>
+                      </svg>
+                  }
+                </div>);})()}
                 <div style={{
                   position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
                   fontSize:15,fontWeight:700,color:"white",letterSpacing:"0.02em",
-                  opacity:1-pct*0.7,pointerEvents:"none",paddingLeft:52
+                  opacity:1-pct*0.7,pointerEvents:"none"
                 }}>
                   Slide to Finalize Event
                 </div>
