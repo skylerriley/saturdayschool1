@@ -1054,6 +1054,7 @@ export default function App(){
     initialized:boolean;
     pollTimer:ReturnType<typeof setInterval>|null;
     trackedStatuses:Record<number,string>;
+    pairingsJustSet:boolean;
   }>({
     eventId:null,
     isLive:false,
@@ -1062,6 +1063,7 @@ export default function App(){
     initialized:false,
     pollTimer:null,
     trackedStatuses:{},
+    pairingsJustSet:false,
   });
 
   // Keep a live ref to signups so edge-function calls can include the confirmed field
@@ -1112,23 +1114,31 @@ export default function App(){
         setEventOdds(Object.values(latest));
         setOddsLastUpdated(new Date());
 
-        // If existing odds cover fewer players than the current field, the rows are
-        // stale (e.g. generated before all pairings were saved). Re-trigger once.
-        const coveredGids=new Set(Object.keys(latest).map(Number));
-        const missingFromField=fieldIds.filter((gid:number)=>!coveredGids.has(gid));
-        if(missingFromField.length>0&&!oddsRef.current.autoTriggered.has(eid)){
-          oddsRef.current.autoTriggered.add(eid);
-          console.log("[odds] Odds incomplete — missing",missingFromField.length,"field players, regenerating for event",eid,"field:",fieldIds);
-          fetch(SUPABASE_URL+"/functions/v1/calculate-live-odds",
-            {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
-             body:JSON.stringify({event_id:eid,snapshot_hole:99,force:true,...(fieldIds.length?{golfer_ids:fieldIds}:{})})})
-            .then(async r=>{
-              const t=await r.text().catch(()=>"");
-              console.log("[odds] Regen display response:",r.status,t);
-              setTimeout(()=>fetchEventOdds(eid),3000);
-            }).catch(err=>console.warn("[odds] regen trigger:",err));
+        // Only regenerate for a non-live event if pairings were just set THIS session
+        // (flagged by autoTriggered being cleared by the status-transition detector).
+        // Never regenerate on a plain page refresh — existing odds are authoritative.
+        const isLiveEvent=oddsRef.current.isLive;
+        if(!isLiveEvent){
+          const coveredGids=new Set(Object.keys(latest).map(Number));
+          const missingFromField=fieldIds.filter((gid:number)=>!coveredGids.has(gid));
+          if(missingFromField.length>0&&oddsRef.current.autoTriggered.has(eid)===false&&oddsRef.current.pairingsJustSet){
+            oddsRef.current.autoTriggered.add(eid);
+            oddsRef.current.pairingsJustSet=false;
+            console.log("[odds] Odds incomplete after pairing — missing",missingFromField.length,"players, regenerating event",eid,"field:",fieldIds);
+            fetch(SUPABASE_URL+"/functions/v1/calculate-live-odds",
+              {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+               body:JSON.stringify({event_id:eid,snapshot_hole:99,force:true,...(fieldIds.length?{golfer_ids:fieldIds}:{})})})
+              .then(async r=>{
+                const t=await r.text().catch(()=>"");
+                console.log("[odds] Regen display response:",r.status,t);
+                setTimeout(()=>fetchEventOdds(eid),3000);
+              }).catch(err=>console.warn("[odds] regen trigger:",err));
+          }
         }
       } else if(!oddsRef.current.autoTriggered.has(eid)){
+        // No odds exist at all — first-time generation only (never fires on page refresh
+        // because autoTriggered persists in the ref for the lifetime of the session,
+        // but this is the very first fetch so the event hasn't been triggered yet).
         oddsRef.current.autoTriggered.add(eid);
         console.log("[odds] No odds found — generating pre-round odds for event",eid,"field:",fieldIds);
         // Fire H0 frozen snapshot (ML calibration baseline)
@@ -1237,15 +1247,14 @@ export default function App(){
     }
 
     // Detect events that transitioned to "Pairings Set" since last render.
-    // When pairings are finalized the confirmed field is fully known — clear
-    // autoTriggered so the next fetchEventOdds call regenerates odds for all players.
-    let pairingsJustSet=false;
+    // When pairings are finalized the confirmed field is fully known — flag on
+    // the ref so fetchEventOdds knows it's safe to regenerate for missing players.
     events.forEach((e:any)=>{
       const prev=o.trackedStatuses[e.event_id];
       if(prev&&prev!==e.status&&e.status==="Pairings Set"){
-        console.log("[odds] Event",e.event_id,"transitioned to Pairings Set — clearing autoTriggered for full field regen");
+        console.log("[odds] Event",e.event_id,"transitioned to Pairings Set — will regen if field incomplete");
         o.autoTriggered.delete(e.event_id);
-        pairingsJustSet=true;
+        o.pairingsJustSet=true;
       }
       o.trackedStatuses[e.event_id]=e.status;
     });
@@ -1271,8 +1280,8 @@ export default function App(){
       o.isLive=true;
       if(o.pollTimer){clearInterval(o.pollTimer);o.pollTimer=null;}
       if(newId)fetchEventOdds(newId);
-    } else if(pairingsJustSet&&newId){
-      // Pairings just finalized — refetch so we regenerate odds for the full confirmed field
+    } else if(o.pairingsJustSet&&newId){
+      // Pairings just finalized this session — refetch to check for missing field players
       fetchEventOdds(newId);
     }
 
