@@ -72,7 +72,7 @@ export function PairingPanel({
     newPairings.forEach((grp: any) => grp.players.forEach((pid: number) => { teeByGolfer[pid] = grp.teeTime; }));
     setSignups((su: any) =>
       su.map((s: any) =>
-        teeByGolfer[s.golfer_id] !== undefined
+        s.event_id === selEventId && teeByGolfer[s.golfer_id] !== undefined
           ? { ...s, assigned_tee_time: teeByGolfer[s.golfer_id] }
           : s
       )

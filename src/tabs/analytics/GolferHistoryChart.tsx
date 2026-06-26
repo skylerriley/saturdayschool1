@@ -4,8 +4,9 @@ import { computeScoringFingerprint } from "../../lib/scoringFingerprint";
 import { ScoringFingerprintRadar } from "../../components/charts/ScoringFingerprintRadar";
 import { CountUp, ScoreSymbol } from "../../App";
 import { ChartCanvas } from "./ChartCanvas";
+import { PairingHistory } from "../../components/analytics/PairingHistory";
 
-export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers,seasonEvents,holeScores,courses}:any){
+export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers,seasonEvents,holeScores,courses,signups}:any){
   const [expandedRound,setExpandedRound]=useState<number|null>(null);
   const avg=rounds.reduce((s:number,r:any)=>s+r.pts,0)/rounds.length;
   const best=Math.max(...rounds.map((r:any)=>r.pts));
@@ -339,7 +340,15 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
           );
         })}
       </div>
+
+      <PairingHistory
+        golfer={golfer}
+        signups={signups}
+        seasonEvents={seasonEvents}
+        leaderboard={leaderboard}
+        golfers={golfers}
+      />
         </div>
-  
+
   )
 }
