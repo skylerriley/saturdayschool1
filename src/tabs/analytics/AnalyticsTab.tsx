@@ -10,7 +10,7 @@ import { ScatterChart } from "./ScatterChart";
 import { ChampionsView } from "./ChampionsView";
 import { GolferHistoryChart } from "./GolferHistoryChart";
 
-export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase,refreshLiveData,initialGolfer,onInitialGolferConsumed,onBack}:any){
+export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase,refreshLiveData,initialGolfer,onInitialGolferConsumed,onBack,backLabel}:any){
   const [subTab,setSubTab]=useState("overview");
   const [selGolfer,setSelGolfer]=useState("");
 
@@ -127,7 +127,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
       {onBack&&(
         <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",border:"none",padding:"10px 16px 2px",fontSize:13,fontWeight:600,color:"var(--green-600,#2d6a4f)",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-          Upcoming field
+          {backLabel||"Back"}
         </button>
       )}
       <div className="section-title">Analytics</div>

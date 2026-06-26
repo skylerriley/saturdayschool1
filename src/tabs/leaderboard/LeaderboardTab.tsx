@@ -227,7 +227,7 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
   );
 }
 
-export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab,onNavigateToAnalyticsGolfer}:any){
+export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab,restoreSubTab,onSubTabChange,onNavigateToAnalyticsGolfer}:any){
   // ── Golden Hour Mode ──────────────────────────────────────────────────
   // Fri/Sat 4-8pm PST: the leaderboard drifts toward amber-tinted greens and
   // warmer whites. Friday afternoon = anticipation; Saturday evening = the
@@ -250,7 +250,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   },[]);
 
   const validSubTabs=["live","upcoming","season","top15","weekly"];
-  const [subTab,setSubTab]=useState(validSubTabs.includes(initialSubTab||"")?initialSubTab:"weekly");
+  const [subTab,setSubTab]=useState(validSubTabs.includes(restoreSubTab||"")?restoreSubTab:validSubTabs.includes(initialSubTab||"")?initialSubTab:"weekly");
   const [selEventId,setSelEventId]=useState<number|null>(null);
   const [expandedId,setExpandedId]=useState<number|null>(null);
   // Switching tabs and collapsing an expanded row used to happen in the
@@ -263,6 +263,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   // passes keeps the tab switch itself cheap and immediate.
   const switchSubTab=(id:string)=>{
     setSubTab(id);
+    onSubTabChange?.(id);
     if(expandedId!=null)requestAnimationFrame(()=>setExpandedId(null));
     if(pillRowRef.current?.classList.contains("stuck")){
       const mc=document.querySelector(".main-content") as HTMLElement|null;
@@ -932,7 +933,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     {onNavigateToAnalyticsGolfer&&(
                       <div style={{paddingBottom:5}}>
                         <div className="">
-                          <button className="drawer-profile-pill" onClick={(e:any)=>{e.stopPropagation();onNavigateToAnalyticsGolfer(String(gid));}}>
+                          <button className="drawer-profile-pill" onClick={(e:any)=>{e.stopPropagation();onNavigateToAnalyticsGolfer(String(gid),"Top 15 Avg",subTab);}}>
                             View Profile
                           </button>
                         </div>
@@ -1058,7 +1059,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   <div style={{paddingBottom:5}}>
                     <div className="">
                       {onNavigateToAnalyticsGolfer&&(
-                        <button className="drawer-profile-pill" onClick={(e:any)=>{e.stopPropagation();onNavigateToAnalyticsGolfer(String(gid));}}>
+                        <button className="drawer-profile-pill" onClick={(e:any)=>{e.stopPropagation();onNavigateToAnalyticsGolfer(String(gid),"Season Average",subTab);}}>
                           View Profile
                         </button>
                       )}
@@ -1227,7 +1228,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                         
                         <div className="drawer-card-footer">
                           {onNavigateToAnalyticsGolfer&&(
-                            <button className="drawer-profile-pill" onClick={(e:any)=>{e.stopPropagation();onNavigateToAnalyticsGolfer(String(gid));}}>
+                            <button className="drawer-profile-pill" onClick={(e:any)=>{e.stopPropagation();onNavigateToAnalyticsGolfer(String(gid),"Weekly",subTab);}}>
                               View Profile
                             </button>
                           )}
@@ -1785,7 +1786,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                           events={events}
                           nextEvent={nextEvent}
                           seasonPos={sp}
-                          onViewMore={onNavigateToAnalyticsGolfer?()=>onNavigateToAnalyticsGolfer(String(g.golfer_id)):undefined}
+                          onViewMore={onNavigateToAnalyticsGolfer?()=>onNavigateToAnalyticsGolfer(String(g.golfer_id),"Upcoming Field",subTab):undefined}
                         />
                       )}
                     </div>
