@@ -85,6 +85,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   const anyStarted=scorers.some((s:any)=>s.started);
   useEffect(()=>{
     if(!anyStarted)return;
+    setHeaderCollapsed(true);
     // Small delay so the table has rendered
     const id=setTimeout(()=>{
       scoreTableRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
@@ -136,6 +137,8 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   const [scoreModal,setScoreModal]=useState<{scorerIdx:number,holeIdx:number}|null>(null);
   // ── Which golfer setup cards are expanded (once scoring started, default collapsed) ──
   const [expandedScorers,setExpandedScorers]=useState<Record<number,boolean>>({});
+  // ── Collapse header controls when scoring is active ──
+  const [headerCollapsed,setHeaderCollapsed]=useState(false);
 
 
   // Build groups from signups: one group per tee time, golfers attending Yes.
@@ -502,102 +505,107 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         onChange={setMode}
       />
 
-      <div className="form-group">
-        <label className="form-label">Event</label>
-        <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setScorers([emptyScorer()]);setSelectedGroup("");}}>
-          <option value="">Select event…</option>
-          {activeEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
-        </select>
-      </div>
+      {/* ── Collapsible: event selector + group picker + scorer mini-rows ── */}
+      {(!anyStarted||!headerCollapsed)&&(
+        <>
+          <div className="form-group">
+            <label className="form-label">Event</label>
+            <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setScorers([emptyScorer()]);setSelectedGroup("");}}>
+              <option value="">Select event…</option>
+              {activeEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
+            </select>
+          </div>
 
-      {/* ── Group / tee-time picker (hole-by-hole mode only) ─────── */}
-      {selEvent&&hasGroups&&(
-        <div className="form-group">
-          <label className="form-label">Select Group to Score</label>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:8,marginBottom:4}}>
-            {sortedTeeTimes.map(tee=>{
-              const members=groupedByTee[tee]||[];
-              const names=members.map((s:any)=>{const g=golfers.find((x:any)=>x.golfer_id===s.golfer_id);return g?g.first_name:"?";});
-              const startedCount=members.filter((s:any)=>{
-                const entry=leaderboard.find((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===s.golfer_id&&r.entry_type==="Hole-by-Hole"&&r.summary_id<1e12);
-                return entry&&holeScores.some((h:any)=>h.summary_id===entry.summary_id);
-              }).length;
-              const hasInProgress=startedCount>0;
-              const isSelected=selectedGroup===tee;
-              return(
-                <button
-                  key={tee}
-                  onClick={()=>{
-                    if(isSelected){setSelectedGroup("");setScorers([emptyScorer()]);setExpandedScorers({});setScoreModal(null);return;}
-                    setSelectedGroup(tee);
-                    setExpandedScorers({});
-                    setScoreModal(null);
-                    // Pre-populate scorers from this group
-                    const groupScorers=members.map((s:any)=>{
-                      const eid=selEvent.event_id;
-                      const gid=s.golfer_id;
-                      let courseId=s.tee_box_course_id?String(s.tee_box_course_id):"";
-                      if(!courseId&&availableTees.length)courseId=String(availableTees[0].course_id);
-                      if(mode==="hole"){
-                        const existing=leaderboard.find((r:any)=>r.event_id===eid&&r.golfer_id===gid&&r.entry_type==="Hole-by-Hole"&&r.summary_id<1e12);
-                        if(existing){
-                          const hs=holeScores.filter((h:any)=>h.summary_id===existing.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number);
-                          const gross=Array(18).fill("");
-                          hs.forEach((h:any)=>{gross[h.hole_number-1]=String(h.gross_score);});
-                          const hasHoles=hs.length>0;
-                          return{golferId:String(gid),courseId,totalPts:"",grossScores:gross,submitted:false,started:hasHoles,summaryId:hasHoles?existing.summary_id:null};
-                        }
-                        return{...emptyScorer(),golferId:String(gid),courseId};
-                      }else{
-                        // Total Only mode -- prefill existing total points if already scored
-                        const existing=leaderboard.find((r:any)=>r.event_id===eid&&r.golfer_id===gid&&r.entry_type==="Total Only");
-                        return{...emptyScorer(),golferId:String(gid),courseId,totalPts:existing?String(existing.total_stableford_points):""};
+          {/* ── Group / tee-time picker (hole-by-hole mode only) ─────── */}
+          {selEvent&&hasGroups&&(
+            <div className="form-group">
+              <label className="form-label">Select Group to Score</label>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:8,marginBottom:4}}>
+                {sortedTeeTimes.map(tee=>{
+                  const members=groupedByTee[tee]||[];
+                  const names=members.map((s:any)=>{const g=golfers.find((x:any)=>x.golfer_id===s.golfer_id);return g?g.first_name:"?";});
+                  const startedCount=members.filter((s:any)=>{
+                    const entry=leaderboard.find((r:any)=>r.event_id===selEvent.event_id&&r.golfer_id===s.golfer_id&&r.entry_type==="Hole-by-Hole"&&r.summary_id<1e12);
+                    return entry&&holeScores.some((h:any)=>h.summary_id===entry.summary_id);
+                  }).length;
+                  const hasInProgress=startedCount>0;
+                  const isSelected=selectedGroup===tee;
+                  return(
+                    <button
+                      key={tee}
+                      onClick={()=>{
+                        if(isSelected){setSelectedGroup("");setScorers([emptyScorer()]);setExpandedScorers({});setScoreModal(null);return;}
+                        setSelectedGroup(tee);
+                        setExpandedScorers({});
+                        setScoreModal(null);
+                        // Pre-populate scorers from this group
+                        const groupScorers=members.map((s:any)=>{
+                          const eid=selEvent.event_id;
+                          const gid=s.golfer_id;
+                          let courseId=s.tee_box_course_id?String(s.tee_box_course_id):"";
+                          if(!courseId&&availableTees.length)courseId=String(availableTees[0].course_id);
+                          if(mode==="hole"){
+                            const existing=leaderboard.find((r:any)=>r.event_id===eid&&r.golfer_id===gid&&r.entry_type==="Hole-by-Hole"&&r.summary_id<1e12);
+                            if(existing){
+                              const hs=holeScores.filter((h:any)=>h.summary_id===existing.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number);
+                              const gross=Array(18).fill("");
+                              hs.forEach((h:any)=>{gross[h.hole_number-1]=String(h.gross_score);});
+                              const hasHoles=hs.length>0;
+                              return{golferId:String(gid),courseId,totalPts:"",grossScores:gross,submitted:false,started:hasHoles,summaryId:hasHoles?existing.summary_id:null};
+                            }
+                            return{...emptyScorer(),golferId:String(gid),courseId};
+                          }else{
+                            // Total Only mode -- prefill existing total points if already scored
+                            const existing=leaderboard.find((r:any)=>r.event_id===eid&&r.golfer_id===gid&&r.entry_type==="Total Only");
+                            return{...emptyScorer(),golferId:String(gid),courseId,totalPts:existing?String(existing.total_stableford_points):""};
+                          }
+                        });
+                        setScorers(groupScorers.length?groupScorers:[emptyScorer()]);
+                      }}
+                      style={{
+                        padding:"10px 8px",borderRadius:"var(--radius-md)",border:`2px solid ${isSelected?"var(--green-600)":"var(--border)"}`,
+                        background:isSelected?"var(--green-50)":"var(--surface)",cursor:"pointer",textAlign:"left",position:"relative"
+                      }}
+                    >
+                      <div style={{fontWeight:700,fontSize:16,color:"var(--green-800)",marginBottom:3}}>{tee}</div>
+                      <div style={{fontSize:11,color:"var(--text-secondary)",lineHeight:1.4}}>{names.length?names.join(", "):"No golfers assigned"}</div>
+                      {hasInProgress
+                        ?<div style={{marginTop:4,fontSize:10,fontWeight:700,color:"var(--gold-700)"}}>↩ In Progress · {startedCount}/{members.length} started</div>
+                        :members.length>0
+                          ?<div style={{marginTop:4,fontSize:10,fontWeight:700,color:"var(--text-muted)"}}>Not started yet</div>
+                          :null
                       }
-                    });
-                    setScorers(groupScorers.length?groupScorers:[emptyScorer()]);
-                  }}
-                  style={{
-                    padding:"10px 8px",borderRadius:"var(--radius-md)",border:`2px solid ${isSelected?"var(--green-600)":"var(--border)"}`,
-                    background:isSelected?"var(--green-50)":"var(--surface)",cursor:"pointer",textAlign:"left",position:"relative"
-                  }}
-                >
-                  <div style={{fontWeight:700,fontSize:16,color:"var(--green-800)",marginBottom:3}}>{tee}</div>
-                  <div style={{fontSize:11,color:"var(--text-secondary)",lineHeight:1.4}}>{names.length?names.join(", "):"No golfers assigned"}</div>
-                  {hasInProgress
-                    ?<div style={{marginTop:4,fontSize:10,fontWeight:700,color:"var(--gold-700)"}}>↩ In Progress · {startedCount}/{members.length} started</div>
-                    :members.length>0
-                      ?<div style={{marginTop:4,fontSize:10,fontWeight:700,color:"var(--text-muted)"}}>Not started yet</div>
-                      :null
-                  }
-                </button>
-              );
-            })}
-          </div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
-            {selectedGroup&&<div style={{fontSize:12,display:"none",color:"var(--text-muted)"}}>Tap another group to switch, or tap "{selectedGroup}" again to deselect and enter manually.</div>}
-            <button className="btn btn-sm btn-outline" onClick={()=>{setSelectedGroup("");setScorers([emptyScorer()]);setExpandedScorers({});setScoreModal(null);}}>+ Score a different group / start fresh</button>
-          </div>
-        </div>
-      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
+                {selectedGroup&&<div style={{fontSize:12,display:"none",color:"var(--text-muted)"}}>Tap another group to switch, or tap "{selectedGroup}" again to deselect and enter manually.</div>}
+                <button className="btn btn-sm btn-outline" onClick={()=>{setSelectedGroup("");setScorers([emptyScorer()]);setExpandedScorers({});setScoreModal(null);}}>+ Score a different group / start fresh</button>
+              </div>
+            </div>
+          )}
 
-      {/* Resume banner -- shown when a prior H×H session is restored from DB */}
-      {selEventId&&mode==="hole"&&scorers.some((s:any)=>s.summaryId&&s.grossScores.some((v:string)=>!!v))&&(
-        <div style={{display:"none",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--green-50)",border:"1.5px solid var(--green-200)",borderRadius:"var(--radius-md)",marginBottom:12}}>
-          <span style={{display:"none",fontSize:18}}>↩</span>
-          <div>
-            <div style={{display:"none",fontWeight:700,fontSize:14,color:"var(--green-800)"}}>Scoring Session restored{selectedGroup?` · Group ${selectedGroup}`:""}</div>
-            <div style={{fontSize:12,display:"none",color:"var(--green-700)"}}>Scores from your last session have been reloaded. Continue entering from where you left off.</div>
-          </div>
-        </div>
-      )}
+          {/* Resume banner -- shown when a prior H×H session is restored from DB */}
+          {selEventId&&mode==="hole"&&scorers.some((s:any)=>s.summaryId&&s.grossScores.some((v:string)=>!!v))&&(
+            <div style={{display:"none",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--green-50)",border:"1.5px solid var(--green-200)",borderRadius:"var(--radius-md)",marginBottom:12}}>
+              <span style={{display:"none",fontSize:18}}>↩</span>
+              <div>
+                <div style={{display:"none",fontWeight:700,fontSize:14,color:"var(--green-800)"}}>Scoring Session restored{selectedGroup?` · Group ${selectedGroup}`:""}</div>
+                <div style={{fontSize:12,display:"none",color:"var(--green-700)"}}>Scores from your last session have been reloaded. Continue entering from where you left off.</div>
+              </div>
+            </div>
+          )}
 
-      {selEvent&&hasMixedEntry&&mode==="total"&&(
-        <div className="skins-warning"><span>⚠</span><span>This event already has hole-by-hole entries. Submitting total-only scores will prevent skins from being calculated.</span></div>
-      )}
+          {selEvent&&hasMixedEntry&&mode==="total"&&(
+            <div className="skins-warning"><span>⚠</span><span>This event already has hole-by-hole entries. Submitting total-only scores will prevent skins from being calculated.</span></div>
+          )}
 
-      {/* Add Another Golfer — above cards */}
-      {selEvent&&scorers.length<4&&(
-        <button className="btn btn-outline btn-full" style={{marginBottom:10}} onClick={addScorer}>+ Add Another Golfer ({scorers.length}/4)</button>
+          {/* Add Another Golfer — above cards */}
+          {selEvent&&scorers.length<4&&(
+            <button className="btn btn-outline btn-full" style={{marginBottom:10}} onClick={addScorer}>+ Add Another Golfer ({scorers.length}/4)</button>
+          )}
+        </>
       )}
 
       {/* Scorer setup cards */}
@@ -618,7 +626,9 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         const isExpanded=!!expandedScorers[idx];
 
         // Collapsed mini row once scoring has started (hole-by-hole mode)
+        // Hidden when the header is collapsed so only the score table stays visible
         if(mode==="hole"&&scorer.started&&!isExpanded){
+          if(headerCollapsed)return null;
           return(
             <div key={idx} className="scorer-row-mini" onClick={()=>setExpandedScorers(p=>({...p,[idx]:true}))}>
               <div>
@@ -741,6 +751,21 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         const ptsClass=(pts:number|null)=>{if(pts===null||pts===undefined)return"";if(pts>=4)return"pts-eagle";if(pts===3)return"pts-birdie";if(pts===2)return"pts-par";if(pts===1)return"pts-bogey";return"pts-zero";};
         return(
           <div style={{marginTop:8}} ref={scoreTableRef}>
+            {/* ── Chevron toggle: collapses event + group + scorer rows ── */}
+            <button
+              onClick={()=>setHeaderCollapsed(c=>!c)}
+              style={{
+                display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                width:"100%",padding:"7px 0",marginBottom:8,
+                background:"none",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",
+                color:"var(--text-muted)",fontSize:13,fontWeight:600,cursor:"pointer",
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{transform:headerCollapsed?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s"}}>
+                <polyline points="18 15 12 9 6 15"/>
+              </svg>
+              {headerCollapsed?"Show event & group selection":"Hide event & group selection"}
+            </button>
             <div className="card-title" style={{marginBottom:8}}>Score Sheet</div>
             <div className="score-grid">
               <table className="score-table" style={{minWidth:`${80+activeScorersFull.length*52}px`}}>
@@ -772,8 +797,9 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                           return(
                             <td key={si} className={`score-input-cell ${ptsClass(pts)}`} style={{padding:"3px 2px",textAlign:"center"}}>
                               {gross?(
-                                <div className={`score-tap-cell filled`} onClick={()=>setScoreModal({scorerIdx:s.origIdx,holeIdx})}>
-                                  <ScoreSymbol gross={parseInt(gross)} par={par}/>
+                                <div style={{position:"relative",display:"inline-flex",alignItems:"flex-start",justifyContent:"center"}} onClick={()=>setScoreModal({scorerIdx:s.origIdx,holeIdx})}>
+                                  <div className="score-tap-cell filled"><ScoreSymbol gross={parseInt(gross)} par={par}/></div>
+                                  {pts!=null&&<span style={{fontSize:11,fontWeight:700,color:"var(--green-700)",lineHeight:1,marginLeft:1,marginTop:1,flexShrink:0}}>{pts}</span>}
                                 </div>
                               ):(
                                 <div className="score-tap-cell" onClick={()=>setScoreModal({scorerIdx:s.origIdx,holeIdx})}>+</div>
@@ -789,8 +815,19 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                         <tr key="front9" style={{background:"var(--green-100)",borderTop:"2px solid var(--green-600)"}}>
                           <td colSpan={3} style={{fontWeight:700,fontSize:15,textAlign:"left",paddingLeft:6,color:"var(--green-800)",textTransform:"uppercase",letterSpacing:"0.05em"}}>F9</td>
                           {activeScorersFull.map((s,si)=>{
-                            const front9=s.holeCalcs.slice(0,9).reduce((sum:number,h:any)=>sum+(h.points??0),0);
-                            return<td key={si} style={{textAlign:"center",fontWeight:700,fontSize:19,color:"var(--green-800)"}}>{front9||""}</td>;
+                            const front9pts=s.holeCalcs.slice(0,9).reduce((sum:number,h:any)=>sum+(h.points??0),0);
+                            const front9gross=s.grossScores.slice(0,9).reduce((sum:number,v:string)=>sum+(parseInt(v)||0),0);
+                            const hasAny=s.grossScores.slice(0,9).some((v:string)=>!!v);
+                            return(
+                              <td key={si} style={{textAlign:"center",verticalAlign:"middle"}}>
+                                {hasAny?(
+                                  <span style={{display:"inline-flex",alignItems:"baseline",gap:2}}>
+                                    <span style={{fontWeight:700,fontSize:19,color:"var(--green-800)"}}>{front9gross}</span>
+                                    <span style={{fontSize:16,fontWeight:700,color:"var(--green-700)",lineHeight:1,alignSelf:"flex-start",marginTop:1}}>{front9pts}</span>
+                                  </span>
+                                ):""}
+                              </td>
+                            );
                           })}
                         </tr>
                       );
@@ -802,8 +839,19 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                         <tr key="back9" style={{background:"var(--green-100)",borderTop:"1px solid var(--green-400)"}}>
                           <td colSpan={3} style={{fontWeight:700,fontSize:15,textAlign:"left",paddingLeft:6,color:"var(--green-800)",textTransform:"uppercase",letterSpacing:"0.05em"}}>B9</td>
                           {activeScorersFull.map((s,si)=>{
-                            const back9=s.holeCalcs.slice(9,18).reduce((sum:number,h:any)=>sum+(h.points??0),0);
-                            return<td key={si} style={{textAlign:"center",fontWeight:700,fontSize:19,color:"var(--green-800)"}}>{back9||""}</td>;
+                            const back9pts=s.holeCalcs.slice(9,18).reduce((sum:number,h:any)=>sum+(h.points??0),0);
+                            const back9gross=s.grossScores.slice(9,18).reduce((sum:number,v:string)=>sum+(parseInt(v)||0),0);
+                            const hasAny=s.grossScores.slice(9,18).some((v:string)=>!!v);
+                            return(
+                              <td key={si} style={{textAlign:"center",verticalAlign:"middle"}}>
+                                {hasAny?(
+                                  <span style={{display:"inline-flex",alignItems:"baseline",gap:2}}>
+                                    <span style={{fontWeight:700,fontSize:19,color:"var(--green-800)"}}>{back9gross}</span>
+                                    <span style={{fontSize:16,fontWeight:700,color:"var(--green-700)",lineHeight:1,alignSelf:"flex-start",marginTop:1}}>{back9pts}</span>
+                                  </span>
+                                ):""}
+                              </td>
+                            );
                           })}
                         </tr>
                       );
@@ -814,8 +862,19 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                   <tr style={{background:"var(--green-50)",borderTop:"2px solid var(--green-600)"}}>
                     <td colSpan={3} style={{fontWeight:700,textAlign:"left",paddingLeft:6,fontSize:15,textTransform:"uppercase"}}>Total</td>
                     {activeScorersFull.map((s,si)=>{
-                      const total=s.holeCalcs.reduce((sum:number,h:any)=>sum+(h.points??0),0);
-                      return<td key={si} style={{textAlign:"center",fontWeight:700,fontSize:19,color:"var(--green-700)"}}>{total||""}</td>;
+                      const totalPts=s.holeCalcs.reduce((sum:number,h:any)=>sum+(h.points??0),0);
+                      const totalGross=s.grossScores.reduce((sum:number,v:string)=>sum+(parseInt(v)||0),0);
+                      const hasAny=s.grossScores.some((v:string)=>!!v);
+                      return(
+                        <td key={si} style={{textAlign:"center",verticalAlign:"middle"}}>
+                          {hasAny?(
+                            <span style={{display:"inline-flex",alignItems:"baseline",gap:2}}>
+                              <span style={{fontWeight:700,fontSize:19,color:"var(--green-700)"}}>{totalGross}</span>
+                              <span style={{fontSize:16,fontWeight:700,color:"var(--green-600)",lineHeight:1,alignSelf:"flex-start",marginTop:1}}>{totalPts}</span>
+                            </span>
+                          ):""}
+                        </td>
+                      );
                     })}
                   </tr>
                 </tbody>
