@@ -8,6 +8,8 @@ import { assignLateAdd } from "../../lib/golfMath";
 import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
 import { WeatherAmbience, getWeatherCardBg } from "../../components/WeatherAmbience";
+import { WeatherSkeleton } from "../../components/weather/WeatherSkeleton";
+import { useWeatherReady } from "../../hooks/useWeatherReady";
 
 const swipeEarlyStyles = `
 .rsvp-swipe-outer {
@@ -246,6 +248,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   const selEvent=events.find((e:any)=>e.event_id===selEventId);
   const eventSignups=signups.filter((s:any)=>s.event_id===selEventId);
   const {wx:forecastWx}=useWeather(selEvent?.course_name||"",selEvent?.date||"");
+  const wxReady=useWeatherReady(forecastWx,350,selEventId);
 
   useEffect(()=>{
     if(cardRef.current)setCardHeight(cardRef.current.offsetHeight);
@@ -414,18 +417,17 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
   return(
     <div style={{position:"relative"}}>
-      {wxBg&&(
-        <div aria-hidden="true" style={{
-          position:"absolute", left:-12, right:-12, top:-16, height:520,
-          background:wxBg, transition:"background 0.7s ease",
-          WebkitMaskImage:"linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
-          maskImage:"linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
-          pointerEvents:"none", zIndex:0,
-          overflow:"hidden",
-        }}>
-          <WeatherAmbience weatherCode={forecastWx?.code} cardHeight={520} />
-        </div>
-      )}
+      <div aria-hidden="true" style={{
+        position:"absolute", left:-12, right:-12, top:-16, height:520,
+        background:wxBg||"transparent", transition:"background 0.4s ease, opacity 0.4s ease",
+        opacity:wxReady?1:0,
+        WebkitMaskImage:"linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
+        maskImage:"linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
+        pointerEvents:"none", zIndex:0,
+        overflow:"hidden",
+      }}>
+        <WeatherAmbience weatherCode={forecastWx?.code} cardHeight={520} />
+      </div>
       <div style={{position:"relative",zIndex:1}}>
       <div className="section-title">Sign Up</div>
       <div className="section-sub">RSVP for upcoming rounds</div>
@@ -494,24 +496,37 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             );
           })()}
           {(()=>{
-            if(forecastWx){
-              const d=wmoToDesc(forecastWx.code);
-              return(
-                <div className="info-row" style={{marginTop:2,paddingTop:8}}>
-                  <span className="info-key">Forecast</span>
-                  <span className="info-val" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                    <span style={{fontSize:18,lineHeight:1}}>{d.emoji}</span>
-                    <span style={{fontWeight:600,fontSize:14,color:"var(--text-primary)"}}>{forecastWx.temp}°F</span>
-                    <span style={{fontSize:13,color:"var(--text-secondary)"}}>{d.label}</span>
-                    <span style={{fontSize:13,color:"var(--text-muted)"}}>{forecastWx.wind} mph {degToCompass(forecastWx.windDeg)}</span>
-                  </span>
-                </div>
-              );
-            }
+            const d=forecastWx?wmoToDesc(forecastWx.code):null;
             return(
               <div className="info-row" style={{marginTop:2,paddingTop:8}}>
                 <span className="info-key">Forecast</span>
-                <span className="info-val" style={{fontSize:14,color:"var(--text-muted)",fontStyle:"italic"}}>TBD</span>
+                <span className="info-val" style={{flex:1,position:"relative"}}>
+                  {/* Skeleton: visible while data is loading */}
+                  <span style={{
+                    display:"flex",
+                    opacity:wxReady?0:1,
+                    transition:"opacity 0.5s ease",
+                    position:wxReady?"absolute":"relative",
+                    inset:0,
+                    pointerEvents:"none",
+                    justifyContent:"flex-end",
+                  }}>
+                    <WeatherSkeleton />
+                  </span>
+                  {/* Real weather row: fades in once ready */}
+                  <span style={{
+                    display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",justifyContent:"flex-end",
+                    opacity:wxReady?1:0,
+                    transition:"opacity 0.6s ease 0.15s",
+                  }}>
+                    {d&&<>
+                      <span style={{fontSize:18,lineHeight:1}}>{d.emoji}</span>
+                      <span style={{fontWeight:600,fontSize:14,color:"var(--text-primary)"}}>{forecastWx.temp}°F</span>
+                      <span style={{fontSize:13,color:"var(--text-secondary)"}}>{d.label}</span>
+                      <span style={{fontSize:13,color:"var(--text-muted)"}}>{forecastWx.wind} mph {degToCompass(forecastWx.windDeg)}</span>
+                    </>}
+                  </span>
+                </span>
               </div>
             );
           })()}

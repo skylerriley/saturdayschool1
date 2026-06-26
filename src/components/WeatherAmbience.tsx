@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 
 // ── WMO code → scene ──────────────────────────────────────────────────────────
 type WeatherScene = 'sunny' | 'partly-cloudy' | 'overcast' | 'rain' | 'thunderstorm' | 'snow' | 'none';
@@ -283,6 +283,17 @@ interface WeatherAmbienceProps {
 }
 
 export function WeatherAmbience({ weatherCode, cardHeight = 340 }: WeatherAmbienceProps) {
+  const [visible, setVisible] = useState(false);
+  const mountRef = useRef(Date.now());
+
+  useEffect(() => {
+    if (weatherCode == null) return;
+    const elapsed = Date.now() - mountRef.current;
+    const remaining = Math.max(0, 350 - elapsed);
+    const t = setTimeout(() => setVisible(true), remaining);
+    return () => clearTimeout(t);
+  }, [weatherCode]);
+
   ensureKeyframes();
   const scene = getScene(weatherCode);
   if (scene === 'none') return null;
@@ -294,6 +305,8 @@ export function WeatherAmbience({ weatherCode, cardHeight = 340 }: WeatherAmbien
         position: 'absolute', inset: 0,
         borderRadius: 'inherit', overflow: 'hidden',
         pointerEvents: 'none', zIndex: 0,
+        opacity: visible ? 1 : 0,
+        transition: 'opacity 0.4s ease',
       }}
     >
       {scene === 'sunny'         && <SunnyScene />}

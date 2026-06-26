@@ -9,9 +9,12 @@ import { useLiveWeather } from "../../hooks/useLiveWeather";
 import { WindParticles } from "../../components/weather/WindParticles";
 import { WeatherModal } from "../../components/weather/WeatherModal";
 import { UpcomingCourseCard } from "./UpcomingCourseCard";
+import { ensureShimmer } from "../../components/weather/WeatherSkeleton";
 import { FieldStrengthMeter } from "./FieldStrengthMeter";
 import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
+
+ensureShimmer();
 
 // ── EventFeedCard ─────────────────────────────────────────────────────────────
 // Full-width image card for the weekly leaderboard feed.
@@ -23,6 +26,10 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
   const holeNum=((eventNumber-1)%18)+1;
   const imgRecord=(holeImages||[]).find((img:any)=>img.course_name===courseName&&img.hole_number===holeNum&&img.public_url);
   const imgUrl:string|null=imgRecord?imgRecord.public_url:null;
+
+  const [imgLoaded,setImgLoaded]=useState(false);
+  // Reset when the URL changes (different card / holeImages update)
+  useEffect(()=>{ setImgLoaded(false); },[imgUrl]);
 
   // Leaderboard entries for this event, sorted by points desc
   const entries=[...leaderboard.filter((r:any)=>r.event_id===event.event_id)]
@@ -95,14 +102,20 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
         flexShrink:0,
       }}
     >
-      {/* Background image */}
+      {/* Shimmer placeholder — visible until image loads */}
+      {imgUrl&&!imgLoaded&&(
+        <div className="wx-skel" style={{position:"absolute",inset:0,borderRadius:0}}/>
+      )}
+      {/* Background image — fades in once decoded */}
       {imgUrl&&(
         <img
           src={imgUrl}
           alt={`${courseName} hole ${holeNum}`}
-          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 60%"}}
+          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 60%",
+            opacity:imgLoaded?1:0,transition:"opacity 0.4s ease"}}
           loading="lazy"
           draggable={false}
+          onLoad={()=>setImgLoaded(true)}
         />
       )}
       {/* Scrim: dark at bottom, light touch at top */}

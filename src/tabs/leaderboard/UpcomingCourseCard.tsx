@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { formatDate } from "../../lib/formatters";
 import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc } from "../../components/weather/weatherUtils";
+import { WeatherBadgeSkeleton } from "../../components/weather/WeatherSkeleton";
+import { useWeatherReady } from "../../hooks/useWeatherReady";
 
 // ------------------------------------------------------------------
 // UPCOMING COURSE CARD -- rounded hero image (random hole photo) with
@@ -25,6 +27,7 @@ export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldC
   const par = longestTee?.par;
 
   const { wx } = useWeather(courseName, event?.date || "");
+  const wxReady = useWeatherReady(wx);
 
   return (
     <div onClick={onClick} style={{ position: "relative", borderRadius: "var(--radius-lg, 16px)", overflow: "hidden", marginBottom: 14, minHeight: 160, background: "linear-gradient(135deg,var(--green-900),var(--green-700))", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
@@ -56,11 +59,26 @@ export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldC
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 16, alignItems: "center", justifyContent: "center" }}>
           {totalYards > 0 && <span>{totalYards.toLocaleString()} yds</span>}
           {par && <span>Par {par}</span>}
-          {wx && (
-            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              {wmoToDesc(wx.code).emoji} {wx.temp}°F · {wmoToDesc(wx.code).label}
+          <span style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            {/* Skeleton: visible while data is loading */}
+            <span style={{
+              opacity: wxReady ? 0 : 1,
+              transition: "opacity 0.5s ease",
+              position: wxReady ? "absolute" : "relative",
+              inset: 0,
+              pointerEvents: "none",
+            }}>
+              <WeatherBadgeSkeleton />
             </span>
-          )}
+            {/* Real weather badge: fades in once ready */}
+            <span style={{
+              display: "flex", alignItems: "center", gap: 4,
+              opacity: wxReady ? 1 : 0,
+              transition: "opacity 0.6s ease 0.15s",
+            }}>
+              {wx && <>{wmoToDesc(wx.code).emoji} {wx.temp}°F · {wmoToDesc(wx.code).label}</>}
+            </span>
+          </span>
         </div>
       </div>
     </div>
