@@ -946,7 +946,15 @@ const _urlParams=new URLSearchParams(
   typeof window!=="undefined"?window.location.search:""
 );
 const _initTab=(()=>{const t=_urlParams.get("tab");return(t&&["leaderboard","rsvp","score","admin","analytics","settings"].includes(t))?t:"leaderboard";})();
-const _initSubTab=(()=>{const s=_urlParams.get("subtab");if(s)return s;const d=new Date().getDay();return(d>=1&&d<=3)?"season":"";})();
+// Post-Saturday recap window: Sat after 3pm through Sun 7pm PST → land on weekly tab + open event detail
+const _isRecapWindow=(()=>{
+  const parts=new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",weekday:"short",hour:"numeric",hour12:false}).formatToParts(new Date());
+  const weekday=parts.find(p=>p.type==="weekday")?.value;
+  const hour=parseInt(parts.find(p=>p.type==="hour")?.value||"0",10);
+  return (weekday==="Sat"&&hour>=15)||(weekday==="Sun"&&hour<14);
+})();
+const _initSubTab=(()=>{const s=_urlParams.get("subtab");if(s)return s;if(_isRecapWindow)return"weekly";const d=new Date().getDay();return(d>=1&&d<=3)?"season":"";})();
+const _initOpenRecap=_isRecapWindow&&!_urlParams.get("subtab");
 if(typeof window!=="undefined"&&window.location.search){
   window.history.replaceState({},"",window.location.pathname);
 }
@@ -984,6 +992,7 @@ export default function App(){
   const [tabDir,setTabDir]=useState<"right"|"left">("right");
   const prevTabRef=useRef(_initTab);
   const [initialSubTab]=useState(_initSubTab);
+  const [initialFeedOpen]=useState(_initOpenRecap);
   const [analyticsInitialGolfer,setAnalyticsInitialGolfer]=useState<string>("");
   const [analyticsBackLabel,setAnalyticsBackLabel]=useState<string>("");
   const [lbRestoreSubTab,setLbRestoreSubTab]=useState<string>("");
@@ -2005,7 +2014,7 @@ export default function App(){
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
           {errorMsg&&<div className="error-banner"><span>⚠</span>{errorMsg}</div>}
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
-          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
+          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}

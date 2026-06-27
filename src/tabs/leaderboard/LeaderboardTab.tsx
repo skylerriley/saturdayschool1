@@ -227,7 +227,7 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
   );
 }
 
-export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab,restoreSubTab,onSubTabChange,onNavigateToAnalyticsGolfer}:any){
+export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab,restoreSubTab,onSubTabChange,initialFeedOpen,onNavigateToAnalyticsGolfer}:any){
   // ── Golden Hour Mode ──────────────────────────────────────────────────
   // Fri/Sat 4-8pm PST: the leaderboard drifts toward amber-tinted greens and
   // warmer whites. Friday afternoon = anticipation; Saturday evening = the
@@ -359,6 +359,17 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   const completedEvents=[...events].filter((e:any)=>e.status==="Completed").sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
   const seasonEvents=completedEvents.filter((e:any)=>e.season===selSeason);
   const displayEvent=selEventId?completedEvents.find((e:any)=>e.event_id===selEventId):seasonEvents[0];
+
+  // Post-Saturday recap: auto-open the most recent completed event detail on first load
+  const recapOpenedRef=useRef(false);
+  useEffect(()=>{
+    if(!initialFeedOpen||recapOpenedRef.current)return;
+    const mostRecent=completedEvents[0];
+    if(!mostRecent)return;
+    recapOpenedRef.current=true;
+    setFeedOverlayEvent(mostRecent);
+    setSelEventId(mostRecent.event_id);
+  },[initialFeedOpen,completedEvents.length]);
 
   const eventEntries=displayEvent
     ?[...leaderboard.filter((e:any)=>e.event_id===displayEvent.event_id)].sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)
