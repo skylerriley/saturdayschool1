@@ -8,7 +8,6 @@ import { assignLateAdd } from "../../lib/golfMath";
 import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
 import { WeatherAmbience, getWeatherCardBg } from "../../components/WeatherAmbience";
-import { WeatherSkeleton } from "../../components/weather/WeatherSkeleton";
 import { useWeatherReady } from "../../hooks/useWeatherReady";
 
 const swipeEarlyStyles = `
@@ -501,31 +500,19 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             return(
               <div className="info-row" style={{marginTop:2,paddingTop:8}}>
                 <span className="info-key">Forecast</span>
-                <span className="info-val" style={{flex:1,position:"relative"}}>
-                  {/* Skeleton: visible while data is loading */}
-                  <span style={{
-                    display:"flex",
-                    opacity:wxReady?0:1,
-                    transition:"opacity 0.5s ease",
-                    position:wxReady?"absolute":"absolute",
-                    inset:0,
-                    pointerEvents:"none",
-                    justifyContent:"flex-end",
-                  }}>
-                    <WeatherSkeleton />
-                  </span>
-                  {/* Real weather row: fades in once ready */}
+                <span className="info-val" style={{flex:1}}>
                   <span style={{
                     display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",justifyContent:"flex-end",
-                    opacity:wxReady?1:0,
-                    transition:"opacity 0.6s ease 0.15s",
+                    filter:wxReady?"blur(0px)":"blur(6px)",
+                    transition:"filter 0.35s ease",
+                    pointerEvents:wxReady?"auto":"none",
                   }}>
                     {d?<>
                       <span style={{fontSize:18,lineHeight:1}}>{d.emoji}</span>
                       <span style={{fontWeight:600,fontSize:14,color:"var(--text-primary)"}}>{forecastWx.temp}°F</span>
                       <span style={{fontSize:13,color:"var(--text-secondary)"}}>{d.label}</span>
                       <span style={{fontSize:13,color:"var(--text-muted)"}}>{forecastWx.wind} mph {degToCompass(forecastWx.windDeg)}</span>
-                    </>:<span style={{fontSize:14,color:"var(--text-muted)"}}>TBD</span>}
+                    </>:wxReady&&<span style={{fontSize:14,color:"var(--text-muted)"}}>TBD</span>}
                   </span>
                 </span>
               </div>
