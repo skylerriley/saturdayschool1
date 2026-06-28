@@ -833,7 +833,7 @@ const CSS = `
   .event-hero-pill{
     padding:4px 10px;border-radius:20px;
     background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.2);
-    font-size:12px;font-weight:600;color:rgba(255,255,255,0.88);
+    font-size:14px;font-weight:600;color:rgba(255,255,255,0.88);
   }
   .event-hero-podium{
     position:absolute;bottom:20px;left:0;right:0;z-index:3;

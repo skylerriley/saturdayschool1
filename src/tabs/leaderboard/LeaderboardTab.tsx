@@ -2088,7 +2088,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     <div className="event-hero-course">{heroCourseName}</div>
                     <div className="event-hero-pills">
                       <span className="event-hero-pill">{heroPlayerCount} golfers</span>
-                      {skinsEligible&&heroSkinsWon>0&&<span className="event-hero-pill">{heroSkinsWon} skin{heroSkinsWon!==1?"s":""} won</span>}
+                      {skinsEligible&&heroSkinsWon>0&&<span className="event-hero-pill">{heroSkinsWon} skin{heroSkinsWon!==1?"s":""}</span>}
                       <span className="event-hero-pill">{heroAvgPts} avg</span>
                     </div>
                   </div>
