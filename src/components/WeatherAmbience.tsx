@@ -97,13 +97,13 @@ function SunnyScene() {
   return (
     <>
       <div style={{
-        position:'absolute', right:-40, top:-50, width:220, height:220, borderRadius:'50%',
+        position:'absolute', right:-40, top:-50, width:220, height:250, borderRadius:'50%',
         background:'radial-gradient(circle at 38% 38%, rgba(255,253,200,.92) 0%, rgba(253,211,80,.76) 30%, rgba(251,176,52,.44) 56%, transparent 76%)',
         filter:'blur(14px)',
         animation:'wx-sun-pulse 4s ease-in-out infinite',
       }} />
       <div style={{
-        position:'absolute', right:-60, top:-80, width:340, height:260, borderRadius:'50%',
+        position:'absolute', right:-60, top:-80, width:340, height:275, borderRadius:'50%',
         background:'radial-gradient(ellipse, rgba(254,220,100,.2) 0%, transparent 68%)',
         filter:'blur(8px)',
         animation:'wx-warm-glow 5s ease-in-out infinite',
@@ -116,7 +116,7 @@ function PartlyCloudyScene() {
   return (
     <>
       <div style={{
-        position:'absolute', right:20, top:-20, width:130, height:130, borderRadius:'50%',
+        position:'absolute', right:20, top:-20, width:120, height:230, borderRadius:'50%',
         background:'radial-gradient(circle at 42% 42%, rgba(255,250,190,.95) 0%, rgba(253,211,80,.68) 28%, rgba(251,176,52,.36) 52%, transparent 70%)',
         filter:'blur(10px)', opacity:.72,
         animation:'wx-sun-pulse 5s ease-in-out infinite',
@@ -132,11 +132,11 @@ function OvercastScene() {
   return (
     <>
       <div style={{ position:'absolute', inset:0, background:'linear-gradient(180deg, rgba(80,98,118,.26) 0%, rgba(80,98,118,.05) 60%, transparent 100%)' }} />
-      <Cloud x={-60} y={-20} w={320} h={90}  opacity={.55} blur={18} color="rgba(195,205,218,0.68)" dur="65s" dir="f" />
-      <Cloud x={160} y={-10} w={260} h={75}  opacity={.48} blur={15} color="rgba(195,205,218,0.65)" dur="80s" dir="r" />
-      <Cloud x={-20} y={25}  w={230} h={68}  opacity={.62} blur={10} color="rgba(230,235,242,0.72)" dur="50s" dir="r" />
-      <Cloud x={130} y={35}  w={200} h={58}  opacity={.58} blur={9}  color="rgba(230,235,242,0.70)" dur="42s" dir="f" />
-      <Cloud x={50}  y={55}  w={160} h={48}  opacity={.5}  blur={7}  color="rgba(240,244,250,0.68)" dur="36s" dir="f" />
+      <Cloud x={-60} y={-20} w={320} h={150}  opacity={.55} blur={18} color="rgba(195,205,218,0.68)" dur="65s" dir="f" />
+      <Cloud x={160} y={-10} w={260} h={135}  opacity={.48} blur={15} color="rgba(195,205,218,0.65)" dur="80s" dir="r" />
+      <Cloud x={-20} y={25}  w={230} h={138}  opacity={.62} blur={10} color="rgba(230,235,242,0.72)" dur="50s" dir="r" />
+      <Cloud x={130} y={35}  w={200} h={128}  opacity={.58} blur={9}  color="rgba(230,235,242,0.70)" dur="42s" dir="f" />
+      <Cloud x={50}  y={55}  w={160} h={118}  opacity={.5}  blur={7}  color="rgba(240,244,250,0.68)" dur="36s" dir="f" />
     </>
   );
 }

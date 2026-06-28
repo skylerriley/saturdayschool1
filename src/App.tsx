@@ -926,7 +926,7 @@ const CSS = `
     padding:14px 2px 8px;
   }
 
-  .success-banner{background:var(--green-100);border:1px solid var(--green-300);border-radius:var(--radius-md);padding:13px 16px;color:var(--green-800);font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:9px;}
+  .success-banner{background:var(--green-100);border:1px solid var(--green-300);border-radius:var(--radius-md);padding:13px 16px;color:var(--green-800);font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:9px;position:relative;z-index:2;}
 
   .tab-sub{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;position:sticky;top:-4px;z-index:10;background:var(--bg);padding-top:0px;}
   .tab-sub.stuck{box-shadow:0 -40px 0 40px var(--bg);padding-top:0px;padding-bottom:8px;}

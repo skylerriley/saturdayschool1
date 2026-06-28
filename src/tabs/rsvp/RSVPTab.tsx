@@ -253,6 +253,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   useEffect(()=>{
     if(cardRef.current)setCardHeight(cardRef.current.offsetHeight);
   },[selEventId,forecastWx]);
+
   const yesCount=eventSignups.filter((s:any)=>s.attending==="Yes").length;
   const noCount=eventSignups.filter((s:any)=>s.attending==="No").length;
   const unconfCount=eventSignups.filter((s:any)=>s.attending==="Unconfirmed").length;
@@ -418,7 +419,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   return(
     <div style={{position:"relative"}}>
       <div aria-hidden="true" style={{
-        position:"absolute", left:-12, right:-12, top:-16, height:520,
+        position:"absolute", left:-12, right:-12, top:-86, height:570,
         background:wxBg||"transparent", transition:"background 0.4s ease, opacity 0.4s ease",
         opacity:wxReady?1:0,
         WebkitMaskImage:"linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
@@ -426,7 +427,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
         pointerEvents:"none", zIndex:0,
         overflow:"hidden",
       }}>
-        <WeatherAmbience weatherCode={forecastWx?.code} cardHeight={520} />
+        <WeatherAmbience weatherCode={forecastWx?.code} cardHeight={570} />
       </div>
       <div style={{position:"relative",zIndex:1}}>
       <div className="section-title">Sign Up</div>
@@ -506,7 +507,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                     display:"flex",
                     opacity:wxReady?0:1,
                     transition:"opacity 0.5s ease",
-                    position:wxReady?"absolute":"relative",
+                    position:wxReady?"absolute":"absolute",
                     inset:0,
                     pointerEvents:"none",
                     justifyContent:"flex-end",
@@ -519,12 +520,12 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                     opacity:wxReady?1:0,
                     transition:"opacity 0.6s ease 0.15s",
                   }}>
-                    {d&&<>
+                    {d?<>
                       <span style={{fontSize:18,lineHeight:1}}>{d.emoji}</span>
                       <span style={{fontWeight:600,fontSize:14,color:"var(--text-primary)"}}>{forecastWx.temp}°F</span>
                       <span style={{fontSize:13,color:"var(--text-secondary)"}}>{d.label}</span>
                       <span style={{fontSize:13,color:"var(--text-muted)"}}>{forecastWx.wind} mph {degToCompass(forecastWx.windDeg)}</span>
-                    </>}
+                    </>:<span style={{fontSize:14,color:"var(--text-muted)"}}>TBD</span>}
                   </span>
                 </span>
               </div>

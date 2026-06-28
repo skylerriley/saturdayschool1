@@ -20,10 +20,12 @@ export function useWeatherReady(data: any, minMs = 350, key?: any) {
   }, [key]);
 
   useEffect(() => {
-    if (!data) return;
     const elapsed = Date.now() - mountTime.current;
-    const remaining = Math.max(0, minMs - elapsed);
-    const t = setTimeout(() => setReady(true), remaining);
+    // If data arrives, wait out the minimum delay then mark ready.
+    // If data is still null, show "ready" after a longer timeout so
+    // the skeleton fades out and callers can render a "TBD" fallback.
+    const delay = data ? Math.max(0, minMs - elapsed) : Math.max(0, 2000 - elapsed);
+    const t = setTimeout(() => setReady(true), delay);
     return () => clearTimeout(t);
   }, [data, minMs, key]);
 

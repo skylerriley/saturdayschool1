@@ -2328,7 +2328,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     onClick={()=>{setShowScorecardModal(false);setLightboxImg(null);}}
                   >
                     <div
-                      style={{background:"var(--surface)",borderRadius:"var(--radius-lg) var(--radius-lg) 0 0",padding:"20px 16px 36px",width:"100%",maxWidth:520,maxHeight:"88vh",overflowY:"auto"}}
+                      style={{background:"var(--surface)",borderRadius:"var(--radius-lg) var(--radius-lg) 0 0",padding:"20px 16px 88px",width:"100%",maxWidth:520,maxHeight:"88vh",overflowY:"auto"}}
                       onClick={(e:any)=>e.stopPropagation()}
                     >
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>

@@ -43,8 +43,8 @@ export function WeatherSkeleton({ style }: WeatherSkeletonProps) {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "8px 0",
+        gap: 0,
+        padding: "0px 0",
         ...style,
       }}
     >
