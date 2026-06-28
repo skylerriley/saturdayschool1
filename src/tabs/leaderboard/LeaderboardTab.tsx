@@ -360,6 +360,10 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   const seasonEvents=completedEvents.filter((e:any)=>e.season===selSeason);
   const displayEvent=selEventId?completedEvents.find((e:any)=>e.event_id===selEventId):seasonEvents[0];
 
+  // Event number used for hero hole image (same formula as EventFeedCard)
+  const overlayEventNumMap:Record<number,number>={};
+  [...completedEvents].reverse().forEach((ev:any,i:number)=>{overlayEventNumMap[ev.event_id]=i+1;});
+
   // Post-Saturday recap: auto-open the most recent completed event detail on first load
   const recapOpenedRef=useRef(false);
   useEffect(()=>{
@@ -2016,110 +2020,139 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             zIndex:199,
             overflowY:"auto",
             overscrollBehaviorY:"contain",
-            paddingBottom:90,
+            
           }}
         >
-          {/* Sticky header -- back button + event title, stays visible while scrolling */}
-          <div style={{
-            position:"sticky",
-            top:0,
-            background:"var(--bg)",
-            zIndex:20,
-            paddingTop:"env(safe-area-inset-top, 0px)",
-            paddingLeft:12,
-            paddingRight:12,
-            borderBottom:"1px solid var(--border)",
-          }}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0 10px"}}>
-              <button
-                onClick={closeFeedOverlay}
-                style={{
-                  display:"flex",alignItems:"center",justifyContent:"center",
-                  width:40,height:40,borderRadius:"50%",
-                  background:"var(--green-800)",color:"white",
-                  border:"none",flexShrink:0,
-                  cursor:"pointer",WebkitTapHighlightColor:"transparent",
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 22 22" fill="none" style={{display:"block"}}>
-                  <path d="M14 4L7 11L14 18" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-              <div style={{textAlign:"right",minWidth:0,paddingLeft:12}}>
-                <div style={{fontSize:19,fontWeight:700,color:"var(--green-900)",lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{displayEvent.course_name}</div>
-                <div style={{fontSize:14,color:"var(--text-muted)",marginTop:3}}>{formatDate(displayEvent.date)}</div>
-              </div>
-            </div>
-          </div>
-          <div style={{paddingLeft:12,paddingRight:12,paddingTop:12}}>
+          {(()=>{
+            // Hero image: same hole-cycling logic as EventFeedCard
+            const heroCourseName:string=displayEvent.course_name||"";
+            const heroEventNum=overlayEventNumMap[displayEvent.event_id]||1;
+            const heroHoleNum=((heroEventNum-1)%18)+1;
+            const heroImgRecord=(holeImages||[]).find((img:any)=>img.course_name===heroCourseName&&img.hole_number===heroHoleNum&&img.public_url);
+            const heroImgUrl:string|null=heroImgRecord?heroImgRecord.public_url:null;
 
-          {!skinsEligible&&eventEntries.some((e:any)=>e.entry_type==="Total Only")&&(
-            <div className="skins-warning"><span>⚠</span><span>Mixed entry -- skins cannot be calculated until all players have hole-by-hole scores.</span></div>
-          )}
-          <div className="stat-grid">
-            <div className="stat-card"><div className="stat-value">{paidEntries.length}</div><div className="stat-label">Players</div></div>
-            <div className="stat-card"><div className="stat-value" style={{color:"var(--gold-600)"}}>${totalPot}</div><div className="stat-label">Stableford Pot</div></div>
-            {skinsEligible&&<div className="stat-card"><div className="stat-value" style={{color:"var(--green-700)"}}>${eventEntries.filter((e:any)=>e.skins_paid).length*10}</div><div className="stat-label">Skins Pot</div></div>}
-            {hasLiveSkins&&<div className="stat-card"><div style={{fontSize:20,fontWeight:700,color:"var(--green-600)",marginBottom:2}}>Skins Live</div><div className="stat-label">{Object.keys(skinHoleWinners).length} skin{Object.keys(skinHoleWinners).length!==1?"s":""}</div></div>}
-          </div>
-          {eventEntries.length>=2&&(()=>{
+            // Date formatting: "SAT · Jun 14, 2025"
+            const heroDt=new Date(displayEvent.date+"T00:00:00");
+            const days=["SUN","MON","TUE","WED","THU","FRI","SAT"];
+            const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+            const heroDateLine=days[heroDt.getDay()]+" · "+months[heroDt.getMonth()]+" "+heroDt.getDate()+", "+heroDt.getFullYear();
+
+            // Status badge
+            const evStatus=displayEvent.status;
+            const showBadge=evStatus==="In Progress"||evStatus==="Completed";
+            const badgeLabel=evStatus==="In Progress"?"Live":"Final";
+
+            // Stats pills
+            const heroPlayerCount=paidEntries.length;
+            // Skins won = holes where exactly one player outscored the rest (from skinHoleWinners)
+            const heroSkinsWon=Object.keys(skinHoleWinners).length;
+            const heroAvgPts=paidEntries.length>0?(paidEntries.reduce((s:number,e:any)=>s+(e.total_stableford_points||0),0)/paidEntries.length).toFixed(1):"—";
+
+            // Podium placements (same payout logic as existing block)
             const isTied=tied1st.length>1;
-            if(isTied){
-              return(
-                <div style={{display:"grid",gridTemplateColumns:"repeat("+Math.min(tied1st.length,4)+",1fr)",gap:10,marginBottom:18}}>
-                  {tied1st.map((e:any)=>{
-                    const payout=(totalPot/tied1st.length).toFixed(0);
-                    return(
-                      <div key={e.summary_id} className="podium-card p1">
-                        <div className="podium-pos">🥇</div>
-                        <div className="podium-pname">{golferName(golfers,e.golfer_id).split(" ")[0]}</div>
-                        <div className="podium-pscore">{e.total_stableford_points} pts</div>
-                        <div className="podium-payout">${payout}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            }
             const winner=paidEntries[0];
-            const runnerUp=paidEntries.find((e:any)=>e.total_stableford_points<(winner?.total_stableford_points??0));
-            const winnerPayout=(totalPot*(2/3)).toFixed(0);
-            const secondPts=runnerUp?.total_stableford_points;
+            const secondPts=!isTied?paidEntries.find((e:any)=>e.total_stableford_points<(winner?.total_stableford_points??0))?.total_stableford_points:null;
             const tied2nd=secondPts!=null?paidEntries.filter((e:any)=>e.total_stableford_points===secondPts):[];
+            const winnerPayout=isTied?null:(totalPot*(2/3)).toFixed(0);
+            const tiedWinnerPayout=isTied?(totalPot/tied1st.length).toFixed(0):null;
             const runnerUpPayout=tied2nd.length>0?((totalPot*(1/3))/tied2nd.length).toFixed(0):"0";
-            return(
-              <div className="podium-row">
-                {winner&&(
-                  <div className="podium-card p1">
-                    <div className="podium-pos">🥇</div>
-                    <div className="podium-pname">{golferName(golfers,winner.golfer_id).split(" ")[0]}</div>
-                    <div className="podium-pscore">{winner.total_stableford_points} pts</div>
-                    <div className="podium-payout">${winnerPayout}</div>
-                  </div>
-                )}
-                {runnerUp&&(
-                  <div className="podium-card p2">
-                    <div className="podium-pos">🥈{tied2nd.length>1&&<span style={{fontSize:12,marginLeft:3}}>x{tied2nd.length}</span>}</div>
-                    <div className="podium-pname">{tied2nd.length>1?"Tied 2nd":golferName(golfers,runnerUp.golfer_id).split(" ")[0]}</div>
-                    <div className="podium-pscore">{runnerUp.total_stableford_points} pts</div>
-                    <div className="podium-payout">${runnerUpPayout}{tied2nd.length>1?" ea":""}</div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
-            <div className="lb-header" style={{gridTemplateColumns:"36px 1fr 56px 62px"}}>
-              <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
-              <div className="lb-header-cell right">Pts</div><div className="lb-header-cell right">$$$</div>
-            </div>
-            {eventEntriesWithTies.map((entry:any,i:number)=>(
-              <div key={entry.golfer_id} className="boot-row" style={{["--row-i" as any]:i}}>
-                {renderLbRow(entry,"weekly")}
-              </div>
-            ))}
-          </div>
 
+            // Pot values
+            const heroPot=totalPot;
+            const heroSkinsPot=(evStatus==="In Progress"||skinsEligible)?eventEntries.filter((e:any)=>e.skins_paid).length*10:0;
+
+            return(
+              <>
+                {/* ── Layer 1: Hero ── */}
+                <div className="event-hero-wrap">
+                  {heroImgUrl&&<img src={heroImgUrl} className="event-hero-bg" alt=""/>}
+                  <div className="event-hero-gradient"/>
+
+                  {/* Back button */}
+                  <button className="event-hero-back" onClick={closeFeedOverlay} aria-label="Back">
+                    <svg width="18" height="18" viewBox="0 0 22 22" fill="none">
+                      <path d="M14 4L7 11L14 18" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+
+                  {/* Status badge */}
+                  {showBadge&&(
+                    <div className={"event-hero-badge"+(evStatus==="In Progress"?" event-hero-badge--live":"")}>
+                      {evStatus==="In Progress"&&<span className="event-hero-badge-dot"/>}{badgeLabel}
+                    </div>
+                  )}
+
+                  {/* Header text */}
+                  <div className="event-hero-header">
+                    <div className="event-hero-date">{heroDateLine}</div>
+                    <div className="event-hero-course">{heroCourseName}</div>
+                    <div className="event-hero-pills">
+                      <span className="event-hero-pill">{heroPlayerCount} golfers</span>
+                      {skinsEligible&&heroSkinsWon>0&&<span className="event-hero-pill">{heroSkinsWon} skin{heroSkinsWon!==1?"s":""} won</span>}
+                      <span className="event-hero-pill">{heroAvgPts} avg</span>
+                    </div>
+                  </div>
+
+                  {/* Podium — 2 slots: 1st left, 2nd right */}
+                  {paidEntries.length>=1&&(
+                    <div className="event-hero-podium">
+                      <div className="event-hero-podium-row">
+                        {/* 1st place */}
+                        {winner&&(
+                          <div className="event-hero-slot event-hero-slot--win">
+                            <div className="event-hero-medal">🥇</div>
+                            <div className="event-hero-name">
+                              {isTied
+                                ?tied1st.map((e:any)=>golferName(golfers,e.golfer_id).split(" ")[0]).join(" & ")
+                                :golferName(golfers,winner.golfer_id).split(" ")[0]}
+                            </div>
+                            <div className="event-hero-card event-hero-card--win">
+                              <div className="event-hero-pts">{winner.total_stableford_points}</div>
+                              <div className="event-hero-pts-label">pts</div>
+                              <div className="event-hero-payout">${isTied?tiedWinnerPayout:winnerPayout}</div>
+                            </div>
+                          </div>
+                        )}
+                        {/* 2nd place — only shown when 1st is not tied */}
+                        {!isTied&&tied2nd.length>0&&(
+                          <div className="event-hero-slot">
+                            <div className="event-hero-medal">🥈</div>
+                            <div className="event-hero-name">{tied2nd.length>1?"Tied 2nd":golferName(golfers,tied2nd[0].golfer_id).split(" ")[0]}</div>
+                            <div className="event-hero-card">
+                              <div className="event-hero-pts event-hero-pts--other">{tied2nd[0].total_stableford_points}</div>
+                              <div className="event-hero-pts-label">pts</div>
+                              <div className="event-hero-payout">${runnerUpPayout}{tied2nd.length>1?" ea":""}</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Layer 2: Content card ── */}
+                <div className="event-hero-content">
+                  <div className="event-hero-handle"/>
+
+                  {/* Pot tiles */}
+                  <div className="event-hero-pot-row">
+                    <div className="event-hero-pot-tile">
+                      <div className="event-hero-pot-value event-hero-pot-value--green">${heroPot}</div>
+                      <div className="event-hero-pot-label">Stableford Pot</div>
+                    </div>
+                    {(skinsEligible||heroSkinsPot>0)&&(
+                      <div className="event-hero-pot-tile">
+                        <div className="event-hero-pot-value event-hero-pot-value--gold">${heroSkinsPot}</div>
+                        <div className="event-hero-pot-label">Skins Pot</div>
+                      </div>
+                    )}
+                  </div>
+
+                  
+
+                  {!skinsEligible&&eventEntries.some((e:any)=>e.entry_type==="Total Only")&&(
+                    <div className="skins-warning"><span>⚠</span><span>Mixed entry -- skins cannot be calculated until all players have hole-by-hole scores.</span></div>
+                  )}
           {skinsEligible&&hasLiveSkins&&(()=>{
             // Build playerHoleMap for all skins-paid entries
             const skinsPaidEntries=eventEntries.filter((e:any)=>e.skins_paid);
@@ -2140,10 +2173,11 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               if(scored<wTotal||scored===0)return"pending";
               return skinHoleWinners[hNum]!=null?skinHoleWinners[hNum]:"tied";
             });
+            const wSkinsWonCount=wHoleState.filter(s=>typeof s==="number").length;
             return(
-              <div style={{marginTop:14,marginBottom:4}}>
+              <div style={{marginBottom:14}}>
                 <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",padding:"14px 12px",boxShadow:"var(--shadow-sm)"}}>
-                  <div className="card-title" style={{marginBottom:10,textAlign:"center"}}>Skins Won</div>
+                  <div className="card-title" style={{marginBottom:10,textAlign:"center"}}>Skins Won ({wSkinsWonCount})</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:6}}>
                     {wHoleState.map((state,i)=>{
                       const hNum=i+1;
@@ -2195,6 +2229,17 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               </div>
             );
           })()}
+                  <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
+            <div className="lb-header" style={{gridTemplateColumns:"36px 1fr 56px 62px"}}>
+              <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
+              <div className="lb-header-cell right">Pts</div><div className="lb-header-cell right">$$$</div>
+            </div>
+            {eventEntriesWithTies.map((entry:any,i:number)=>(
+              <div key={entry.golfer_id} className="boot-row" style={{["--row-i" as any]:i}}>
+                {renderLbRow(entry,"weekly")}
+              </div>
+            ))}
+          </div>
 
           {adminMode&&eventEntries.length>=2&&(()=>{
             const md=(()=>{const dt=new Date(displayEvent.date+"T00:00:00");return String(dt.getMonth()+1).padStart(2,"0")+"/"+String(dt.getDate()).padStart(2,"0");})();
@@ -2455,7 +2500,10 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               />
             );
           })()}
-          </div>{/* end inner padding div */}
+                </div>{/* end event-hero-content */}
+              </>
+            );
+          })()}
         </div>
       ,document.body)}
     </div>
@@ -2619,7 +2667,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
   ];
 
   return(
-    <div style={{marginTop:20}}>
+    <div style={{paddingBottom:100,marginTop:20}}>
       {/* Toggle */}
       <ToggleGroup
         options={[{value:"course",label:"Course Overview"},{value:"stats",label:"Hole Stats"}]}

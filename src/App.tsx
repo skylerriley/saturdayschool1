@@ -764,6 +764,168 @@ const CSS = `
   .ef-card:active{opacity:0.88;}
   .feed-overlay{border-radius:0;}
 
+  /* ── Event Hero (feed overlay redesign) ── */
+  .event-hero-wrap{
+    position:sticky;top:0;z-index:0;
+    height:calc(var(--safe-area-top) + 420px);
+    /* No overflow:hidden — lets the image bleed 20px below (behind card corners)
+       and 80px above (revealed on iOS overscroll pull-down) */
+    flex-shrink:0;
+  }
+  .event-hero-bg{
+    /* Extend 80px above so overscroll pull-down reveals image not blank space.
+       Extend 20px below so it peeks behind the content card's rounded top corners. */
+    position:absolute;top:-80px;left:0;right:0;bottom:-20px;
+    width:100%;height:calc(100% + 100px);
+    object-fit:cover;object-position:center;
+    display:block;
+  }
+  .event-hero-gradient{
+    position:absolute;top:-80px;left:0;right:0;bottom:-20px;
+    background:linear-gradient(to bottom,rgba(0,0,0,0.08) 0%,rgba(0,0,0,0.72) 100%);
+    pointer-events:none;
+  }
+  .event-hero-wrap:not(:has(.event-hero-bg)){
+    background:linear-gradient(160deg,var(--green-900) 0%,var(--green-700) 100%);
+  }
+  .event-hero-back{
+    /* Offset below the status bar */
+    position:absolute;top:calc(var(--safe-area-top) + 14px);left:14px;
+    width:36px;height:36px;border-radius:50%;
+    background:rgba(0,0,0,0.35);border:none;
+    color:#fff;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;-webkit-tap-highlight-color:transparent;z-index:4;
+  }
+  .event-hero-badge{
+    position:absolute;top:calc(var(--safe-area-top) + 14px);right:14px;z-index:4;
+    padding:5px 13px;border-radius:20px;
+    background:var(--gold-500);color:var(--green-900);
+    font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    display:flex;align-items:center;gap:5px;
+  }
+  .event-hero-badge--live{background:var(--gold-500);color:var(--green-900);}
+  .event-hero-badge-dot{
+    width:7px;height:7px;border-radius:50%;background:var(--green-800);
+    animation:event-hero-pulse 1.4s ease-in-out infinite;
+    flex-shrink:0;
+  }
+  @keyframes event-hero-pulse{
+    0%,100%{opacity:1;transform:scale(1);}
+    50%{opacity:0.5;transform:scale(0.75);}
+  }
+  .event-hero-header{
+    position:absolute;top:calc(var(--safe-area-top) + 60px);left:0;right:0;
+    display:flex;flex-direction:column;align-items:center;
+    padding:0 56px;z-index:3;
+  }
+  .event-hero-date{
+    font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;
+    color:rgba(255,255,255,0.7);margin-bottom:5px;text-align:center;
+  }
+  .event-hero-course{
+    font-family:Georgia,serif;font-size:22px;font-weight:700;
+    color:#fff;text-align:center;line-height:1.2;
+    text-shadow:0 2px 12px rgba(0,0,0,0.4);margin-bottom:8px;
+  }
+  .event-hero-pills{
+    display:flex;flex-wrap:wrap;justify-content:center;gap:6px;
+  }
+  .event-hero-pill{
+    padding:4px 10px;border-radius:20px;
+    background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.2);
+    font-size:12px;font-weight:600;color:rgba(255,255,255,0.88);
+  }
+  .event-hero-podium{
+    position:absolute;bottom:20px;left:0;right:0;z-index:3;
+    padding:0 10px;
+  }
+  .event-hero-podium-row{
+    display:flex;align-items:flex-end;justify-content:center;gap:8px;padding:0px 20px 15px;
+  }
+  .event-hero-podium-tied{
+    display:flex;justify-content:center;gap:10px;flex-wrap:wrap;
+  }
+  .event-hero-slot{
+    flex:1;display:flex;flex-direction:column;align-items:center;
+    min-width:0;
+  }
+  .event-hero-slot--center{
+    flex:1.15;
+  }
+  .event-hero-medal{font-size:30px;line-height:1;margin-bottom:3px;}
+  .event-hero-name{
+    font-size:18px;font-weight:700;color:#fff;margin-bottom:5px;
+    text-align:center;line-height:1.1;
+    text-shadow:0 1px 4px rgba(0,0,0,0.5);
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .event-hero-card{
+    width:100%;
+    background:rgba(0,0,0,0.32);
+    border:1px solid rgba(255,255,255,0.14);
+    border-radius:14px;
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
+    padding:8px 6px 9px;
+    text-align:center;
+  }
+  .event-hero-card--win{
+    background:rgba(255,255,255,0.16);
+    border:1.5px solid rgba(200,168,75,0.45);
+    padding-top:32px;
+  }
+  .event-hero-pts{
+    font-family:Georgia,serif;font-size:26px;font-weight:700;
+    color:#f0d878;line-height:1;
+  }
+  .event-hero-pts--other{color:#fff;}
+  .event-hero-slot:not(.event-hero-slot--win) .event-hero-pts{color:#fff;}
+  .event-hero-pts-label{
+    font-size:10px;font-weight:600;color:rgba(255,255,255,0.6);
+    letter-spacing:0.08em;text-transform:uppercase;margin-top:2px;
+  }
+  .event-hero-payout{
+    font-size:14px;font-weight:700;color:#c8a84b;margin-top:4px;
+  }
+  .event-hero-content{
+    position:relative;z-index:10;
+    /* Pull the card up 20px to overlap the hero's extended bottom — image shows
+       behind the rounded corners. Hero overflows its clip box by those 20px. */
+    margin-top:-20px;
+    border-radius:24px 24px 0 0;
+    background:var(--bg);
+    box-shadow:0 -4px 24px rgba(0,0,0,0.18);
+    padding:16px 14px 0;
+    min-height:100dvh;
+  }
+  .event-hero-handle{
+    width:36px;height:4px;
+    background:rgba(0,0,0,0.15);border-radius:2px;
+    margin:0 auto 20px;
+  }
+  .event-hero-pot-row{
+    display:flex;gap:10px;margin-bottom:12px;
+  }
+  .event-hero-pot-tile{
+    flex:1;background:var(--surface);
+    border-radius:16px;border:1px solid rgba(0,0,0,0.07);
+    padding:16px 12px;text-align:center;
+  }
+  .event-hero-pot-value{
+    font-family:Georgia,serif;font-size:28px;font-weight:700;line-height:1;
+  }
+  .event-hero-pot-value--green{color:var(--green-800);}
+  .event-hero-pot-value--gold{color:var(--gold-600);}
+  .event-hero-pot-label{
+    font-size:11px;font-weight:600;color:var(--text-muted);
+    letter-spacing:0.09em;text-transform:uppercase;margin-top:5px;
+  }
+  .event-hero-lb-label{
+    font-size:11px;font-weight:700;color:var(--text-muted);
+    letter-spacing:0.09em;text-transform:uppercase;
+    padding:14px 2px 8px;
+  }
+
   .success-banner{background:var(--green-100);border:1px solid var(--green-300);border-radius:var(--radius-md);padding:13px 16px;color:var(--green-800);font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:9px;}
 
   .tab-sub{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;position:sticky;top:-4px;z-index:10;background:var(--bg);padding-top:0px;}
