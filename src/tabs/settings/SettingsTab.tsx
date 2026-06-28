@@ -106,6 +106,24 @@ export function SettingsTab(){
   const [changelogOpen,setChangelogOpen]=useState(false);
   const versions=[
     {
+      version:"v3.5.0 The Architect",
+      date:"June 28, 2026",
+      sections:[
+        {type:"NEW",items:["Weekly event detail page with spring animations","Skins won tracker on leaderboard","Upcoming event odds — matchups, groups & field view","Pairings history on analytics tab","Player drawers with expanded stats","Weather ambience system (WeatherAmbience component)","Weather-ready state on RSVP tab sign-up row"]},
+        {type:"IMPROVED",items:["Score entry upgrade — streamlined input flow","Leaderboard post-round formatting","Field strength meter refinements","Pairing history tooltip","Scroll behavior fixes across tabs","Loading and linking QOL throughout app"]},
+        {type:"FIXED",items:["Odds display bugs","Weather ambience timing and skeleton","RSVP weather row layout"]}
+      ]
+    },
+    {
+      version:"v3.0.0 The Oracle",
+      date:"June 19, 2026",
+      sections:[
+        {type:"NEW",items:["Upcoming event leaderboard — live preview before round","Player drawer detail on upcoming tab","Weekly feed on leaderboard tab","Event alert banner","Pull-to-refresh gesture","Field strength bar — handicap distribution visual","Nav tab reorder and spring animation polish"]},
+        {type:"IMPROVED",items:["Splash screen animation speed and full-screen image","Weather modal hourly formatting","Subtab scroll freeze fix","Header and nav padding refinements","Analytics tracking enhancements","Sign-up field sorting and early tee-time button behavior","Pairings parity and group-balance improvements"]},
+        {type:"FIXED",items:["Upcoming leaderboard formatting edge cases","Odds calculation bugs","Nav indicator alignment (multiple passes)","Subtab CSS freezing on scroll"]}
+      ]
+    },
+    {
       version:"v2.5.0 Smith",
       date:"June 14, 2026",
       sections:[
@@ -162,7 +180,7 @@ export function SettingsTab(){
             <span style={{fontSize:18}}>📋</span>
             <div>
               <div style={{fontSize:15,fontWeight:700,color:"var(--text-primary)"}}>Version History</div>
-              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:1}}>v2.5.0 · June 14, 2026</div>
+              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:1}}>v3.5.0 · June 28, 2026</div>
             </div>
           </div>
           <span style={{fontSize:18,color:"var(--text-muted)",transition:"transform 0.2s",display:"inline-block",transform:changelogOpen?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
