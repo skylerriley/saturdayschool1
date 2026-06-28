@@ -876,8 +876,8 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       {/* ── Slide-to-Submit ── */}
       {(()=>{
         const label=canSubmit
-          ?`Submit Scores (${readyToSubmitCount})`
-          :"Submit Scores";
+          ?`Slide to Submit (${readyToSubmitCount})`
+          :"Slide to Submit";
         const pct=Math.min(slideSubmitX/SLIDE_THRESHOLD,1);
         const confirmed=pct>=1;
         const thumbSize=44+pct*16;
@@ -1039,7 +1039,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                   fontSize:15,fontWeight:700,color:"white",letterSpacing:"0.02em",
                   opacity:1-pct*0.7,pointerEvents:"none"
                 }}>
-                  Slide to Finalize Event
+                  Slide to Finalize
                 </div>
               </div>
             );

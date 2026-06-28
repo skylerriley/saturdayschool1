@@ -300,6 +300,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
   // Feed overlay state: which event's full detail is open
   const [feedOverlayEvent,setFeedOverlayEvent]=useState<any|null>(null);
+  const [feedOverlayClosing,setFeedOverlayClosing]=useState(false);
+  const [feedOverlayReady,setFeedOverlayReady]=useState(false);
   const feedScrollPosRef=useRef<number>(0);
   const overlayScrollRef=useRef<HTMLDivElement|null>(null);
   // Ref callback: fires synchronously on mount so scrollTop=0 lands before paint.
@@ -342,14 +344,21 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     feedScrollPosRef.current=mc?mc.scrollTop:0;
     setSelEventId(ev.event_id);
     setExpandedId(null);
+    setFeedOverlayReady(false);
     setFeedOverlayEvent(ev);
+    setTimeout(()=>setFeedOverlayReady(true),320);
   };
   const closeFeedOverlay=()=>{
-    setFeedOverlayEvent(null);
-    requestAnimationFrame(()=>{
-      const mc=document.querySelector(".main-content") as HTMLElement|null;
-      if(mc)mc.scrollTop=feedScrollPosRef.current;
-    });
+    setFeedOverlayClosing(true);
+    setTimeout(()=>{
+      setFeedOverlayEvent(null);
+      setFeedOverlayClosing(false);
+      setFeedOverlayReady(false);
+      requestAnimationFrame(()=>{
+        const mc=document.querySelector(".main-content") as HTMLElement|null;
+        if(mc)mc.scrollTop=feedScrollPosRef.current;
+      });
+    },280);
   };
 
   // 1) Season selector -- dropdown only, no "all time"
@@ -2012,7 +2021,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
       {feedOverlayEvent&&displayEvent&&ReactDOM.createPortal(
         <div
           ref={overlayRefCallback}
-          className="feed-overlay"
+          className={"feed-overlay"+(feedOverlayClosing?" feed-overlay--exit":" feed-overlay--enter")}
           style={{
             position:"fixed",
             top:0,left:0,right:0,bottom:0,
@@ -2020,7 +2029,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             zIndex:199,
             overflowY:"auto",
             overscrollBehaviorY:"contain",
-            
+
           }}
         >
           {(()=>{
@@ -2133,6 +2142,49 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                 {/* ── Layer 2: Content card ── */}
                 <div className="event-hero-content">
                   <div className="event-hero-handle"/>
+
+                  {!feedOverlayReady&&(
+                    <div className="event-detail-skel-content">
+                      {/* Pot tiles */}
+                      <div className="event-detail-skel-pot-row">
+                        <div className="event-detail-skel-pot-tile">
+                          <div className="event-detail-skel-pot-value"/>
+                          <div className="event-detail-skel-pot-label"/>
+                        </div>
+                        <div className="event-detail-skel-pot-tile">
+                          <div className="event-detail-skel-pot-value"/>
+                          <div className="event-detail-skel-pot-label"/>
+                        </div>
+                      </div>
+                      {/* Skins won grid */}
+                      <div className="event-detail-skel-skins-card">
+                        <div className="event-detail-skel-skins-title"/>
+                        <div className="event-detail-skel-skins-grid">
+                          {Array.from({length:18},(_,i)=>(
+                            <div key={i} className="event-detail-skel-skins-cell">
+                              <div className="event-detail-skel-skins-num"/>
+                              <div className="event-detail-skel-skins-sq" style={{animationDelay:`${(i%9)*0.05}s`}}/>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Leaderboard rows */}
+                      <div className="event-detail-skel-lb-card">
+                        <div className="event-detail-skel-lb-header"/>
+                        {[0,1,2,3,4,5,6].map(i=>(
+                          <div key={i} className="event-detail-skel-row" style={{animationDelay:`${i*0.07}s`}}>
+                            <div className="event-detail-skel-row-rank"/>
+                            <div className="event-detail-skel-row-name" style={{width:`${100+Math.sin(i*1.7)*40}px`}}/>
+                            <div style={{flex:1}}/>
+                            <div className="event-detail-skel-row-pts"/>
+                            <div className="event-detail-skel-row-money"/>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{opacity:feedOverlayReady?1:0,transition:"opacity 0.25s ease",pointerEvents:feedOverlayReady?"auto":"none"}}>
 
                   {/* Pot tiles */}
                   <div className="event-hero-pot-row">
@@ -2500,6 +2552,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               />
             );
           })()}
+                  </div>{/* end feedOverlayReady fade wrapper */}
                 </div>{/* end event-hero-content */}
               </>
             );

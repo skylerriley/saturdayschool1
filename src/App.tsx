@@ -764,6 +764,125 @@ const CSS = `
   .ef-card:active{opacity:0.88;}
   .feed-overlay{border-radius:0;}
 
+  /* ── Event detail overlay slide animations ── */
+  @keyframes feed-overlay-slide-in{
+    from{transform:translateX(100%);opacity:0.6;}
+    to{transform:translateX(0);opacity:1;}
+  }
+  @keyframes feed-overlay-slide-out{
+    from{transform:translateX(0);opacity:1;}
+    to{transform:translateX(100%);opacity:0.6;}
+  }
+  .feed-overlay--enter{
+    animation:feed-overlay-slide-in 0.28s cubic-bezier(0.22,1,0.36,1) both;
+  }
+  .feed-overlay--exit{
+    animation:feed-overlay-slide-out 0.26s cubic-bezier(0.55,0,1,0.45) both;
+  }
+
+  /* ── Event detail skeleton ── */
+  .event-detail-skel-hero{
+    position:absolute;inset:0;
+    background:linear-gradient(160deg,var(--green-900) 0%,var(--green-800) 100%);
+  }
+  .event-detail-skel-block{
+    border-radius:10px;
+    background:rgba(255,255,255,0.08);
+    animation:skel-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes skel-pulse{
+    0%,100%{opacity:1;}
+    50%{opacity:0.45;}
+  }
+  .event-detail-skel-content{
+    padding:20px 14px;
+  }
+  /* Pot tile row — matches .event-hero-pot-row layout */
+  .event-detail-skel-pot-row{
+    display:flex;gap:10px;margin-bottom:14px;
+  }
+  .event-detail-skel-pot-tile{
+    flex:1;border-radius:16px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    padding:16px 12px;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    animation:skel-pulse 1.4s ease-in-out infinite;
+  }
+  .event-detail-skel-pot-tile:nth-child(2){animation-delay:0.15s;}
+  .event-detail-skel-pot-value{
+    height:28px;width:60px;border-radius:6px;
+    background:rgba(0,0,0,0.08);
+  }
+  .event-detail-skel-pot-label{
+    height:10px;width:80px;border-radius:4px;
+    background:rgba(0,0,0,0.06);
+  }
+  /* Skins grid skeleton — 9 cols × 2 rows = 18 squares */
+  .event-detail-skel-skins-card{
+    background:var(--surface);
+    border-radius:var(--radius-md);
+    border:1px solid var(--border);
+    padding:14px 12px;
+    margin-bottom:14px;
+  }
+  .event-detail-skel-skins-title{
+    height:12px;width:100px;border-radius:4px;
+    background:rgba(0,0,0,0.08);
+    margin:0 auto 12px;
+    animation:skel-pulse 1.4s ease-in-out 0.05s infinite;
+  }
+  .event-detail-skel-skins-grid{
+    display:grid;grid-template-columns:repeat(9,1fr);gap:6px;
+  }
+  .event-detail-skel-skins-cell{
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+  }
+  .event-detail-skel-skins-num{
+    height:8px;width:8px;border-radius:2px;
+    background:rgba(0,0,0,0.07);
+  }
+  .event-detail-skel-skins-sq{
+    width:100%;aspect-ratio:1;border-radius:5px;
+    background:var(--surface2);
+    border:1.5px solid var(--border);
+    animation:skel-pulse 1.4s ease-in-out infinite;
+  }
+  /* Leaderboard table skeleton */
+  .event-detail-skel-lb-card{
+    background:var(--surface);
+    border-radius:var(--radius-md);
+    border:1px solid var(--border);
+    overflow:hidden;
+  }
+  .event-detail-skel-lb-header{
+    height:34px;background:var(--green-900);
+    animation:skel-pulse 1.4s ease-in-out 0.1s infinite;
+  }
+  .event-detail-skel-row{
+    height:58px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;padding:0 12px;gap:12px;
+    animation:skel-pulse 1.4s ease-in-out infinite;
+  }
+  .event-detail-skel-row:last-child{border-bottom:none;}
+  .event-detail-skel-row-rank{
+    width:28px;height:28px;border-radius:6px;
+    background:rgba(0,0,0,0.08);flex-shrink:0;
+  }
+  .event-detail-skel-row-name{
+    flex:1;height:14px;border-radius:5px;
+    background:rgba(0,0,0,0.07);
+    max-width:140px;
+  }
+  .event-detail-skel-row-pts{
+    width:32px;height:20px;border-radius:5px;
+    background:rgba(0,0,0,0.08);
+  }
+  .event-detail-skel-row-money{
+    width:38px;height:16px;border-radius:5px;
+    background:rgba(0,0,0,0.06);
+  }
+
   /* ── Event Hero (feed overlay redesign) ── */
   .event-hero-wrap{
     position:sticky;top:0;z-index:0;
