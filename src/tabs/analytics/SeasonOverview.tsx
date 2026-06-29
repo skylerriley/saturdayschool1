@@ -1,4 +1,5 @@
 import { useState as useStateOv, useRef, useEffect, useCallback } from "react";
+import { Trophy, Banknote, Star } from "lucide-react";
 import { CountUp } from "../../App";
 import { formatDate } from "../../lib/formatters";
 import { ChartCanvas } from "./ChartCanvas";
@@ -452,12 +453,14 @@ function ArcProgress({played,total=52}:{played:number,total?:number}){
     const c=canvasRef.current;
     if(!c)return;
     const dpr=window.devicePixelRatio||1;
-    c.width=64*dpr;
-    c.height=38*dpr;
+    const W=80,H=48;
+    c.width=W*dpr;
+    c.height=H*dpr;
     const ctx=c.getContext("2d");
     if(!ctx)return;
     ctx.scale(dpr,dpr);
-    const cx=32,cy=36,r=28,lw=6;
+    const cx=W/2,cy=H-4,r=34,lw=9;
+    // Track
     ctx.beginPath();
     ctx.arc(cx,cy,r,Math.PI,2*Math.PI);
     ctx.strokeStyle="rgba(93,175,138,0.22)";
@@ -465,16 +468,35 @@ function ArcProgress({played,total=52}:{played:number,total?:number}){
     ctx.lineCap="round";
     ctx.stroke();
     const frac=Math.min(1,Math.max(0,played/total));
-    if(frac>0){
+    if(frac<=0)return;
+    // Animate fill
+    const duration=800;
+    const start=performance.now();
+    const draw=(now:number)=>{
+      const t=Math.min(1,(now-start)/duration);
+      // ease-out cubic
+      const ease=1-(1-t)*(1-t)*(1-t);
+      const currentFrac=frac*ease;
+      ctx.clearRect(0,0,W,H);
+      // Redraw track
       ctx.beginPath();
-      ctx.arc(cx,cy,r,Math.PI,Math.PI+Math.PI*frac);
+      ctx.arc(cx,cy,r,Math.PI,2*Math.PI);
+      ctx.strokeStyle="rgba(93,175,138,0.22)";
+      ctx.lineWidth=lw;
+      ctx.lineCap="round";
+      ctx.stroke();
+      // Draw fill arc
+      ctx.beginPath();
+      ctx.arc(cx,cy,r,Math.PI,Math.PI+Math.PI*currentFrac);
       ctx.strokeStyle="#155c32";
       ctx.lineWidth=lw;
       ctx.lineCap="round";
       ctx.stroke();
-    }
+      if(t<1)requestAnimationFrame(draw);
+    };
+    requestAnimationFrame(draw);
   },[played,total]);
-  return <canvas ref={canvasRef} style={{width:64,height:38,display:"block",margin:"6px auto 0"}}/>;
+  return <canvas ref={canvasRef} style={{width:80,height:48,display:"block",margin:"4px auto 0"}}/>;
 }
 
 export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers,events}:any){
@@ -492,7 +514,19 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
   const eventsPlayed=seasonEvents.length;
   const golfersPerEvent=eventsPlayed>0?totalRounds/eventsPlayed:0;
   const priorSeason=season-1;
-  const priorRows=leaderboard.filter((r:any)=>r.season===priorSeason&&!golfers.find((g:any)=>g.golfer_id===r.golfer_id)?.is_guest);
+  // Deduplicate prior season the same way calcSeasonLeaderData does:
+  // one entry per golfer per event (keep highest score), excluding guests.
+  const priorDeduped:(()=>any[])=(()=>{
+    const seen=new Map<string,any>();
+    leaderboard.filter((r:any)=>r.season===priorSeason&&!golfers.find((g:any)=>g.golfer_id===r.golfer_id)?.is_guest)
+      .forEach((r:any)=>{
+        const key=`${r.golfer_id}:${r.event_id}`;
+        const ex=seen.get(key);
+        if(!ex||r.total_stableford_points>ex.total_stableford_points)seen.set(key,r);
+      });
+    return [...seen.values()];
+  });
+  const priorRows=priorDeduped();
   const priorUniqueEvents=[...new Set(priorRows.map((r:any)=>r.event_id))];
   const priorGolfersPerEvent=priorUniqueEvents.length>0?priorRows.length/priorUniqueEvents.length:null;
   const deltaPct=priorGolfersPerEvent!=null?golfersPerEvent-priorGolfersPerEvent:null;
@@ -722,7 +756,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
         {highScorer&&(
           <div style={{background:"linear-gradient(135deg,var(--gold-900),var(--gold-700))",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center",color:"white"}}>
-            <div style={{fontSize:22}}>🏆</div>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:2}}><Trophy size={22} strokeWidth={2}/></div>
             <div style={{fontSize:11,letterSpacing:"0.08em",textTransform:"uppercase",opacity:0.8,marginTop:2}}>High Score</div>
             <div style={{fontSize:16,fontWeight:700,marginTop:4}}>{highScorer.golfer.first_name}</div>
             <div style={{fontSize:26,fontWeight:700,color:"var(--gold-300)",lineHeight:1}}>{highScoreEntry} pts</div>
@@ -730,7 +764,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
         )}
         {earningsLeader&&earningsLeader.earned>0&&(
           <div style={{background:"linear-gradient(135deg,var(--earth-800),var(--earth-700))",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center",color:"white"}}>
-            <div style={{fontSize:22}}>💰</div>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:2}}><Banknote size={22} strokeWidth={2}/></div>
             <div style={{fontSize:11,letterSpacing:"0.08em",textTransform:"uppercase",opacity:0.8,marginTop:2}}>Earnings Leader</div>
             <div style={{fontSize:16,fontWeight:700,marginTop:4}}>{earningsLeader.golfer.first_name}</div>
             <div style={{fontSize:26,fontWeight:700,color:"var(--gold-300)",lineHeight:1}}>${earningsLeader.earned.toFixed(0)}</div>
@@ -751,8 +785,11 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
           {/* Background trophy texture */}
           <div style={{
             position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",
-            fontSize:52,opacity:0.05,pointerEvents:"none",userSelect:"none",lineHeight:1,
-          }}>🏆</div>
+            opacity:0.06,pointerEvents:"none",userSelect:"none",lineHeight:1,
+            color:"white",
+          }}>
+            <Trophy size={56} strokeWidth={1.5}/>
+          </div>
 
           <div style={{fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.45)",fontWeight:700}}>
             Win leader
@@ -817,7 +854,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
       {eventTrend.length>1&&(
         <div className="card" style={{marginBottom:12}}>
           <div className="card-title" style={{marginBottom:6}}>Field Scoring Trend</div>
-          <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:2}}>
+          <div style={{display:"flex",alignItems:"flex-end",gap:10,marginBottom:2}}>
             {/* avgSpanRef is written directly by TrendScrubber's tween — no React re-render per tick */}
             <span ref={avgSpanRef} style={{
               fontSize:44,fontWeight:700,fontVariantNumeric:"tabular-nums",lineHeight:1,
@@ -831,6 +868,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
                 padding:"3px 8px",borderRadius:20,fontSize:12,fontWeight:700,
                 background:trendUp?"rgba(21,92,50,0.12)":"rgba(192,32,32,0.10)",
                 color:trendUp?"var(--green-700)":"var(--red-600)",
+                marginBottom:2,
               }}>
                 {trendUp?"↑":"↓"}{Math.abs(trendDelta).toFixed(1)} recent
               </span>
@@ -838,7 +876,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
             {/* Scrub event label — shown/hidden imperatively */}
             <span ref={scrubLabelRef} style={{fontSize:13,color:"var(--text-muted)",fontWeight:500,display:"none"}}/>
           </div>
-          <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:8}}>
+          <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:8,textAlign:"left"}}>
             <span ref={scrubSubRef}>Field avg pts / event</span>
           </div>
 
@@ -891,12 +929,12 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
       )}
       {eventTrend.length<=1&&currentSeasonTrend.length>1&&(
         <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14}}>
-          📊 No events match this time window — try a wider band.
+          No events match this time window — try a wider band.
         </div>
       )}
       {currentSeasonTrend.length<=1&&seasonEvents.length>0&&(
         <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14}}>
-          📊 Scoring trend chart will appear once 2+ events are completed this season.
+          Scoring trend chart will appear once 2+ events are completed this season.
         </div>
       )}
 
@@ -945,7 +983,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
       )}
       {winData.length===0&&seasonEvents.length>0&&(
         <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14}}>
-          🏆 Win tallies will appear once scoring is entered for this season.
+          Win tallies will appear once scoring is entered for this season.
         </div>
       )}
 

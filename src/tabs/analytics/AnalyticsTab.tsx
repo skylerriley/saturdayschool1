@@ -93,7 +93,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
         // 2nd place: 1/3 of pot (only reachable when solo 1st exists)
         roundEarned=(pot*(1/3))/tied2nd.length;
       }
-      return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned};
+      return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned,won:tied1st.some((r:any)=>r.golfer_id===selG.golfer_id)};
     }).filter(Boolean):[];
 
   const SUBTABS=[{id:"overview",label:"Overview"},{id:"golfer",label:"By Golfer"},{id:"odds",label:"Odds"},{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"},{id:"consistency",label:"Consistency"},{id:"champions",label:"Champions"}];
