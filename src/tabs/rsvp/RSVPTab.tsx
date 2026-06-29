@@ -415,6 +415,10 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   if(upcomingEvents.length===0)return<div className="empty-state"><div className="empty-text">No upcoming events</div></div>;
   const wxBg = getWeatherCardBg(forecastWx?.code);
 
+  const isJuly4 = selEvent?.date ? selEvent.date.slice(5) === "07-04" : false;
+  // Small repeating white-star-on-navy tile for the status pill background
+  const july4StarBg = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Crect width='16' height='16' fill='%233C3B6E'/%3E%3Ctext x='8' y='12' font-size='10' text-anchor='middle' fill='%23FFFFFF'%3E%E2%98%85%3C/text%3E%3C/svg%3E\")";
+
   return(
     <div style={{position:"relative"}}>
       <div aria-hidden="true" style={{
@@ -450,7 +454,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
               {unconfCount>0&&<span className="pill pill-gray">? {unconfCount}</span>}
             </div>
           </div>
-          <div className="info-row"><span className="info-key">Status</span><span className="pill pill-gold">{selEvent.status}</span></div>
+          <div className="info-row"><span className="info-key">Status</span><span className="pill pill-gold" style={isJuly4&&selEvent.status==="Upcoming"?{backgroundImage:`linear-gradient(rgba(0,0,0,0.35),rgba(0,0,0,0.35)),${july4StarBg}`,backgroundSize:"auto,16px 16px",backgroundColor:"#3C3B6E",color:"#FFFFFF",border:"2px solid #B22234",fontWeight:800}:undefined}>{selEvent.status}</span></div>
           <div className="info-row">
             <span className="info-key">Tee Times</span>
             <span className="info-val" style={{textAlign:"right"}}>
