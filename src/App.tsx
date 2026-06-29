@@ -1506,7 +1506,7 @@ export default function App(){
             const {data:calRowsRaw,error:calErr}=await supabase
               .from("model_calibration_log")
               .select("event_id")
-              .in("event_id",completedEids);
+              .in("event_id",[...completedEids]);
             if(calErr) throw calErr;
             const calRows=calRowsRaw??[];
             const calibratedEids=new Set(calRows.map((r:any)=>r.event_id));
@@ -1515,7 +1515,7 @@ export default function App(){
             const {data:snapRowsRaw,error:snapErr}=await supabase
               .from("event_odds")
               .select("event_id")
-              .in("event_id",completedEids)
+              .in("event_id",[...completedEids])
               .in("snapshot_hole",[0,6,12]);
             if(snapErr) throw snapErr;
             const snapRows=snapRowsRaw??[];
