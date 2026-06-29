@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { runPairingEngine } from "../../lib/golfMath";
+import { runPairingEngine, buildPairingFrequencyMap } from "../../lib/golfMath";
 import { golferName, formatDate } from "../../lib/formatters";
 import { supabase, sendPush } from "../../lib/supabaseClient";
 
@@ -67,7 +67,11 @@ export function PairingPanel({
       sponsor_golfer_id: s.sponsor_golfer_id,
       early_tee_request: !!s.early_tee_request,
     }));
-    const newPairings = runPairingEngine(attendees, selEvent.tee_times || []);
+    // Build pairing frequency from all past events (excluding this one) so the
+    // engine can spread out repeat pairings across the season.
+    const historicalSignups = signups.filter((s: any) => s.event_id !== selEventId);
+    const freq = buildPairingFrequencyMap(historicalSignups);
+    const newPairings = runPairingEngine(attendees, selEvent.tee_times || [], freq);
     const teeByGolfer: Record<number, string> = {};
     newPairings.forEach((grp: any) => grp.players.forEach((pid: number) => { teeByGolfer[pid] = grp.teeTime; }));
     setSignups((su: any) =>

@@ -1,51 +1,67 @@
-import { ChartCanvas } from "./ChartCanvas";
+import { useRef, useEffect } from "react";
+
+// Sparkline for a course: small canvas showing round-by-round avg trend
+function Sparkline({data,color="#7dc07d",height=44}:{data:number[],color?:string,height?:number}){
+  const canvasRef=useRef<HTMLCanvasElement>(null);
+  useEffect(()=>{
+    const c=canvasRef.current;
+    if(!c||data.length<2)return;
+    const dpr=window.devicePixelRatio||1;
+    const w=c.offsetWidth||120;
+    c.width=w*dpr;
+    c.height=height*dpr;
+    const ctx=c.getContext("2d");
+    if(!ctx)return;
+    ctx.scale(dpr,dpr);
+    const mn=Math.min(...data),mx=Math.max(...data);
+    const range=mx-mn||1;
+    const pad=4;
+    const xStep=(w-pad*2)/(data.length-1);
+    const yFor=(v:number)=>height-pad-(v-mn)/range*(height-pad*2);
+    // Fill under line
+    ctx.beginPath();
+    ctx.moveTo(pad,yFor(data[0]));
+    data.forEach((v,i)=>ctx.lineTo(pad+i*xStep,yFor(v)));
+    ctx.lineTo(pad+(data.length-1)*xStep,height);
+    ctx.lineTo(pad,height);
+    ctx.closePath();
+    ctx.fillStyle="rgba(125,192,125,0.15)";
+    ctx.fill();
+    // Line
+    ctx.beginPath();
+    ctx.moveTo(pad,yFor(data[0]));
+    data.forEach((v,i)=>ctx.lineTo(pad+i*xStep,yFor(v)));
+    ctx.strokeStyle=color;
+    ctx.lineWidth=1.5;
+    ctx.lineJoin="round";
+    ctx.stroke();
+    // Last dot
+    const lx=pad+(data.length-1)*xStep;
+    const ly=yFor(data[data.length-1]);
+    ctx.beginPath();
+    ctx.arc(lx,ly,3,0,Math.PI*2);
+    ctx.fillStyle=color;
+    ctx.fill();
+  },[data,color,height]);
+  return <canvas ref={canvasRef} style={{width:"100%",height,display:"block"}}/>;
+}
 
 export function CourseChart({courseAvgs,holeScores,events,courses,leaderboard,golfers}:any){
-  const config = {
-    type:"bar" as const,
-    data:{
-      labels:courseAvgs.map((c:any)=>c.name),
-      datasets:[{
-        label:"Avg Pts",
-        data:courseAvgs.map((c:any)=>parseFloat(c.avg.toFixed(1))),
-        backgroundColor:["#1a7340","#c47800","#a32020","#0f4526","#9a5a00"],
-        borderRadius:6
-      }]
-    },
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:(c:any)=>(c.parsed.y.toFixed(1)+" pts avg")}}},
-      scales:{
-        y:{beginAtZero:false,min:20,ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:14}},grid:{color:"rgba(74,55,40,0.1)"}},
-        x:{ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},grid:{display:false}}
-      }
-    }
-  };
 
   // Build per-hole averages across all rounds for each course
   const holeAvgByCourse=(()=>{
     const map:Record<string,Record<number,number[]>>={};
     if(!holeScores||!events||!leaderboard)return {} as Record<string,{hole:number,avgPts:number,rounds:number}[]>;
-    // Map event_id -> course_name from events
     const evCourseMap:Record<number,string>={};
     events.forEach((e:any)=>{evCourseMap[e.event_id]=(e.course_name||'').trim();});
-    // Map summary_id -> event_id from ALL leaderboard entries
     const summaryEvMap:Record<number,number>={};
     leaderboard.forEach((r:any)=>{summaryEvMap[r.summary_id]=r.event_id;});
-    // Also map course_id -> course_name via courses table so we can
-    // match tee box variants (blue/white/black) all to the same course name
     const courseIdToName:Record<number,string>={};
-    if(courses){
-      courses.forEach((c:any)=>{courseIdToName[c.course_id]=c.course_name;});
-    }
+    if(courses){courses.forEach((c:any)=>{courseIdToName[c.course_id]=c.course_name;});}
     holeScores.forEach((h:any)=>{
-      // Primary: look up via leaderboard summary_id -> event_id -> course_name
       let course:string|undefined=undefined;
       const eid=summaryEvMap[h.summary_id];
       if(eid)course=evCourseMap[eid];
-      // Fallback: if summary_id didn't match (temp vs real ID mismatch),
-      // try finding a leaderboard entry with a matching golfer+event via
-      // the hole's summary_id being close to any leaderboard summary_id
-      // (last resort: skip, don't invent data)
       if(!course)return;
       if(!map[course])map[course]={};
       if(!map[course][h.hole_number])map[course][h.hole_number]=[];
@@ -61,12 +77,75 @@ export function CourseChart({courseAvgs,holeScores,events,courses,leaderboard,go
     return result;
   })();
 
+  // Build per-event sparkline data for each course (round-by-round field avg)
+  const courseSparklines:(Record<string,number[]>)=(()=>{
+    const result:Record<string,number[]>={};
+    if(!events||!leaderboard)return result;
+    courseAvgs.forEach((c:any)=>{
+      const evs=[...events.filter((e:any)=>e.course_name===c.name&&e.status==="Completed")]
+        .sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
+      const avgs=evs.map((ev:any)=>{
+        const entries=leaderboard.filter((r:any)=>r.event_id===ev.event_id&&!golfers?.find((g:any)=>g.golfer_id===r.golfer_id)?.is_guest);
+        return entries.length?entries.reduce((s:number,r:any)=>s+r.total_stableford_points,0)/entries.length:null;
+      }).filter((v:any)=>v!=null) as number[];
+      result[c.name]=avgs;
+    });
+    return result;
+  })();
+
+  // Course tile config — first two courses get hero tiles, rest fall back to info rows
+  const TILE_CONFIGS=[
+    {bg:"var(--green-900)",numColor:"#7dc07d",sparkColor:"#7dc07d"},
+    {bg:"#4a2e05",numColor:"#e8c84a",sparkColor:"#e8c84a"},
+  ];
+
   return(
     <div>
       <div className="card-title" style={{marginBottom:4}}>Stableford Averages by Course</div>
       <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:12}}>Field average stableford points per course this season.</p>
-      {courseAvgs.map((c:any)=><div key={c.name} className="info-row"><span className="info-key">{c.name}</span><span className="info-val">{c.count>0?(c.avg.toFixed(1)+" pts avg ("+c.count+" rounds)"):"No data"}</span></div>)}
-      <ChartCanvas config={config} deps={[courseAvgs.length,courseAvgs.map((c:any)=>c.avg).join()]} height={210} style={{marginTop:16}}/>
+
+      {/* Hero tiles — side by side, dark */}
+      {courseAvgs.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+          {courseAvgs.slice(0,2).map((c:any,i:number)=>{
+            const tile=TILE_CONFIGS[i]||TILE_CONFIGS[0];
+            const sparkData=courseSparklines[c.name]||[];
+            const shortName=c.name.replace(" Golf Club","").replace(" GC","").replace("Golf Course","").replace("Golf Club","").trim();
+            return(
+              <div key={c.name} style={{
+                background:tile.bg,
+                borderRadius:"var(--radius-md)",
+                padding:"14px 12px",
+                color:"white",
+                position:"relative",
+                overflow:"hidden",
+              }}>
+                <div style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.45)",fontWeight:700,marginBottom:4}}>
+                  {shortName}
+                </div>
+                <div style={{fontSize:36,fontWeight:700,lineHeight:1,color:tile.numColor,fontVariantNumeric:"tabular-nums"}}>
+                  {c.avg.toFixed(1)}
+                </div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:3}}>
+                  pts avg · {c.count} round{c.count===1?"":"s"}
+                </div>
+                {sparkData.length>=2&&(
+                  <div style={{marginTop:8}}>
+                    <Sparkline data={sparkData} color={tile.sparkColor} height={44}/>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {/* Fallback info rows for any additional courses beyond 2 */}
+      {courseAvgs.slice(2).map((c:any)=>(
+        <div key={c.name} className="info-row">
+          <span className="info-key">{c.name}</span>
+          <span className="info-val">{c.count>0?(c.avg.toFixed(1)+" pts avg ("+c.count+" rounds)"):"No data"}</span>
+        </div>
+      ))}
 
       {/* Hole-by-hole averages per course */}
       <div style={{marginTop:20}}>
@@ -140,7 +219,6 @@ export function CourseChart({courseAvgs,holeScores,events,courses,leaderboard,go
                                 })()}
                               </td>
                             </tr>
-                
                           </tbody>
                         </table>
                       </div>

@@ -19,7 +19,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
     data:{
       labels:rounds.map((_:any,i:number)=>"R"+(i+1)),
       datasets:[
-        {label:"Points",data:rounds.map((r:any)=>r.pts),borderColor:"#1a7340",backgroundColor:"rgba(26,115,64,0.08)",pointBackgroundColor:"#1a7340",pointRadius:5,fill:true,tension:0.3},
+        {label:"Points",data:rounds.map((r:any)=>r.pts),borderColor:"#1a7340",backgroundColor:"rgba(45,90,45,0.08)",pointBackgroundColor:"#1a7340",pointRadius:5,fill:true,tension:0.3},
         {label:"Avg",data:Array(rounds.length).fill(parseFloat(avg.toFixed(1))),borderColor:"#c47800",borderDash:[5,4],pointRadius:0,fill:false}
       ]
     },
@@ -139,14 +139,40 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
           consistency:leagueFingerprints.reduce((s:number,f:any)=>s+f.consistency,0)/leagueFingerprints.length,
           sampleSize:leagueFingerprints.length,
         }:null;
+        const golferName=`${golfer.first_name} ${golfer.last_name}`;
         return(
-          <div className="card" style={{textAlign:"center"}}>
-            <div className="card-title" style={{marginBottom:8}}>Scoring Fingerprint</div>
-            <ScoringFingerprintRadar datasets={[
-              ...(leagueAvgFp?[{label:"League Avg",color:"rgba(180,130,40,0.85)",values:leagueAvgFp}]:[]),
-              {label:`${golfer.first_name} ${golfer.last_name}`,color:"var(--green-600)",values:fp},
-            ]}/>
-            <div style={{fontSize:12,color:"var(--text-muted)",marginTop:6}}>Avg Stableford points per hole by category, plus consistency (based on {fp.sampleSize} round{fp.sampleSize===1?"":"s"})</div>
+          <div style={{
+            background:"var(--green-900)",
+            borderRadius:"var(--radius-md)",
+            padding:16,
+            marginBottom:16,
+          }}>
+            <div style={{fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",fontWeight:700,marginBottom:10}}>
+              Scoring fingerprint
+            </div>
+            <ScoringFingerprintRadar
+              datasets={[
+                ...(leagueAvgFp?[{label:"League avg",color:"rgba(255,255,255,0.2)",fill:"rgba(255,255,255,0.05)",values:leagueAvgFp,dashed:true}]:[]),
+                {label:golferName,color:"#7dc07d",fill:"rgba(125,200,125,0.18)",values:fp},
+              ]}
+              darkMode
+            />
+            {/* Legend */}
+            <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:8,flexWrap:"wrap"}}>
+              {leagueAvgFp&&(
+                <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(255,255,255,0.4)"}}>
+                  <div style={{width:14,height:3,background:"rgba(255,255,255,0.2)",borderRadius:2}}/>
+                  League avg
+                </div>
+              )}
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(255,255,255,0.6)"}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:"#7dc07d"}}/>
+                {golferName}
+              </div>
+            </div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:6,textAlign:"center"}}>
+              Avg Stableford pts per hole category · {fp.sampleSize} round{fp.sampleSize===1?"":"s"}
+            </div>
           </div>
         );
       })()}

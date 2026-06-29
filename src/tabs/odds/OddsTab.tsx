@@ -496,11 +496,51 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                   ].map((row: any) => {
                     const aWins = row.hi === "high" ? (row.a > row.b) : row.hi === "low" ? (row.a < row.b) : false;
                     const bWins = row.hi === "high" ? (row.b > row.a) : row.hi === "low" ? (row.b < row.a) : false;
+                    // Advantage bar: proportion of A vs total. 0.5 = even.
+                    const aNum = parseFloat(row.a) || 0;
+                    const bNum = parseFloat(row.b) || 0;
+                    const total = Math.abs(aNum) + Math.abs(bNum);
+                    // favA = A has the better value on this stat
+                    const favA = aWins;
+                    const favB = bWins;
+                    // For the bar: A fills from left, B from right; midpoint shifts toward the winner.
+                    // We convert to a 0–1 proportion where 0.5 = tied.
+                    let aPct = 0.5;
+                    if (row.hi !== "any" && total > 0) {
+                      if (row.hi === "high") {
+                        aPct = aNum / total;
+                      } else {
+                        // "low" = lower is better; invert
+                        aPct = bNum / total;
+                      }
+                      // Clamp to [0.1, 0.9] so bar never fully disappears
+                      aPct = Math.min(0.9, Math.max(0.1, aPct));
+                    }
                     return (
-                      <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "9px 14px", borderBottom: "1px solid var(--border)" }}>
-                        <div style={{ fontWeight: aWins ? 700 : 400, fontSize: 18, textAlign: "left", color: aWins ? "var(--green-700)" : "var(--text-primary)" }}>{row.a}</div>
-                        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "0 8px", letterSpacing: "0.04em" }}>{row.label}</div>
-                        <div style={{ fontWeight: bWins ? 700 : 400, fontSize: 18, color: bWins ? "var(--green-700)" : "var(--text-primary)", textAlign: "right" }}>{row.b}</div>
+                      <div key={row.label} style={{ padding: "9px 14px", borderBottom: "1px solid var(--border)" }}>
+                        {/* Values row */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center" }}>
+                          <div style={{ fontWeight: aWins ? 700 : 400, fontSize: 18, textAlign: "left", color: aWins ? "var(--green-700)" : "var(--text-primary)" }}>{row.a}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "0 8px", letterSpacing: "0.03em" }}>{row.label}</div>
+                          <div style={{ fontWeight: bWins ? 700 : 400, fontSize: 18, color: bWins ? "var(--green-700)" : "var(--text-primary)", textAlign: "right" }}>{row.b}</div>
+                        </div>
+                        {/* Advantage bar */}
+                        {row.hi !== "any" && (
+                          <div style={{ marginTop: 5, height: 5, borderRadius: 3, background: "var(--surface2)", overflow: "hidden", display: "flex" }}>
+                            <div style={{
+                              width: `${aPct * 100}%`,
+                              background: favA ? "var(--green-600)" : favB ? "var(--earth-300,#c4b4a4)" : "var(--border)",
+                              borderRadius: "3px 0 0 3px",
+                              transition: "width 0.4s ease",
+                            }} />
+                            <div style={{
+                              flex: 1,
+                              background: favB ? "var(--gold-500)" : favA ? "var(--earth-300,#c4b4a4)" : "var(--border)",
+                              borderRadius: "0 3px 3px 0",
+                              transition: "flex 0.4s ease",
+                            }} />
+                          </div>
+                        )}
                       </div>
                     );
                   })}

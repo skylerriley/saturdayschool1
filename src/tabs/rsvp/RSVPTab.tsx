@@ -523,14 +523,14 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
       {/* #3b - two sub-tabs: RSVP | View Pairings */}
       <ToggleGroup
-        options={[{value:"rsvp",label:"RSVPs"},{value:"pairings",label:"View Pairings"}]}
+        options={[{value:"rsvp",label:"Who's in"},{value:"pairings",label:"Pairings"}]}
         value={subTab}
         onChange={setSubTab}
       />
 
       {subTab==="rsvp"&&(
         <>
-          <div className="card-title" style={{marginBottom:4}}>Member RSVPs</div>
+          <div className="card-title" style={{marginBottom:4}}>Member Sign Ups</div>
           <div className="early-tee-hint">
             Swipe name left <svg width="16" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}><line x1="15" y1="7" x2="1" y2="7" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><polyline points="7,1 1,7 7,13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg> for an early tee time 
           </div>

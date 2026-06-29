@@ -123,43 +123,15 @@ export function ScatterChart({scatterData,flightWinData}:any){
       },
       scales:{
         x:{title:{display:true,text:"Handicap Index",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}},
-        y:{title:{display:true,text:"Avg Stableford Pts",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}
+        y:{title:{display:true,text:"Avg Stableford Pts",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"},max:35}
       }
     }
   };
 
-  const maxFlightWinPct=flightWinData?Math.max(...flightWinData.map((d:any)=>d.winPct),0):0;
-  const flightYMax=Math.min(100,maxFlightWinPct+20);
-
-  const flightConfig = flightWinData ? {
-    type:"bar" as const,
-    data:{
-      labels:flightWinData.map((d:any)=>d.label),
-      datasets:[{
-        label:"Win %",
-        data:flightWinData.map((d:any)=>d.winPct),
-        backgroundColor:["#1a7340","#2a9356","#c47800","#8b4f1a","#5a3010"],
-        borderRadius:6,
-        borderSkipped:false as const,
-      }]
-    },
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},
-        tooltip:{callbacks:{
-          label:(c:any)=>{
-            const d=flightWinData[c.dataIndex];
-            return`${c.parsed.y}% win rate (${d.appearances} starts)`;
-          }
-        }}
-      },
-      scales:{
-        x:{ticks:{color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},grid:{display:false}},
-        y:{min:0,max:flightYMax,title:{display:true,text:"Win %",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240",callback:(v:any)=>v+"%"},grid:{color:"rgba(74,55,40,0.1)"}}
-      }
-    }
-  } : null;
-
   const hasFlightData=flightWinData&&flightWinData.some((d:any)=>d.appearances>0);
+  const maxFlightPct=hasFlightData?Math.max(...flightWinData.map((d:any)=>d.winPct),1):1;
+  // Flight fill colors by band index
+  const FLIGHT_COLORS=["#155c32","#1a7340","#c47800","#9a5a00","#6b5240"];
 
   if(scatterData.length<2) return(
     <div>
@@ -187,14 +159,41 @@ export function ScatterChart({scatterData,flightWinData}:any){
       <div style={{marginTop:32}}>
         <div className="card-title" style={{marginBottom:4}}>Win % by Handicap Flight</div>
         <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:12}}>1st or 2nd place finish counts as a win. Based on paid buy-in entries only.</p>
-        {hasFlightData&&flightConfig?(
-          <ChartCanvas config={flightConfig} deps={[JSON.stringify(flightWinData)]} height={240}/>
+        {hasFlightData?(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {flightWinData.map((d:any,i:number)=>{
+              const fillW=maxFlightPct>0?Math.min(90,d.winPct/maxFlightPct*90):0;
+              return(
+                <div key={d.label} style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{minWidth:60,fontSize:13,fontWeight:600,color:"var(--text-secondary)"}}>{d.label}</div>
+                  <div style={{flex:1,background:"var(--surface2)",borderRadius:6,height:32,overflow:"hidden"}}>
+                    <div style={{
+                      width:`${fillW}%`,height:"100%",
+                      background:FLIGHT_COLORS[i]||FLIGHT_COLORS[0],
+                      borderRadius:6,
+                      display:"flex",alignItems:"center",
+                      minWidth:d.winPct>0?40:0,
+                      transition:"width 0.5s ease",
+                    }}>
+                      {d.winPct>0&&(
+                        <span style={{fontSize:13,fontWeight:700,color:"#ffffff",paddingLeft:10,whiteSpace:"nowrap"}}>
+                          {d.winPct}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{fontSize:11,color:"var(--text-muted)",whiteSpace:"nowrap",minWidth:52,textAlign:"right"}}>
+                    {d.appearances} starts
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ):(
           <div style={{textAlign:"center",padding:"32px 20px",color:"var(--text-muted)",fontSize:14}}>
             📊 No completed events with buy-in data this season yet.
           </div>
         )}
-       
       </div>
     </div>
   );

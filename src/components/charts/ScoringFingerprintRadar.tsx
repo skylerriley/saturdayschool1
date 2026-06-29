@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
 
 // ============================================================
-// SCORING FINGERPRINT RADAR -- 6-axis spider chart. Draws itself from
-// the center outward (scale 0 -> 1) the first time it scrolls/renders
-// into view. Supports overlaying a second player for H2H comparison.
+// SCORING FINGERPRINT RADAR -- 6-axis spider chart.
+// Supports darkMode for the By Golfer subtab dark card.
 // ============================================================
-export function ScoringFingerprintRadar({datasets,size=240,maxValue=4}:{
-  datasets:{label:string,color:string,values:{par3:number,par4:number,par5:number,front9:number,back9:number,consistency:number}}[],
+export function ScoringFingerprintRadar({datasets,size=240,maxValue=4,darkMode=false}:{
+  datasets:{label:string,color:string,fill?:string,dashed?:boolean,values:{par3:number,par4:number,par5:number,front9:number,back9:number,consistency:number}}[],
   size?:number,
-  maxValue?:number
+  maxValue?:number,
+  darkMode?:boolean,
 }){
   const [drawn,setDrawn]=useState(false);
   useEffect(()=>{
@@ -37,8 +37,10 @@ export function ScoringFingerprintRadar({datasets,size=240,maxValue=4}:{
     return{x:cx+Math.cos(a)*r*ratio,y:cy+Math.sin(a)*r*ratio};
   };
 
-  // Grid rings at 25/50/75/100%
   const ringLevels=[0.25,0.5,0.75,1];
+
+  const gridColor=darkMode?"rgba(255,255,255,0.07)":"var(--border)";
+  const labelColor=darkMode?"rgba(255,255,255,0.55)":"var(--text-muted)";
 
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
@@ -49,12 +51,12 @@ export function ScoringFingerprintRadar({datasets,size=240,maxValue=4}:{
             const a=angleFor(i);
             return`${cx+Math.cos(a)*r*lvl},${cy+Math.sin(a)*r*lvl}`;
           }).join(" ");
-          return<polygon key={ri} points={pts} fill="none" stroke="var(--border)" strokeWidth={1}/>;
+          return<polygon key={ri} points={pts} fill="none" stroke={gridColor} strokeWidth={1}/>;
         })}
         {/* Spokes */}
         {axes.map((_,i)=>{
           const a=angleFor(i);
-          return<line key={i} x1={cx} y1={cy} x2={cx+Math.cos(a)*r} y2={cy+Math.sin(a)*r} stroke="var(--border)" strokeWidth={1}/>;
+          return<line key={i} x1={cx} y1={cy} x2={cx+Math.cos(a)*r} y2={cy+Math.sin(a)*r} stroke={gridColor} strokeWidth={1}/>;
         })}
         {/* Axis labels */}
         {axes.map((ax,i)=>{
@@ -62,26 +64,28 @@ export function ScoringFingerprintRadar({datasets,size=240,maxValue=4}:{
           const x=cx+Math.cos(a)*labelR;
           const y=cy+Math.sin(a)*labelR;
           return(
-            <text key={ax.key} x={x} y={y} fontSize={size*0.045} fontWeight={700} fill="var(--text-muted)" textAnchor="middle" dominantBaseline="middle" style={{textTransform:"uppercase",letterSpacing:"0.04em"}}>
+            <text key={ax.key} x={x} y={y} fontSize={size*0.045} fontWeight={700} fill={labelColor} textAnchor="middle" dominantBaseline="middle" style={{textTransform:"uppercase",letterSpacing:"0.04em"}}>
               {ax.label}
             </text>
           );
         })}
-        {/* Data polygons -- draw themselves from the center outward */}
+        {/* Data polygons */}
         {datasets.map((ds,di)=>{
           const pts=axes.map((ax,i)=>{
             const v=(ds.values as any)[ax.key]||0;
             const p=pointFor(i,v);
             return`${p.x},${p.y}`;
           }).join(" ");
+          const fillColor=ds.fill?ds.fill:ds.color;
           return(
             <polygon
               key={ds.label+di}
               points={pts}
-              fill={ds.color}
-              fillOpacity={0.18}
+              fill={fillColor}
+              fillOpacity={ds.fill?1:0.18}
               stroke={ds.color}
-              strokeWidth={2}
+              strokeWidth={ds.dashed?1.5:2}
+              strokeDasharray={ds.dashed?"3 2":undefined}
               strokeLinejoin="round"
               style={{
                 transformOrigin:`${cx}px ${cy}px`,
@@ -111,7 +115,8 @@ export function ScoringFingerprintRadar({datasets,size=240,maxValue=4}:{
           );
         }))}
       </svg>
-      {datasets.length>1&&(
+      {/* Default legend (non-dark, multi-dataset) */}
+      {!darkMode&&datasets.length>1&&(
         <div style={{display:"flex",gap:16,marginTop:6,flexWrap:"wrap",justifyContent:"center"}}>
           {datasets.map((ds,di)=>(
             <div key={ds.label+di} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--text-secondary)",fontWeight:600}}>
