@@ -1,7 +1,15 @@
-import { useState as useStateOv, useRef, useEffect } from "react";
+import { useState as useStateOv, useRef, useEffect, useCallback } from "react";
 import { CountUp } from "../../App";
 import { formatDate } from "../../lib/formatters";
 import { ChartCanvas } from "./ChartCanvas";
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale,
+  PointElement, LineElement,
+  LineController,
+  Filler, Legend, Tooltip,
+} from "chart.js";
+ChartJS.register(CategoryScale,LinearScale,PointElement,LineElement,LineController,Filler,Legend,Tooltip);
 
 // ── Heatmap color palette (restyled) ─────────────────────────
 const HEAT_STOPS=[
@@ -211,6 +219,232 @@ function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
   );
 }
 
+// ── Stock-ticker style scrubbing chart ───────────────────────
+function TrendScrubber({
+  config,
+  deps,
+  height=120,
+  points,
+  lineColor,
+  onScrub,
+  avgSpanRef,   // ref to the <span> DOM node for the big number — we write directly to avoid re-renders
+  baseAvg,      // value to show when not scrubbing (for the tween-back animation)
+}:{
+  config:object,
+  deps:any[],
+  height:number,
+  points:{avg:number,date:string,season:number}[],
+  lineColor:string,
+  onScrub:(idx:number|null,label:string|null)=>void,
+  avgSpanRef:React.RefObject<HTMLSpanElement>,
+  baseAvg:number,
+}){
+  const overlayRef=useRef<HTMLCanvasElement>(null);
+  const chartCanvasRef=useRef<HTMLCanvasElement>(null);
+  const activeIdx=useRef<number|null>(null);
+  const wrapperRef=useRef<HTMLDivElement>(null);
+
+  // Animation state for smooth number tween
+  const tweenRef=useRef<{from:number,to:number,start:number,raf:number}|null>(null);
+  const currentDisplayRef=useRef<number>(baseAvg);
+
+  const writeNumber=(v:number)=>{
+    currentDisplayRef.current=v;
+    if(avgSpanRef.current)avgSpanRef.current.textContent=v.toFixed(1);
+  };
+
+  const tweenTo=useCallback((target:number)=>{
+    if(tweenRef.current){cancelAnimationFrame(tweenRef.current.raf);}
+    const from=currentDisplayRef.current;
+    if(Math.abs(target-from)<0.05){writeNumber(target);return;}
+    const duration=120;
+    const startTime=performance.now();
+    const tick=(now:number)=>{
+      const t=Math.min(1,(now-startTime)/duration);
+      // ease-out cubic
+      const e=1-(1-t)*(1-t)*(1-t);
+      writeNumber(parseFloat((from+(target-from)*e).toFixed(2)));
+      if(t<1){
+        tweenRef.current!.raf=requestAnimationFrame(tick);
+      } else {
+        tweenRef.current=null;
+      }
+    };
+    tweenRef.current={from,to:target,start:startTime,raf:requestAnimationFrame(tick)};
+  },[avgSpanRef]);
+
+  // Keep baseAvg in sync when band changes
+  useEffect(()=>{
+    if(activeIdx.current===null)tweenTo(baseAvg);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[baseAvg]);
+
+  const drawOverlay=useCallback(()=>{
+    const overlay=overlayRef.current;
+    const chartCanvas=chartCanvasRef.current;
+    if(!overlay||!chartCanvas)return;
+    const chart=ChartJS.getChart(chartCanvas);
+    if(!chart)return;
+    const dpr=window.devicePixelRatio||1;
+    const w=overlay.offsetWidth;
+    const h=overlay.offsetHeight;
+    overlay.width=w*dpr;
+    overlay.height=h*dpr;
+    const ctx=overlay.getContext("2d");
+    if(!ctx)return;
+    ctx.clearRect(0,0,overlay.width,overlay.height);
+    const idx=activeIdx.current;
+    if(idx===null||idx<0||idx>=points.length)return;
+    ctx.scale(dpr,dpr);
+    const xScale=chart.scales["x"];
+    const yScale=chart.scales["y"];
+    if(!xScale||!yScale)return;
+    const x=xScale.getPixelForValue(idx);
+    const y=yScale.getPixelForValue(points[idx].avg);
+    // Vertical hairline
+    ctx.beginPath();
+    ctx.moveTo(x,0);
+    ctx.lineTo(x,h);
+    ctx.strokeStyle="rgba(0,0,0,0.15)";
+    ctx.lineWidth=1;
+    ctx.setLineDash([3,3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Dot
+    ctx.beginPath();
+    ctx.arc(x,y,5,0,Math.PI*2);
+    ctx.fillStyle=lineColor;
+    ctx.fill();
+    ctx.strokeStyle="#fff";
+    ctx.lineWidth=2;
+    ctx.stroke();
+    // Date label at top of hairline
+    const p=points[idx];
+    const label=p?.date
+      ?new Date(p.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
+      :String(p?.season||"");
+    ctx.font=`600 11px 'DM Sans', sans-serif`;
+    const tw=ctx.measureText(label).width;
+    const lx=Math.min(Math.max(x-tw/2,4),w-tw-4);
+    ctx.fillStyle="#1c1410";
+    ctx.fillText(label,lx,13);
+  },[points,lineColor]);
+
+  const pixelToIdx=useCallback((clientX:number)=>{
+    const chartCanvas=chartCanvasRef.current;
+    if(!chartCanvas)return null;
+    const chart=ChartJS.getChart(chartCanvas);
+    if(!chart)return null;
+    const xScale=chart.scales["x"];
+    if(!xScale)return null;
+    const rect=chartCanvas.getBoundingClientRect();
+    const relX=clientX-rect.left;
+    let best=0,bestDist=Infinity;
+    for(let i=0;i<points.length;i++){
+      const px=xScale.getPixelForValue(i);
+      const d=Math.abs(px-relX);
+      if(d<bestDist){bestDist=d;best=i;}
+    }
+    return best;
+  },[points]);
+
+  const handleMove=useCallback((clientX:number)=>{
+    const idx=pixelToIdx(clientX);
+    if(idx===null)return;
+    const changed=idx!==activeIdx.current;
+    activeIdx.current=idx;
+    drawOverlay();
+    if(changed){
+      const p=points[idx];
+      tweenTo(parseFloat(p.avg.toFixed(1)));
+      const label=p?.date
+        ?new Date(p.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
+        :String(p?.season||"");
+      onScrub(idx,label);
+    }
+  },[pixelToIdx,drawOverlay,onScrub,points,tweenTo]);
+
+  const handleEnd=useCallback(()=>{
+    activeIdx.current=null;
+    const overlay=overlayRef.current;
+    if(overlay){
+      const ctx=overlay.getContext("2d");
+      if(ctx)ctx.clearRect(0,0,overlay.width,overlay.height);
+    }
+    tweenTo(baseAvg);
+    onScrub(null,null);
+  },[onScrub,tweenTo,baseAvg]);
+
+  // Find the ChartCanvas's inner <canvas> after each render
+  useEffect(()=>{
+    const wrapper=wrapperRef.current;
+    if(!wrapper)return;
+    const canvas=wrapper.querySelector("canvas");
+    if(canvas)(chartCanvasRef as any).current=canvas;
+  });
+
+  useEffect(()=>{
+    drawOverlay();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[...deps]);
+
+  // The outer wrapper acts as a touch dead zone for SubTabPanel — any touch that
+  // starts inside the chart area is fully owned by the scrubber.
+  // stopPropagation() on the native touchstart prevents the event from ever
+  // reaching the React root where SubTabPanel's delegated onTouchMove lives.
+  const outerRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    const el=outerRef.current;
+    if(!el)return;
+    let active=false;
+
+    const onStart=(e:TouchEvent)=>{
+      if(e.touches.length>1)return;
+      // Stop bubbling so SubTabPanel never sees this touch sequence
+      e.stopPropagation();
+      active=true;
+      handleMove(e.touches[0].clientX);
+    };
+    const onMove=(e:TouchEvent)=>{
+      if(!active||e.touches.length>1)return;
+      if(e.cancelable)e.preventDefault();
+      handleMove(e.touches[0].clientX);
+    };
+    const onEnd=()=>{
+      if(active)handleEnd();
+      active=false;
+    };
+
+    el.addEventListener("touchstart",onStart,{passive:false});
+    el.addEventListener("touchmove",onMove,{passive:false});
+    el.addEventListener("touchend",onEnd,{passive:true});
+    el.addEventListener("touchcancel",onEnd,{passive:true});
+    return()=>{
+      el.removeEventListener("touchstart",onStart);
+      el.removeEventListener("touchmove",onMove);
+      el.removeEventListener("touchend",onEnd);
+      el.removeEventListener("touchcancel",onEnd);
+    };
+  },[handleMove,handleEnd]);
+
+  return(
+    <div
+      ref={outerRef}
+      style={{position:"relative",userSelect:"none",WebkitUserSelect:"none" as any,cursor:"crosshair"}}
+      onMouseMove={e=>handleMove(e.clientX)}
+      onMouseLeave={handleEnd}
+    >
+      <div ref={wrapperRef}>
+        <ChartCanvas config={config} deps={deps} height={height}/>
+      </div>
+      <canvas
+        ref={overlayRef}
+        style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}}
+      />
+    </div>
+  );
+}
+
 // ── Arc canvas for Events Played tile ────────────────────────
 function ArcProgress({played,total=52}:{played:number,total?:number}){
   const canvasRef=useRef<HTMLCanvasElement>(null);
@@ -243,7 +477,7 @@ function ArcProgress({played,total=52}:{played:number,total?:number}){
   return <canvas ref={canvasRef} style={{width:64,height:38,display:"block",margin:"6px auto 0"}}/>;
 }
 
-export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers}:any){
+export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers,events}:any){
   const totalRounds=seasonData.reduce((s:number,d:any)=>s+d.rounds,0);
   const allPts=seasonData.flatMap((d:any)=>d.allPts);
   const highScoreEntry=allPts.length?Math.max(...allPts):0;
@@ -288,15 +522,14 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
         evMap[r.event_id].season=r.season||evMap[r.event_id].season;
       }
     });
-    // For the current season, use actual dates from seasonEvents
+    // Build a date lookup from all events across all seasons
     const dateByEid:Record<number,string>={};
-    seasonEvents.forEach((ev:any)=>{dateByEid[ev.event_id]=ev.date;});
-    // Build trend array sorted by season then event_id (proxy for chronological order)
+    (events||[]).forEach((ev:any)=>{if(ev.event_id&&ev.date)dateByEid[ev.event_id]=ev.date;});
+    // Build trend array sorted chronologically
     return Object.entries(evMap)
       .filter(([,v])=>v.pts.length>0&&v.season<=season)
       .map(([eid,v])=>{
         const avg=v.pts.reduce((a:number,b:number)=>a+b,0)/v.pts.length;
-        // Use actual date if available (current season), else synthesize one for ordering
         const date=dateByEid[parseInt(eid)]||`${v.season}-01-01`;
         return{eid:parseInt(eid),avg,season:v.season,date};
       })
@@ -355,6 +588,26 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
 
   const trendUp=trendDelta!=null&&trendDelta>0;
 
+  // Scrub — handled imperatively via DOM refs (avoids React re-render per drag tick)
+  const avgSpanRef=useRef<HTMLSpanElement>(null);
+  const scrubLabelRef=useRef<HTMLSpanElement>(null);
+  const scrubSubRef=useRef<HTMLSpanElement>(null);
+  const isScrubbing=useRef(false);
+
+  const handleScrub=(idx:number|null,label:string|null)=>{
+    isScrubbing.current=idx!==null;
+    if(scrubLabelRef.current){
+      scrubLabelRef.current.textContent=idx!==null&&label?label:"";
+      scrubLabelRef.current.style.display=idx!==null&&label?"":"none";
+    }
+    if(scrubSubRef.current){
+      scrubSubRef.current.textContent=idx!==null?"event avg":"Field avg pts / event";
+    }
+    // delta chip: hide while scrubbing
+    const deltaChip=scrubSubRef.current?.parentElement?.parentElement?.querySelector(".trend-delta-chip") as HTMLElement|null;
+    if(deltaChip)deltaChip.style.display=idx!==null?"none":"";
+  };
+
   // Show the season-avg reference line on all bands when the view avg differs from the season avg.
   // On YTD/1M the line is still useful as a stable reference even if most points are current-season.
   const showSeasonRef=currentSeasonAvg!=null&&eventTrend.length>1;
@@ -376,7 +629,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
         ...(showSeasonRef?[{
           label:`${season} avg`,
           data:Array(eventTrend.length).fill(currentSeasonAvg),
-          borderColor:"rgba(93,175,138,0.7)",
+          borderColor:"rgba(232,200,74,0.85)",
           backgroundColor:"transparent",
           borderDash:[4,3],
           borderWidth:2,
@@ -388,6 +641,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
       ]
     },
     options:{responsive:true,maintainAspectRatio:false,
+      layout:{padding:{left:0,right:0,top:6,bottom:0}},
       plugins:{
         legend:{display:false},
         tooltip:{callbacks:{
@@ -564,11 +818,15 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
         <div className="card" style={{marginBottom:12}}>
           <div className="card-title" style={{marginBottom:6}}>Field Scoring Trend</div>
           <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:2}}>
-            <span style={{fontSize:44,fontWeight:700,fontVariantNumeric:"tabular-nums",lineHeight:1,color:"var(--text-primary)"}}>
+            {/* avgSpanRef is written directly by TrendScrubber's tween — no React re-render per tick */}
+            <span ref={avgSpanRef} style={{
+              fontSize:44,fontWeight:700,fontVariantNumeric:"tabular-nums",lineHeight:1,
+              color:"var(--text-primary)",
+            }}>
               {overallLeagueAvg.toFixed(1)}
             </span>
             {trendDelta!=null&&(
-              <span style={{
+              <span className="trend-delta-chip" style={{
                 display:"inline-flex",alignItems:"center",gap:3,
                 padding:"3px 8px",borderRadius:20,fontSize:12,fontWeight:700,
                 background:trendUp?"rgba(21,92,50,0.12)":"rgba(192,32,32,0.10)",
@@ -577,15 +835,31 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
                 {trendUp?"↑":"↓"}{Math.abs(trendDelta).toFixed(1)} recent
               </span>
             )}
+            {/* Scrub event label — shown/hidden imperatively */}
+            <span ref={scrubLabelRef} style={{fontSize:13,color:"var(--text-muted)",fontWeight:500,display:"none"}}/>
           </div>
-          <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:8}}>Field avg pts / event</div>
+          <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:8}}>
+            <span ref={scrubSubRef}>Field avg pts / event</span>
+          </div>
 
-          <ChartCanvas config={trendConfig} deps={[season,eventTrend.length,trendBand,trendUp,currentSeasonAvg,showSeasonRef]} height={120}/>
+          {/* Negative margins bleed the chart to card edges (card has ~16px horiz padding) */}
+          <div style={{margin:"0 -16px"}}>
+            <TrendScrubber
+              config={trendConfig}
+              deps={[season,eventTrend.length,trendBand,trendUp,currentSeasonAvg,showSeasonRef]}
+              height={120}
+              points={eventTrend}
+              lineColor={trendUp?"#1a7340":"#c47800"}
+              onScrub={handleScrub}
+              avgSpanRef={avgSpanRef}
+              baseAvg={overallLeagueAvg}
+            />
+          </div>
 
           {/* Band selector */}
           <div style={{display:"flex",gap:4,marginTop:10}}>
-            {(["All","5Y","1Y","YTD","1M"] as const).map(b=>{
-              const key=(b==="All"?"all":b) as "all"|"5Y"|"1Y"|"YTD"|"1M";
+            {(["1M","YTD","1Y","5Y","MAX"] as const).map(b=>{
+              const key=(b==="MAX"?"all":b) as "all"|"5Y"|"1Y"|"YTD"|"1M";
               const active=trendBand===key;
               return(
                 <button
@@ -608,7 +882,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
           {showSeasonRef&&(
             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,justifyContent:"flex-end"}}>
               <svg width="22" height="8" style={{flexShrink:0}}>
-                <line x1="0" y1="4" x2="22" y2="4" stroke="rgba(93,175,138,0.7)" strokeWidth="1.5" strokeDasharray="4 3"/>
+                <line x1="0" y1="4" x2="22" y2="4" stroke="rgba(232,200,74,0.85)" strokeWidth="1.5" strokeDasharray="4 3"/>
               </svg>
               <span style={{fontSize:11,color:"var(--text-muted)"}}>{season} season avg ({currentSeasonAvg} pts)</span>
             </div>

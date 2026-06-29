@@ -177,7 +177,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
         };
         const renderAnalyticsTab=(id:string):React.ReactNode=>{
           switch(id){
-            case "overview":return <SeasonOverview seasonData={seasonData} seasonEvents={seasonEvents} season={selSeason} leaderboard={leaderboard} golfers={golfers}/>;
+            case "overview":return <SeasonOverview seasonData={seasonData} seasonEvents={seasonEvents} season={selSeason} leaderboard={leaderboard} golfers={golfers} events={events}/>;
             case "course":return <CourseChart courseAvgs={courseAvgs} holeScores={holeScores} events={events} courses={courses} leaderboard={leaderboard} golfers={golfers}/>;
             case "consistency":return <ConsistencyTable seasonData={seasonData}/>;
             case "scatter":return <ScatterChart scatterData={scatterData} flightWinData={flightWinData}/>;
