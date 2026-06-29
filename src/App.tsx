@@ -1503,18 +1503,18 @@ export default function App(){
         (async()=>{
           try{
             // 1. Which event IDs already have calibration records?
-            const {data:calRowsRaw,error:calErr}=await supabase
+            const {data:calRowsRaw,error:calErr}=await (supabase
               .from("model_calibration_log")
-              .select("event_id")
+              .select("event_id") as any)
               .in("event_id",[...completedEids]);
             if(calErr) throw calErr;
             const calRows=calRowsRaw??[];
             const calibratedEids=new Set(calRows.map((r:any)=>r.event_id));
 
             // 2. Which completed events have frozen snapshots (odds were actually run)?
-            const {data:snapRowsRaw,error:snapErr}=await supabase
+            const {data:snapRowsRaw,error:snapErr}=await (supabase
               .from("event_odds")
-              .select("event_id")
+              .select("event_id") as any)
               .in("event_id",[...completedEids])
               .in("snapshot_hole",[0,6,12]);
             if(snapErr) throw snapErr;
