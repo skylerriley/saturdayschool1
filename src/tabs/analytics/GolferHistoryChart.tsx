@@ -329,7 +329,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
 
           {/* Scoring Fingerprint */}
           <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:16,marginBottom:16}}>
-            <div style={{fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",fontWeight:700,marginBottom:10}}>
+            <div style={{fontSize:14,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",fontWeight:700,marginBottom:10}}>
               Scoring fingerprint
             </div>
             <ScoringFingerprintRadar
@@ -341,12 +341,12 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
             />
             <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:8,flexWrap:"wrap"}}>
               {leagueAvgFp&&(
-                <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(255,255,255,0.55)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:"rgba(255,255,255,0.55)"}}>
                   <div style={{width:14,height:3,background:"rgba(212,168,67,0.75)",borderRadius:2}}/>
                   League avg
                 </div>
               )}
-              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(255,255,255,0.6)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:"rgba(255,255,255,0.6)"}}>
                 <div style={{width:10,height:10,borderRadius:"50%",background:"#7dc07d"}}/>
                 {golferName}
               </div>

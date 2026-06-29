@@ -64,7 +64,7 @@ export function ScoringFingerprintRadar({datasets,size=240,maxValue=4,darkMode=f
           const x=cx+Math.cos(a)*labelR;
           const y=cy+Math.sin(a)*labelR;
           return(
-            <text key={ax.key} x={x} y={y} fontSize={size*0.045} fontWeight={700} fill={labelColor} textAnchor="middle" dominantBaseline="middle" style={{textTransform:"uppercase",letterSpacing:"0.04em"}}>
+            <text key={ax.key} x={x} y={y} fontSize={size*0.048} fontWeight={700} fill={labelColor} textAnchor="middle" dominantBaseline="middle" style={{textTransform:"uppercase",letterSpacing:"0.04em"}}>
               {ax.label}
             </text>
           );
