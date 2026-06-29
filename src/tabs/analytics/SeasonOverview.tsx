@@ -989,11 +989,9 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
 
       {/* ── Form Heatmap ─────────────────────────────────── */}
       {seasonEvents.length>0&&(
-        <div>
-          <div style={{fontSize:13,fontWeight:600,color:"var(--green-700)",letterSpacing:"0.05em",margin:"20px 0 8px",textTransform:"uppercase"}}>Form Heatmap</div>
-          <div className="card" style={{marginBottom:12,padding:"12px 8px"}}>
-            <FormHeatmap seasonEvents={seasonEvents} leaderboard={leaderboard} golfers={golfers} season={season}/>
-          </div>
+        <div className="card" style={{marginBottom:12,marginTop:20,padding:"12px 8px"}}>
+          <div style={{fontSize:13,fontWeight:600,color:"var(--green-700)",letterSpacing:"0.05em",marginBottom:10,textTransform:"uppercase"}}>Form Heatmap</div>
+          <FormHeatmap seasonEvents={seasonEvents} leaderboard={leaderboard} golfers={golfers} season={season}/>
         </div>
       )}
     </div>
