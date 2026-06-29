@@ -1,10 +1,153 @@
-import { useState, useRef, useLayoutEffect, useEffect } from "react";
-import { formatDate } from "../../lib/formatters";
+import { useState, useRef, useLayoutEffect, useEffect, useCallback } from "react";
+
 import { computeScoringFingerprint } from "../../lib/scoringFingerprint";
 import { ScoringFingerprintRadar } from "../../components/charts/ScoringFingerprintRadar";
 import { CountUp, ScoreSymbol } from "../../App";
 import { ChartCanvas } from "./ChartCanvas";
 import { PairingHistory } from "../../components/analytics/PairingHistory";
+import { Chart as ChartJS } from "chart.js";
+
+function RoundScrubber({config,deps,height=160,rounds,winFlags,avgPtsSpanRef,subLabelRef,baseAvg}:{
+  config:object,deps:any[],height:number,
+  rounds:{pts:number,date:string,course:string}[],
+  winFlags:boolean[],
+  avgPtsSpanRef:React.RefObject<HTMLSpanElement>,
+  subLabelRef:React.RefObject<HTMLSpanElement>,
+  baseAvg:number,
+}){
+  const overlayRef=useRef<HTMLCanvasElement>(null);
+  const chartCanvasRef=useRef<HTMLCanvasElement>(null);
+  const wrapperRef=useRef<HTMLDivElement>(null);
+  const outerRef=useRef<HTMLDivElement>(null);
+  const activeIdx=useRef<number|null>(null);
+  const tweenRef=useRef<{from:number,to:number,start:number,raf:number}|null>(null);
+  const currentValRef=useRef<number>(baseAvg);
+
+  const writeNum=(v:number)=>{
+    currentValRef.current=v;
+    if(avgPtsSpanRef.current)avgPtsSpanRef.current.textContent=v.toFixed(1);
+  };
+
+  const tweenTo=useCallback((target:number)=>{
+    if(tweenRef.current)cancelAnimationFrame(tweenRef.current.raf);
+    const from=currentValRef.current;
+    if(Math.abs(target-from)<0.05){writeNum(target);return;}
+    const start=performance.now();
+    const tick=(now:number)=>{
+      const t=Math.min(1,(now-start)/120);
+      const e=1-(1-t)*(1-t)*(1-t);
+      writeNum(parseFloat((from+(target-from)*e).toFixed(2)));
+      if(t<1){tweenRef.current!.raf=requestAnimationFrame(tick);}
+      else tweenRef.current=null;
+    };
+    tweenRef.current={from,to:target,start,raf:requestAnimationFrame(tick)};
+  },[]);
+
+  useEffect(()=>{if(activeIdx.current===null)tweenTo(baseAvg);},[baseAvg]);
+
+  const drawOverlay=useCallback(()=>{
+    const overlay=overlayRef.current;
+    const chartCanvas=chartCanvasRef.current;
+    if(!overlay||!chartCanvas)return;
+    const chart=ChartJS.getChart(chartCanvas);
+    if(!chart)return;
+    const dpr=window.devicePixelRatio||1;
+    const w=overlay.offsetWidth,h=overlay.offsetHeight;
+    overlay.width=w*dpr;overlay.height=h*dpr;
+    const ctx=overlay.getContext("2d");
+    if(!ctx)return;
+    ctx.clearRect(0,0,overlay.width,overlay.height);
+    const idx=activeIdx.current;
+    if(idx===null||idx<0||idx>=rounds.length)return;
+    ctx.scale(dpr,dpr);
+    const xScale=chart.scales["x"];
+    const yScale=chart.scales["y"];
+    if(!xScale||!yScale)return;
+    const x=xScale.getPixelForValue(idx);
+    const y=yScale.getPixelForValue(rounds[idx].pts);
+    // Hairline
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);
+    ctx.strokeStyle="rgba(255,255,255,0.15)";ctx.lineWidth=1;
+    ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+    // Win glow
+    if(winFlags[idx]){
+      ctx.beginPath();ctx.arc(x,y,14,0,Math.PI*2);
+      ctx.fillStyle="rgba(232,160,32,0.18)";ctx.fill();
+    }
+    // Dot
+    ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);
+    ctx.fillStyle=winFlags[idx]?"#e8a020":"#7dc07d";ctx.fill();
+    // Date label
+    const r=rounds[idx];
+    const label=new Date(r.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
+      +" · "+r.course.replace(" Golf Club","").replace("Golf Course","").split(" ").slice(0,2).join(" ");
+    ctx.font=`600 11px 'DM Sans',sans-serif`;
+    const tw=ctx.measureText(label).width;
+    const lx=Math.min(Math.max(x-tw/2,4),w-tw-4);
+    ctx.fillStyle="rgba(255,255,255,0.55)";ctx.fillText(label,lx,13);
+  },[rounds,winFlags]);
+
+  const pixelToIdx=useCallback((clientX:number)=>{
+    const c=chartCanvasRef.current;if(!c)return null;
+    const chart=ChartJS.getChart(c);if(!chart)return null;
+    const xScale=chart.scales["x"];if(!xScale)return null;
+    const rect=c.getBoundingClientRect();
+    const relX=clientX-rect.left;
+    let best=0,bestDist=Infinity;
+    for(let i=0;i<rounds.length;i++){
+      const d=Math.abs(xScale.getPixelForValue(i)-relX);
+      if(d<bestDist){bestDist=d;best=i;}
+    }
+    return best;
+  },[rounds]);
+
+  const handleMove=useCallback((clientX:number)=>{
+    const idx=pixelToIdx(clientX);if(idx===null)return;
+    const changed=idx!==activeIdx.current;
+    activeIdx.current=idx;drawOverlay();
+    if(changed){
+      tweenTo(parseFloat(rounds[idx].pts.toFixed(1)));
+      if(subLabelRef.current)subLabelRef.current.textContent="event pts";
+    }
+  },[pixelToIdx,drawOverlay,rounds,tweenTo,subLabelRef]);
+
+  const handleEnd=useCallback(()=>{
+    activeIdx.current=null;
+    const overlay=overlayRef.current;
+    if(overlay){const ctx=overlay.getContext("2d");if(ctx)ctx.clearRect(0,0,overlay.width,overlay.height);}
+    if(subLabelRef.current)subLabelRef.current.textContent="avg pts / round";
+    tweenTo(baseAvg);
+  },[tweenTo,baseAvg]);
+
+  useEffect(()=>{
+    const el=wrapperRef.current;if(!el)return;
+    const canvas=el.querySelector("canvas");
+    if(canvas)(chartCanvasRef as any).current=canvas;
+  });
+
+  useEffect(()=>{drawOverlay();},[...deps]);
+
+  useEffect(()=>{
+    const el=outerRef.current;if(!el)return;
+    let active=false;
+    const onStart=(e:TouchEvent)=>{if(e.touches.length>1)return;e.stopPropagation();active=true;handleMove(e.touches[0].clientX);};
+    const onMove=(e:TouchEvent)=>{if(!active||e.touches.length>1)return;if(e.cancelable)e.preventDefault();handleMove(e.touches[0].clientX);};
+    const onEnd=()=>{if(active)handleEnd();active=false;};
+    el.addEventListener("touchstart",onStart,{passive:false});
+    el.addEventListener("touchmove",onMove,{passive:false});
+    el.addEventListener("touchend",onEnd,{passive:true});
+    el.addEventListener("touchcancel",onEnd,{passive:true});
+    return()=>{el.removeEventListener("touchstart",onStart);el.removeEventListener("touchmove",onMove);el.removeEventListener("touchend",onEnd);el.removeEventListener("touchcancel",onEnd);};
+  },[handleMove,handleEnd]);
+
+  return(
+    <div ref={outerRef} style={{position:"relative",userSelect:"none",WebkitUserSelect:"none" as any,cursor:"crosshair"}}
+      onMouseMove={e=>handleMove(e.clientX)} onMouseLeave={handleEnd}>
+      <div ref={wrapperRef}><ChartCanvas config={config} deps={deps} height={height}/></div>
+      <canvas ref={overlayRef} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}}/>
+    </div>
+  );
+}
 
 const GOLFER_SUBTABS=[
   {id:"overview",label:"OVERVIEW"},
@@ -173,41 +316,45 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
 
   const winFlags=rounds.map((r:any)=>r.won===true);
 
+  const avgPtsSpanRef=useRef<HTMLSpanElement>(null);
+  const roundSubLabelRef=useRef<HTMLSpanElement>(null);
+
   const histConfig = {
     type:"line" as const,
     data:{
-      labels:rounds.map((_:any,i:number)=>"R"+(i+1)),
+      labels:rounds.map((_:any,i:number)=>i),
       datasets:[
         {
           label:"Points",
           data:rounds.map((r:any)=>r.pts),
-          borderColor:"#1a7340",
-          backgroundColor:"rgba(45,90,45,0.08)",
-          pointBackgroundColor:rounds.map((_:any,i:number)=>winFlags[i]?"#c47800":"#1a7340"),
-          pointBorderColor:rounds.map((_:any,i:number)=>winFlags[i]?"#ffffff":"#1a7340"),
-          pointBorderWidth:rounds.map((_:any,i:number)=>winFlags[i]?2:0),
-          pointRadius:rounds.map((_:any,i:number)=>winFlags[i]?8:5),
-          pointHoverRadius:rounds.map((_:any,i:number)=>winFlags[i]?10:7),
-          fill:true,tension:0.3,
+          borderColor:"#7dc07d",
+          backgroundColor:(ctx:any)=>{
+            const chart=ctx.chart;
+            const {chartArea}=chart;
+            if(!chartArea)return"rgba(125,192,125,0.08)";
+            const grad=chart.ctx.createLinearGradient(0,chartArea.top,0,chartArea.bottom);
+            grad.addColorStop(0,"rgba(125,192,125,0.22)");
+            grad.addColorStop(1,"rgba(125,192,125,0.01)");
+            return grad;
+          },
+          pointRadius:rounds.map((_:any,i:number)=>winFlags[i]?4:0),
+          pointBackgroundColor:rounds.map((_:any,i:number)=>winFlags[i]?"#e8a020":"transparent"),
+          pointBorderColor:"transparent",
+          pointBorderWidth:0,
+          pointHoverRadius:0,
+          fill:true,tension:0.4,borderWidth:2,
         },
-        {label:"Avg",data:Array(rounds.length).fill(parseFloat(avg.toFixed(1))),borderColor:"#c47800",borderDash:[5,4],pointRadius:0,fill:false}
+        {label:"Avg",data:Array(rounds.length).fill(parseFloat(avg.toFixed(1))),borderColor:"rgba(232,160,32,0.55)",borderDash:[5,4],pointRadius:0,pointHoverRadius:0,fill:false,borderWidth:1.5}
       ]
     },
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},
-        tooltip:{callbacks:{
-          label:(c:any)=>{
-            if(c.dataset.label==="Avg")return "Avg: "+c.parsed.y.toFixed(1);
-            const won=winFlags[c.dataIndex];
-            return (won?"🏆 ":"")+c.parsed.y+" pts"+(won?" (Won)":"");
-          },
-          title:(items:any)=>{const r=rounds[items[0].dataIndex];return formatDate(r.date)+" - "+r.course.split(" ")[0];}
-        }}
-      },
+      animation:{duration:0},
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
       scales:{
-        x:{ticks:{color:"#6b5240",font:{size:12},maxTicksLimit:12},grid:{display:false}},
-        y:{min:Math.max(0,worst-5),ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}}
-      }
+        x:{display:false},
+        y:{display:false,min:Math.max(0,worst-4),max:best+3}
+      },
+      layout:{padding:{left:0,right:0,top:16,bottom:0}},
     }
   };
 
@@ -595,19 +742,40 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
           })()}
 
           {/* Round history chart */}
-          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:8}}>
-            <div style={{fontSize:15,fontWeight:700,color:"var(--green-700)"}}>{golfer.first_name} {golfer.last_name} — Round History</div>
-            <span style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"var(--text-muted)"}}>
-              <span style={{width:14,height:3,background:"#1a7340",display:"inline-block",borderRadius:2}}></span>Pts
-              <span style={{width:14,height:3,background:"#c47800",display:"inline-block",borderRadius:2,marginLeft:4}}></span>Avg
-              {winFlags.some(Boolean)&&(
-                <span style={{display:"inline-flex",alignItems:"center",gap:4,marginLeft:4}}>
-                  <span style={{width:10,height:10,borderRadius:"50%",background:"#c47800",border:"2px solid white",display:"inline-block",boxSizing:"border-box" as const}}/>Win
-                </span>
-              )}
-            </span>
+          <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"14px 0 12px",marginBottom:16}}>
+            {/* Header */}
+            <div style={{display:"flex",alignItems:"center",padding:"0 14px",marginBottom:4}}>
+              <div style={{flex:1}}/>
+              <div style={{fontSize:14,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)"}}>Round History</div>
+              <div style={{flex:1,display:"flex",justifyContent:"flex-end"}}>
+                {winFlags.some(Boolean)&&(
+                  <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"rgba(255,255,255,0.4)"}}>
+                    <span style={{width:7,height:7,borderRadius:"50%",background:"#e8a020",display:"inline-block"}}/>Win
+                  </span>
+                )}
+              </div>
+            </div>
+            {/* Big scrubbing number */}
+            <div style={{padding:"0 14px",marginBottom:2}}>
+              <span ref={avgPtsSpanRef} style={{fontSize:44,fontWeight:700,fontVariantNumeric:"tabular-nums",lineHeight:1,color:"white"}}>
+                {avg.toFixed(1)}
+              </span>
+            </div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",padding:"0 14px",marginBottom:8}}><span ref={roundSubLabelRef}>avg pts / round</span></div>
+            {/* Chart — bleeds to card edges */}
+            <div style={{margin:"0 0"}}>
+              <RoundScrubber
+                config={histConfig}
+                deps={[golfer.golfer_id,rounds.length]}
+                height={160}
+                rounds={rounds}
+                winFlags={winFlags}
+                avgPtsSpanRef={avgPtsSpanRef}
+                subLabelRef={roundSubLabelRef}
+                baseAvg={parseFloat(avg.toFixed(1))}
+              />
+            </div>
           </div>
-          <ChartCanvas config={histConfig} deps={[golfer.golfer_id,rounds.length]} height={210} style={{marginBottom:16}}/>
 
           {/* Course Breakdown */}
           {courseBreakdown.length>0&&(
