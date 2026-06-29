@@ -511,10 +511,10 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
                   const isWeakness=b.pts!=null&&b.leagueAvg!=null&&b.pts<b.leagueAvg;
                   return(
                   <div key={b.label} style={{background:"rgba(255,255,255,0.06)",borderRadius:"var(--radius-sm,6px)",padding:"10px 8px",textAlign:"center"}}>
-                    <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:4}}>{b.label}</div>
+                    <div style={{fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:4}}>{b.label}</div>
                     {b.gross!=null?(
                       <>
-                        <div style={{fontSize:20,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{b.gross.toFixed(1)}</div>
+                        <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{b.gross.toFixed(1)}</div>
                         {(isStrength||isWeakness)&&(
                           <div style={{fontSize:9,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",marginTop:4,color:isStrength?"#7dc07d":"#e07070"}}>
                             {isStrength?"Strength":"Weakness"}
