@@ -443,11 +443,11 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
 
           {/* Earnings summary */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",padding:"12px",textAlign:"center"}}>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",padding:"12px",textAlign:"center",boxShadow:"var(--shadow-sm)"}}>
               <div style={{fontSize:22,fontWeight:700,color:"var(--green-700)"}}><CountUp value={totalEarned} prefix="$"/></div>
               <div style={{fontSize:12,color:"var(--text-muted)",fontWeight:500}}>Stableford Earned</div>
             </div>
-            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",padding:"12px",textAlign:"center"}}>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",padding:"12px",textAlign:"center",boxShadow:"var(--shadow-sm)"}}>
               <div style={{fontSize:22,fontWeight:700,color:netEarnings>=0?"var(--green-700)":"var(--red-600)"}}><CountUp value={Math.abs(netEarnings)} prefix={netEarnings>=0?"+$":"-$"}/></div>
               <div style={{fontSize:12,color:"var(--text-muted)",fontWeight:500}}>Net (−Entry Fees)</div>
             </div>
@@ -455,7 +455,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
 
           {/* Trend indicator */}
           {rounds.length>3&&(
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"10px 14px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"10px 14px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)"}}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={trend>0?"var(--green-700)":trend<0?"var(--red-600)":"var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 {trend>0
                   ?<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
@@ -508,7 +508,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
             <div style={{marginBottom:16}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {rivalStats.rival&&(
-                  <div style={{background:"rgba(192,32,32,0.07)",border:"1.5px solid rgba(192,32,32,0.25)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center"}}>
+                  <div style={{background:"rgba(192,32,32,0.07)",border:"1.5px solid rgba(192,32,32,0.25)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center",boxShadow:"var(--shadow-sm)"}}>
                     <div style={{fontSize:15,fontWeight:700,color:"var(--red-600)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Rival</div>
                     <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{rivalStats.rival.g.first_name} {rivalStats.rival.g.last_name}</div>
                     <div style={{fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
@@ -518,7 +518,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
                   </div>
                 )}
                 {rivalStats.twin&&(
-                  <div style={{background:"rgba(26,115,64,0.07)",border:"1.5px solid rgba(26,115,64,0.25)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center"}}>
+                  <div style={{background:"rgba(26,115,64,0.07)",border:"1.5px solid rgba(26,115,64,0.25)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center",boxShadow:"var(--shadow-sm)"}}>
                     <div style={{fontSize:15,fontWeight:700,color:"var(--green-700)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Twin</div>
                     <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{rivalStats.twin.g.first_name} {rivalStats.twin.g.last_name}</div>
                     <div style={{fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
@@ -781,7 +781,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
           {courseBreakdown.length>0&&(
             <div style={{marginTop:8,marginBottom:16}}>
               <div className="card-title" style={{marginBottom:8}}>Performance by Course</div>
-              <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
+              <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 48px 64px 72px",padding:"8px 12px",background:"var(--green-900)"}}>
                   {["Course","Rds","Avg Pts","Avg Finish"].map((h:string,i:number)=>(
                     <div key={i} style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.06em",textTransform:"uppercase",textAlign:i>0?"center":"left"}}>{h}</div>
@@ -803,7 +803,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
 
           {/* Per-round list */}
           <div className="card-title" style={{marginBottom:8}}>Round-by-Round</div>
-          <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)"}}>
+          <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",boxShadow:"var(--shadow-sm)"}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 48px 64px 52px",background:"var(--green-900)",padding:"9px 10px",borderRadius:"var(--radius-md) var(--radius-md) 0 0"}}>
               <div style={{color:"var(--gold-300)",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Date / Course</div>
               <div style={{color:"var(--gold-300)",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",textAlign:"center"}}>Pts</div>

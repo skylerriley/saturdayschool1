@@ -689,7 +689,7 @@ const CSS = `
 
   /* ── STAT CARDS ── */
   .stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:16px;}
-  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 12px;text-align:center;}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 12px;text-align:center;box-shadow:var(--shadow-sm);}
   .stat-value{font-size:30px;font-weight:700;color:var(--green-700);line-height:1;margin-bottom:4px;}
   .stat-label{font-size:15px;color:var(--text-muted);font-weight:500;}
 

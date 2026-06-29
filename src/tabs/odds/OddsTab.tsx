@@ -484,7 +484,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
 
                 {/* Side-by-side stat comparison */}
                 <div className="card-title" style={{ marginBottom: 8 }}>Stat Comparison</div>
-                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 16 }}>
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 16, boxShadow: "var(--shadow-sm)" }}>
                   {[
                     { label: "Projected Score", a: profA.proj, b: profB.proj, hi: "high" },
                     { label: "Weighted Avg", a: profA.wAvg, b: profB.wAvg, hi: "high" },
@@ -550,7 +550,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                 {h2hShared.length > 0 && (
                   <>
                     <div className="card-title" style={{ marginBottom: 8 }}>Head-to-Head History</div>
-                    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12 }}>
+                    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12, boxShadow: "var(--shadow-sm)" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 40px 40px 40px", padding: "7px 12px", background: "var(--green-900)", gap: 4 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Date</div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", textAlign: "center" }}>{gA.first_name}</div>
@@ -712,15 +712,15 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                       const even = 18 - aWins - bWins;
                       return (
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-                          <div style={{ background: "var(--gold-50)", border: "1px solid var(--gold-200)", borderRadius: "var(--radius-md)", padding: "10px", textAlign: "center" }}>
+                          <div style={{ background: "var(--gold-50)", border: "1px solid var(--gold-200)", borderRadius: "var(--radius-md)", padding: "10px", textAlign: "center", boxShadow: "var(--shadow-sm)" }}>
                             <div style={{ fontSize: 22, fontWeight: 700, color: "var(--gold-700)" }}>{aWins}</div>
                             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{gA?.first_name} holes</div>
                           </div>
-                          <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "10px", textAlign: "center" }}>
+                          <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "10px", textAlign: "center", boxShadow: "var(--shadow-sm)" }}>
                             <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-muted)" }}>{even}</div>
                             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Even</div>
                           </div>
-                          <div style={{ background: "var(--green-50)", border: "1px solid var(--green-200)", borderRadius: "var(--radius-md)", padding: "10px", textAlign: "center" }}>
+                          <div style={{ background: "var(--green-50)", border: "1px solid var(--green-200)", borderRadius: "var(--radius-md)", padding: "10px", textAlign: "center", boxShadow: "var(--shadow-sm)" }}>
                             <div style={{ fontSize: 22, fontWeight: 700, color: "var(--green-700)" }}>{bWins}</div>
                             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{gB?.first_name} holes</div>
                           </div>
