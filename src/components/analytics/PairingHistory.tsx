@@ -289,16 +289,16 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
       {/* Summary strip */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
         <div className="stat-card" style={{ padding: "10px 8px", textAlign: "center" }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--green-700)" }}>{uniquePartners}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500, marginTop: 2 }}>Partners</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: "var(--green-700)" }}>{uniquePartners}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, marginTop: 2 }}>Partners</div>
         </div>
         <div className="stat-card" style={{ padding: "10px 8px", textAlign: "center" }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: neverPlayedWith.length > 0 ? "var(--red-600)" : "var(--text-muted)" }}>{neverPlayedWith.length}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500, marginTop: 2 }}>Never played with*</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: neverPlayedWith.length > 0 ? "var(--red-600)" : "var(--text-muted)" }}>{neverPlayedWith.length}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, marginTop: 2 }}>Never played with*</div>
         </div>
         <div className="stat-card" style={{ padding: "10px 8px", textAlign: "center" }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--gold-600)" }}>{mostFrequentTimes > 0 ? `${mostFrequentTimes}x` : "--"}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500, marginTop: 2 }}>Most frequent</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold-600)" }}>{mostFrequentTimes > 0 ? `${mostFrequentTimes}x` : "--"}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, marginTop: 2 }}>Most frequent</div>
         </div>
       </div>
 

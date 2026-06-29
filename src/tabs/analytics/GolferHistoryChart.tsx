@@ -392,7 +392,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
           {/* Avg score summary */}
           {grossAvgStats.hasData&&(
             <div style={{marginBottom:16,background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px"}}>
-              <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Avg Scores</div>
+              <div style={{fontSize:14,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Avg Scores</div>
 
               {/* Donut + flanking stats */}
               {(()=>{
@@ -412,12 +412,12 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
                   <div style={{display:"flex",alignItems:"center",gap:0}}>
                     {/* Front 9 stat — left */}
                     <div style={{flex:"0 0 80px",textAlign:"center"}}>
-                      <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:f9Color,marginBottom:5}}>Front 9</div>
-                      <div style={{fontSize:22,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
+                      <div style={{fontSize:12,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:f9Color,marginBottom:5}}>Front 9</div>
+                      <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
                         {grossAvgStats.f9!=null?grossAvgStats.f9.toFixed(1):"—"}
                       </div>
                       {grossAvgStats.f9delta!=null&&(
-                        <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:3}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:3}}>
                           {grossAvgStats.f9delta>0?"+":""}{grossAvgStats.f9delta.toFixed(1)}
                         </div>
                       )}
@@ -466,18 +466,18 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
                           style={{animation:"donut-f9-draw 0.8s cubic-bezier(0.4,0,0.2,1) 0.15s both"}}
                         />
                         {/* Center text */}
-                        <text x={CX} y={CY-(totalDelta!=null?18:12)} textAnchor="middle" dominantBaseline="middle"
-                          fontSize={9} fontWeight={700} fill="rgba(255,255,255,0.4)" fontFamily="'DM Sans',sans-serif"
+                        <text x={CX} y={CY-(totalDelta!=null?22:14)} textAnchor="middle" dominantBaseline="middle"
+                          fontSize={11} fontWeight={700} fill="rgba(255,255,255,0.4)" fontFamily="'DM Sans',sans-serif"
                           style={{textTransform:"uppercase",letterSpacing:"0.08em"}}>
                           18 HOLES
                         </text>
                         <text x={CX} y={CY+(totalDelta!=null?2:6)} textAnchor="middle" dominantBaseline="middle"
-                          fontSize={28} fontWeight={700} fill="white" fontFamily="'DM Sans',sans-serif">
+                          fontSize={29} fontWeight={700} fill="white" fontFamily="'DM Sans',sans-serif">
                           {grossAvgStats.total!=null?grossAvgStats.total.toFixed(1):"—"}
                         </text>
                         {totalDelta!=null&&(
-                          <text x={CX} y={CY+22} textAnchor="middle" dominantBaseline="middle"
-                            fontSize={12} fontWeight={700} fill="rgba(255,255,255,0.45)" fontFamily="'DM Sans',sans-serif">
+                          <text x={CX} y={CY+26} textAnchor="middle" dominantBaseline="middle"
+                            fontSize={13} fontWeight={700} fill="rgba(255,255,255,0.45)" fontFamily="'DM Sans',sans-serif">
                             {totalDelta>0?"+":""}{totalDelta.toFixed(1)}
                           </text>
                         )}
@@ -486,12 +486,12 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
 
                     {/* Back 9 stat — right */}
                     <div style={{flex:"0 0 80px",textAlign:"center"}}>
-                      <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:b9Color,marginBottom:5}}>Back 9</div>
-                      <div style={{fontSize:22,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
+                      <div style={{fontSize:12,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:b9Color,marginBottom:5}}>Back 9</div>
+                      <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
                         {grossAvgStats.b9!=null?grossAvgStats.b9.toFixed(1):"—"}
                       </div>
                       {grossAvgStats.b9delta!=null&&(
-                        <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:3}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:3}}>
                           {grossAvgStats.b9delta>0?"+":""}{grossAvgStats.b9delta.toFixed(1)}
                         </div>
                       )}
@@ -534,25 +534,10 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
             </div>
           )}
 
-          {/* Round history chart */}
-          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:8}}>
-            <div style={{fontSize:15,fontWeight:700,color:"var(--green-700)"}}>{golfer.first_name} {golfer.last_name} — Round History</div>
-            <span style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"var(--text-muted)"}}>
-              <span style={{width:14,height:3,background:"#1a7340",display:"inline-block",borderRadius:2}}></span>Pts
-              <span style={{width:14,height:3,background:"#c47800",display:"inline-block",borderRadius:2,marginLeft:4}}></span>Avg
-              {winFlags.some(Boolean)&&(
-                <span style={{display:"inline-flex",alignItems:"center",gap:4,marginLeft:4}}>
-                  <span style={{width:10,height:10,borderRadius:"50%",background:"#c47800",border:"2px solid white",display:"inline-block",boxSizing:"border-box" as const}}/>Win
-                </span>
-              )}
-            </span>
-          </div>
-          <ChartCanvas config={histConfig} deps={[golfer.golfer_id,rounds.length]} height={210} style={{marginBottom:16}}/>
-
           {/* Distance breakdown bar chart */}
           {distanceBuckets.hasData&&(()=>{
             const Y_MAX=8;
-            const BAR_H=100;
+            const BAR_H=140;
             const sections=[
               {title:"Par 3",color:"#7dc07d",barGrad:"linear-gradient(to top,#4a9b6f,#a8dba8)",buckets:distanceBuckets.par3},
               {title:"Par 4",color:"#4a9b6f",barGrad:"linear-gradient(to top,#2d6a4f,#7dc07d)",buckets:distanceBuckets.par4},
@@ -562,7 +547,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
               <div style={{marginBottom:20}}>
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:0}}/>
                 <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px 12px"}}>
-                  <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Scoring by Distance</div>
+                  <div style={{fontSize:14,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Scoring by Distance</div>
                   <div style={{display:"flex",alignItems:"flex-end",gap:0}}>
                     {sections.map((sec,si)=>{
                       const activeBuckets=sec.buckets.filter(b=>b.avg!=null);
@@ -579,7 +564,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
                                 const heightPx=Math.max(3,Math.min(1,(b.avg as number)/Y_MAX)*BAR_H);
                                 return(
                                   <div key={b.label} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,minWidth:0,justifyContent:"flex-end",height:BAR_H}}>
-                                    <div style={{fontSize:9,fontWeight:700,color:"rgba(255,255,255,0.85)",marginBottom:3,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap"}}>
+                                    <div style={{fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.85)",marginBottom:3,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap"}}>
                                       {(b.avg as number).toFixed(1)}
                                     </div>
                                     <div style={{width:"75%",height:heightPx,background:sec.barGrad,borderRadius:"3px 3px 0 0",opacity:0.9}}/>
@@ -590,13 +575,13 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
                             {/* X labels row */}
                             <div style={{display:"flex",gap:3,paddingLeft:si>0?6:0,paddingRight:si<sections.length-1?6:0,marginTop:4}}>
                               {activeBuckets.map(b=>(
-                                <div key={b.label} style={{flex:1,minWidth:0,textAlign:"center",fontSize:8,color:"rgba(255,255,255,0.35)",fontWeight:600,letterSpacing:"0.03em"}}>
+                                <div key={b.label} style={{flex:1,minWidth:0,textAlign:"center",fontSize:12,color:"rgba(255,255,255,0.35)",fontWeight:600,letterSpacing:"0.03em"}}>
                                   {b.label}
                                 </div>
                               ))}
                             </div>
                             {/* Group label */}
-                            <div style={{textAlign:"center",marginTop:6,fontSize:10,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase",color:sec.color,paddingLeft:si>0?6:0,paddingRight:si<sections.length-1?6:0}}>
+                            <div style={{textAlign:"center",marginTop:6,fontSize:14,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase",color:sec.color,paddingLeft:si>0?6:0,paddingRight:si<sections.length-1?6:0}}>
                               {sec.title}
                             </div>
                           </div>
@@ -608,6 +593,21 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
               </div>
             );
           })()}
+
+          {/* Round history chart */}
+          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:8}}>
+            <div style={{fontSize:15,fontWeight:700,color:"var(--green-700)"}}>{golfer.first_name} {golfer.last_name} — Round History</div>
+            <span style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"var(--text-muted)"}}>
+              <span style={{width:14,height:3,background:"#1a7340",display:"inline-block",borderRadius:2}}></span>Pts
+              <span style={{width:14,height:3,background:"#c47800",display:"inline-block",borderRadius:2,marginLeft:4}}></span>Avg
+              {winFlags.some(Boolean)&&(
+                <span style={{display:"inline-flex",alignItems:"center",gap:4,marginLeft:4}}>
+                  <span style={{width:10,height:10,borderRadius:"50%",background:"#c47800",border:"2px solid white",display:"inline-block",boxSizing:"border-box" as const}}/>Win
+                </span>
+              )}
+            </span>
+          </div>
+          <ChartCanvas config={histConfig} deps={[golfer.golfer_id,rounds.length]} height={210} style={{marginBottom:16}}/>
 
           {/* Course Breakdown */}
           {courseBreakdown.length>0&&(
