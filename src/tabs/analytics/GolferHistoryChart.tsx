@@ -6,6 +6,7 @@ import { CountUp, ScoreSymbol } from "../../App";
 import { ChartCanvas } from "./ChartCanvas";
 import { PairingHistory } from "../../components/analytics/PairingHistory";
 import { Chart as ChartJS } from "chart.js";
+import { buildSeasonRounds } from "../../lib/seasonStats";
 
 function RoundScrubber({config,deps,height=160,rounds,winFlags,avgPtsSpanRef,subLabelRef,baseAvg}:{
   config:object,deps:any[],height:number,
@@ -212,11 +213,14 @@ function GolferSubNav({view,setView}:{view:string;setView:(v:string)=>void}){
   );
 }
 
-export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers,seasonEvents,holeScores,courses,signups}:any){
+export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEvents,holeScores,courses,signups}:any){
   const [expandedRound,setExpandedRound]=useState<number|null>(null);
   const [golferSubTab,setGolferSubTab]=useState("overview");
   const [donutKey,setDonutKey]=useState(0);
+  const [streakType,setStreakType]=useState("pars");
+  const [selectedBar,setSelectedBar]=useState<number|null>(null);
   useEffect(()=>{ setDonutKey(k=>k+1); },[golfer.golfer_id]);
+  useEffect(()=>{ setSelectedBar(null); },[streakType,golfer.golfer_id]);
   const avg=rounds.reduce((s:number,r:any)=>s+r.pts,0)/rounds.length;
   const best=Math.max(...rounds.map((r:any)=>r.pts));
   const worst=Math.min(...rounds.map((r:any)=>r.pts));
@@ -234,7 +238,10 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
       if(!lbEntry||lbEntry.entry_type!=="Hole-by-Hole")return;
       const hs=holeScores.filter((h:any)=>h.summary_id===lbEntry.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number);
       if(!hs.length)return;
-      const course=courses.find((c:any)=>c.course_name===r.course);
+      const signup=signups.find((s:any)=>s.event_id===r.eid&&s.golfer_id===golfer.golfer_id);
+      const course=signup?.tee_box_course_id
+        ?courses.find((c:any)=>c.course_id===signup.tee_box_course_id)
+        :courses.find((c:any)=>c.course_name===r.course);
       const pars:number[]=course?.hole_pars||[];
       let f9=0,b9=0,f9par=0,b9par=0,f9count=0,b9count=0;
       hs.forEach((h:any)=>{
@@ -290,7 +297,10 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
       if(!lbEntry||lbEntry.entry_type!=="Hole-by-Hole")return;
       const hs=holeScores.filter((h:any)=>h.summary_id===lbEntry.summary_id);
       if(!hs.length)return;
-      const course=courses.find((c:any)=>c.course_name===r.course);
+      const signup=signups.find((s:any)=>s.event_id===r.eid&&s.golfer_id===golfer.golfer_id);
+      const course=signup?.tee_box_course_id
+        ?courses.find((c:any)=>c.course_id===signup.tee_box_course_id)
+        :courses.find((c:any)=>c.course_name===r.course);
       const pars:number[]=course?.hole_pars||[];
       const yards:number[]=course?.hole_yards||[];
       hs.forEach((h:any)=>{
@@ -426,6 +436,67 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
   }:null;
   const golferName=`${golfer.first_name} ${golfer.last_name}`;
 
+  // ── Rank stat card computations ──────────────────────────────
+  const gid=golfer.golfer_id;
+  // Mirror the exact logic from LeaderboardTab: buildSeasonRounds uses r.season, so
+  // derive the season from the leaderboard entries that match our seasonEvents.
+  const season=leaderboard.find((r:any)=>seasonEvents.some((e:any)=>e.event_id===r.event_id))?.season;
+
+  // Two-pass tie helper matching LeaderboardTab's withTiePositions
+  const withTiePositions=(arr:any[],scoreKey:string)=>{
+    let cp=1;
+    const withPos=arr.map((row:any,i:number)=>{
+      if(i>0&&arr[i][scoreKey]===arr[i-1][scoreKey])return{...row,pos:cp,tied:true};
+      cp=i+1;return{...row,pos:cp,tied:false};
+    });
+    const tiedSet=new Set(withPos.filter((r:any)=>r.tied).map((r:any)=>r.pos));
+    return withPos.map((r:any)=>tiedSet.has(r.pos)?{...r,tied:true}:r);
+  };
+
+  const byG=season!=null?buildSeasonRounds(golfers,leaderboard,season):{};
+
+  // Top 15 avg: sort each golfer's rounds desc, take best 15, average them — then rank with ties
+  const top15Rows=Object.entries(byG)
+    .map(([id,pts])=>{const top=[...(pts as number[])].sort((a,b)=>b-a).slice(0,15);return{golfer_id:parseInt(id),avg:top.reduce((a,b)=>a+b,0)/top.length,rounds:(pts as number[]).length};})
+    .sort((a,b)=>b.avg-a.avg);
+  const top15WithTies=withTiePositions(top15Rows,"avg");
+  const myTop15Row=top15WithTies.find((r:any)=>r.golfer_id===gid);
+  const top15Rank=myTop15Row?myTop15Row.pos:null;
+  const top15RankTied=myTop15Row?.tied??false;
+  // Avg of this golfer's own top 15 rounds
+  const myAllPts=(byG[gid]||[]) as number[];
+  const myTop15Pts=[...myAllPts].sort((a,b)=>b-a).slice(0,15);
+  const top15AvgPts=myTop15Pts.length?myTop15Pts.reduce((a,b)=>a+b,0)/myTop15Pts.length:null;
+
+  // Season avg: avg all rounds then rank with ties
+  const seasonRows=Object.entries(byG)
+    .map(([id,pts])=>({golfer_id:parseInt(id),avg:(pts as number[]).reduce((a,b)=>a+b,0)/(pts as number[]).length,rounds:(pts as number[]).length}))
+    .sort((a,b)=>b.avg-a.avg);
+  const seasonWithTies=withTiePositions(seasonRows,"avg");
+  const mySeasonRow=seasonWithTies.find((r:any)=>r.golfer_id===gid);
+  const seasonAvgRank=mySeasonRow?mySeasonRow.pos:null;
+  const seasonAvgRankTied=mySeasonRow?.tied??false;
+  const mySeasonAvgPts=myAllPts.length?myAllPts.reduce((a,b)=>a+b,0)/myAllPts.length:null;
+
+  const lastRound=rounds.length?rounds[rounds.length-1]:null;
+  // Last event finish with tie detection
+  const lastFinishLabel=(()=>{
+    if(!lastRound)return null;
+    const paidEv=leaderboard
+      .filter((r:any)=>r.event_id===lastRound.eid&&r.buy_in_paid)
+      .sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
+    if(!paidEv.length)return null;
+    let cp=1;
+    const withPos=paidEv.map((r:any,i:number)=>{
+      if(i>0&&r.total_stableford_points===paidEv[i-1].total_stableford_points)return{...r,pos:cp,tied:true};
+      cp=i+1;return{...r,pos:cp,tied:false};
+    });
+    const tiedSet=new Set(withPos.filter((r:any)=>r.tied).map((r:any)=>r.pos));
+    const myRow=withPos.map((r:any)=>tiedSet.has(r.pos)?{...r,tied:true}:r).find((r:any)=>r.golfer_id===gid);
+    if(!myRow)return null;
+    return myRow.tied?`T${myRow.pos}`:String(myRow.pos);
+  })();
+
   return(
     <div>
       <GolferSubNav view={golferSubTab} setView={setGolferSubTab}/>
@@ -433,6 +504,56 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
       {/* ── OVERVIEW ──────────────────────────────────────── */}
       {golferSubTab==="overview"&&(
         <>
+          {/* Rank stat triple card */}
+          <div style={{
+            background:"var(--green-900)",
+            borderRadius:"var(--radius-md)",
+            padding:"16px 12px",
+            marginBottom:14,
+            display:"grid",
+            gridTemplateColumns:"1fr 1px 1fr 1px 1fr",
+            gap:0,
+          }}>
+            {/* Top 15 */}
+            <div style={{textAlign:"center",padding:"0 6px"}}>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.38)",marginBottom:6}}>Top 15</div>
+              <div style={{fontSize:34,fontWeight:700,color:"#7dc07d",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
+                {top15Rank!=null?(top15RankTied?`T${top15Rank}`:String(top15Rank)):"—"}
+              </div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:5,fontVariantNumeric:"tabular-nums"}}>
+                {top15AvgPts!=null?`${top15AvgPts.toFixed(1)} pts avg`:""}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div style={{background:"rgba(255,255,255,0.1)",margin:"4px 0"}}/>
+
+            {/* Season avg rank */}
+            <div style={{textAlign:"center",padding:"0 6px"}}>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.38)",marginBottom:6}}>Season Avg Rank</div>
+              <div style={{fontSize:34,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
+                {seasonAvgRank!=null?(seasonAvgRankTied?`T${seasonAvgRank}`:String(seasonAvgRank)):"—"}
+              </div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:5,fontVariantNumeric:"tabular-nums"}}>
+                {mySeasonAvgPts!=null?`${mySeasonAvgPts.toFixed(1)} pts avg`:""}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div style={{background:"rgba(255,255,255,0.1)",margin:"4px 0"}}/>
+
+            {/* Last event */}
+            <div style={{textAlign:"center",padding:"0 6px"}}>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.38)",marginBottom:6}}>Last Event</div>
+              <div style={{fontSize:34,fontWeight:700,color:lastRound?.won?"#e8a020":"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
+                {lastFinishLabel??"—"}
+              </div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:5,fontVariantNumeric:"tabular-nums"}}>
+                {lastRound?`${lastRound.pts} pts`:""}
+              </div>
+            </div>
+          </div>
+
           {/* Stat hero cards */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
             <div className="stat-card"><div className="stat-value" style={{fontSize:26}}><CountUp value={avg} decimals={1}/></div><div className="stat-label">Season Avg</div></div>
@@ -539,7 +660,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
           {/* Avg score summary */}
           {grossAvgStats.hasData&&(
             <div style={{marginBottom:16,background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px"}}>
-              <div style={{fontSize:14,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Avg Scores</div>
+              <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Avg Scores</div>
 
               {/* Donut + flanking stats */}
               {(()=>{
@@ -658,7 +779,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
                   const isWeakness=b.pts!=null&&b.leagueAvg!=null&&b.pts<b.leagueAvg;
                   return(
                   <div key={b.label} style={{background:"rgba(255,255,255,0.06)",borderRadius:"var(--radius-sm,6px)",padding:"10px 8px",textAlign:"center"}}>
-                    <div style={{fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:4}}>{b.label}</div>
+                    <div style={{fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:4}}>{b.label}'s</div>
                     {b.gross!=null?(
                       <>
                         <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{b.gross.toFixed(1)}</div>
@@ -694,7 +815,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
               <div style={{marginBottom:20}}>
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:0}}/>
                 <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px 12px"}}>
-                  <div style={{fontSize:14,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Scoring by Distance</div>
+                  <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Scoring by Distance</div>
                   <div style={{display:"flex",alignItems:"flex-end",gap:0}}>
                     {sections.map((sec,si)=>{
                       const activeBuckets=sec.buckets.filter(b=>b.avg!=null);
@@ -746,7 +867,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
             {/* Header */}
             <div style={{display:"flex",alignItems:"center",padding:"0 14px",marginBottom:4}}>
               <div style={{flex:1}}/>
-              <div style={{fontSize:14,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)"}}>Round History</div>
+              <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)"}}>Round History</div>
               <div style={{flex:1,display:"flex",justifyContent:"flex-end"}}>
                 {winFlags.some(Boolean)&&(
                   <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"rgba(255,255,255,0.4)"}}>
@@ -776,6 +897,220 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
               />
             </div>
           </div>
+
+          {/* ── Hole-by-Hole Streaks ─────────────────────────── */}
+          {(()=>{
+            type HoleEntry={gross:number;pts:number;holeNum:number;date:string;course:string;eventId:number};
+            const allHoles:HoleEntry[]=[];
+            const orderedRounds=[...rounds].sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
+            orderedRounds.forEach((r:any)=>{
+              const lbEntry=leaderboard.find((lb:any)=>lb.event_id===r.eid&&lb.golfer_id===golfer.golfer_id);
+              if(!lbEntry||lbEntry.entry_type!=="Hole-by-Hole")return;
+              const hs=holeScores.filter((h:any)=>h.summary_id===lbEntry.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number);
+              if(!hs.length)return;
+              const signup=signups.find((s:any)=>s.event_id===r.eid&&s.golfer_id===golfer.golfer_id);
+              const course=signup?.tee_box_course_id
+                ?courses.find((c:any)=>c.course_id===signup.tee_box_course_id)
+                :courses.find((c:any)=>c.course_name===r.course);
+              const pars:number[]=course?.hole_pars||[];
+              hs.forEach((h:any)=>{
+                if(h.gross_score==null)return;
+                const par=pars[h.hole_number-1]||0;
+                if(!par)return;
+                allHoles.push({
+                  gross:h.gross_score,pts:h.stableford_points??0,
+                  holeNum:h.hole_number,date:r.date,
+                  course:r.course.replace(" Golf Club","").replace("Golf Course","").split(" ").slice(0,2).join(" "),
+                  eventId:r.eid,
+                });
+              });
+            });
+
+            if(!allHoles.length)return null;
+
+            type StreakDef={key:string;label:string;color:string;barGrad:string;check:(h:HoleEntry,par:number)=>boolean};
+            const getParForHole=(date:string,eid:number,holeNum:number)=>{
+              const r=orderedRounds.find((rd:any)=>rd.eid===eid&&rd.date===date);
+              if(!r)return 0;
+              const lbEntry=leaderboard.find((lb:any)=>lb.event_id===r.eid&&lb.golfer_id===golfer.golfer_id);
+              if(!lbEntry)return 0;
+              const signup=signups.find((s:any)=>s.event_id===r.eid&&s.golfer_id===golfer.golfer_id);
+              const course=signup?.tee_box_course_id
+                ?courses.find((c:any)=>c.course_id===signup.tee_box_course_id)
+                :courses.find((c:any)=>c.course_name===r.course);
+              return(course?.hole_pars||[])[holeNum-1]||0;
+            };
+
+            const STREAK_DEFS:StreakDef[]=[
+              {key:"pars",label:"Par or Better",color:"#7dc07d",barGrad:"linear-gradient(to top,#4a9b6f,#a8dba8)",
+                check:(h)=>h.gross<=getParForHole(h.date,h.eventId,h.holeNum)},
+              {key:"blowout",label:"Blowout Avoidance",color:"#4a9b6f",barGrad:"linear-gradient(to top,#2d6a4f,#7dc07d)",
+                check:(h)=>h.pts>=1},
+              {key:"dbl",label:"Double Bogey Free",color:"#c47800",barGrad:"linear-gradient(to top,#a05c00,#e8a020)",
+                check:(h)=>h.gross<getParForHole(h.date,h.eventId,h.holeNum)+2},
+              {key:"trip",label:"Triple Bogey Free",color:"#e8a020",barGrad:"linear-gradient(to top,#c47800,#f4c04a)",
+                check:(h)=>h.gross<getParForHole(h.date,h.eventId,h.holeNum)+3},
+            ];
+
+            type StreakRecord={length:number;active:boolean;startDate:string;startCourse:string;startHole:number;endDate:string;endCourse:string;endHole:number};
+
+            const computeStreaks=(def:StreakDef):StreakRecord[]=>{
+              const result:StreakRecord[]=[];
+              let cur:StreakRecord|null=null;
+              allHoles.forEach(h=>{
+                const par=getParForHole(h.date,h.eventId,h.holeNum);
+                if(!par)return;
+                if(def.check(h,par)){
+                  if(!cur){
+                    cur={length:1,active:false,startDate:h.date,startCourse:h.course,startHole:h.holeNum,endDate:h.date,endCourse:h.course,endHole:h.holeNum};
+                  } else {
+                    cur.length++;cur.endDate=h.date;cur.endCourse=h.course;cur.endHole=h.holeNum;
+                  }
+                } else {
+                  if(cur){result.push({...cur,active:false});cur=null;}
+                }
+              });
+              if(cur){result.push({...cur,active:true});}
+              return result;
+            };
+
+            const def=STREAK_DEFS.find(d=>d.key===streakType)||STREAK_DEFS[0];
+            const allStreaks=computeStreaks(def);
+            const visibleStreaks=allStreaks.slice(-15);
+            const maxLen=Math.max(...visibleStreaks.map(s=>s.length),1);
+            const BAR_H=120;
+
+            const fmtDate=(d:string)=>new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+            const selStreak=selectedBar!=null?visibleStreaks[selectedBar]:null;
+
+            return(
+              <div style={{marginBottom:16}}>
+                <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px 14px"}}>
+                  <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:12}}>Hole Streaks</div>
+
+                  <div style={{marginBottom:16,display:"flex",justifyContent:"center"}}>
+                    <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
+                      <select
+                        value={streakType}
+                        onChange={e=>{setStreakType(e.target.value);setSelectedBar(null);}}
+                        style={{
+                          background:"rgba(255,255,255,0.07)",
+                          border:`1.5px solid ${def.color}`,
+                          borderRadius:8,
+                          padding:"9px 32px 9px 12px",
+                          fontSize:13,fontWeight:700,
+                          color:def.color,
+                          cursor:"pointer",
+                          appearance:"none",
+                          WebkitAppearance:"none",
+                          outline:"none",
+                        }}
+                      >
+                        {STREAK_DEFS.map(d=>(
+                          <option key={d.key} value={d.key}>{d.label}</option>
+                        ))}
+                      </select>
+                      <svg style={{position:"absolute",right:10,pointerEvents:"none"}} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={def.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
+                    </div>
+                  </div>
+
+                  {visibleStreaks.length===0?(
+                    <div style={{textAlign:"center",padding:"24px 0",fontSize:13,color:"rgba(255,255,255,0.3)"}}>No streak data yet</div>
+                  ):(
+                    <>
+                      <div style={{display:"flex",alignItems:"flex-end",gap:4,height:BAR_H}}>
+                        {visibleStreaks.map((s,i)=>{
+                          const heightPx=Math.max(6,Math.round((s.length/maxLen)*BAR_H));
+                          const isSelected=selectedBar===i;
+                          return(
+                            <div key={i}
+                              onClick={()=>setSelectedBar(isSelected?null:i)}
+                              style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:BAR_H,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}
+                            >
+                              <div style={{fontSize:11,fontWeight:700,color:isSelected?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.55)",marginBottom:3,fontVariantNumeric:"tabular-nums",lineHeight:1}}>
+                                {s.length}
+                              </div>
+                              <div style={{
+                                width:"80%",height:heightPx,
+                                background:s.active?"linear-gradient(to top,#1a6bb5,#5db8f0)":def.barGrad,
+                                borderRadius:"3px 3px 0 0",
+                                opacity:isSelected?1:0.78,
+                                outline:isSelected?`2px solid ${s.active?"#5db8f0":def.color}`:"none",
+                                outlineOffset:1,
+                                transition:"opacity 0.15s,outline 0.15s",
+                              }}>
+                                {s.active&&(
+                                  <div style={{width:"100%",height:6,background:"rgba(255,255,255,0.4)",borderRadius:"3px 3px 0 0"}}/>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{display:"flex",gap:4,marginTop:4}}>
+                        {visibleStreaks.map((_,i)=>(
+                          <div key={i} style={{flex:1,textAlign:"center",fontSize:10,color:"rgba(255,255,255,0.25)",fontWeight:600}}>
+                            {allStreaks.length>15?allStreaks.length-15+i+1:i+1}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{display:"flex",alignItems:"center",gap:14,marginTop:10,flexWrap:"wrap"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(255,255,255,0.5)"}}>
+                          <div style={{width:12,height:12,borderRadius:2,background:def.barGrad}}/>
+                          Ended streak
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(255,255,255,0.5)"}}>
+                          <div style={{position:"relative",width:12,height:12,borderRadius:2,background:"linear-gradient(to top,#1a6bb5,#5db8f0)",overflow:"hidden"}}>
+                            <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:"rgba(255,255,255,0.5)"}}/>
+                          </div>
+                          Active streak
+                        </div>
+                        <div style={{marginLeft:"auto",fontSize:11,color:"rgba(255,255,255,0.3)"}}>
+                          Showing last {visibleStreaks.length} of {allStreaks.length}
+                        </div>
+                      </div>
+
+                      {selStreak&&(
+                        <div style={{marginTop:12,background:"rgba(255,255,255,0.07)",borderRadius:10,padding:"11px 14px",borderLeft:`3px solid ${def.color}`}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                            <div style={{fontSize:24,fontWeight:700,color:def.color,fontVariantNumeric:"tabular-nums",lineHeight:1}}>{selStreak.length}</div>
+                            <div>
+                              <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.75)"}}>{def.label}</div>
+                              {selStreak.active&&<div style={{fontSize:10,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",color:def.color}}>Active</div>}
+                            </div>
+                          </div>
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                            <div>
+                              <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"rgba(255,255,255,0.35)",marginBottom:3}}>Started</div>
+                              <div style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,0.8)"}}>{fmtDate(selStreak.startDate)}</div>
+                              <div style={{fontSize:11,color:"rgba(255,255,255,0.45)"}}>{selStreak.startCourse} · Hole {selStreak.startHole}</div>
+                            </div>
+                            {!selStreak.active?(
+                              <div>
+                                <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"rgba(255,255,255,0.35)",marginBottom:3}}>Ended</div>
+                                <div style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,0.8)"}}>{fmtDate(selStreak.endDate)}</div>
+                                <div style={{fontSize:11,color:"rgba(255,255,255,0.45)"}}>{selStreak.endCourse} · Hole {selStreak.endHole}</div>
+                              </div>
+                            ):(
+                              <div>
+                                <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"rgba(255,255,255,0.35)",marginBottom:3}}>Last Recorded</div>
+                                <div style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,0.8)"}}>{fmtDate(selStreak.endDate)}</div>
+                                <div style={{fontSize:11,color:"rgba(255,255,255,0.45)"}}>{selStreak.endCourse} · Hole {selStreak.endHole}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Course Breakdown */}
           {courseBreakdown.length>0&&(
@@ -920,6 +1255,7 @@ export function GolferHistoryChart({golfer,rounds,seasonData,leaderboard,golfers
               );
             })}
           </div>
+
         </>
       )}
 

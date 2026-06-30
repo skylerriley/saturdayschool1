@@ -472,19 +472,36 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                   const fpA = computeScoringFingerprint(gA.golfer_id, h2hSeasonEvents, leaderboard, holeScores || [], courses);
                   const fpB = computeScoringFingerprint(gB.golfer_id, h2hSeasonEvents, leaderboard, holeScores || [], courses);
                   return (
-                    <div className="card" style={{ textAlign: "center", marginBottom: 16 }}>
-                      <div className="card-title" style={{ marginBottom: 8 }}>Scoring Fingerprint</div>
+                    <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", padding: 16, marginBottom: 16 }}>
+                      <div style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", fontWeight: 700, marginBottom: 10 }}>
+                        Scoring Fingerprint
+                      </div>
                       <ScoringFingerprintRadar datasets={[
-                        { label: gA.first_name + " " + gA.last_name, color: "var(--green-600)", values: fpA },
-                        { label: gB.first_name + " " + gB.last_name, color: "var(--gold-600)", values: fpB },
-                      ]} />
+                        { label: gA.first_name + " " + gA.last_name, color: "#7dc07d", fill: "rgba(125,200,125,0.18)", values: fpA },
+                        { label: gB.first_name + " " + gB.last_name, color: "rgba(212,168,67,0.85)", fill: "rgba(212,168,67,0.08)", values: fpB },
+                      ]} darkMode />
+                      <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 8, flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
+                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#7dc07d" }} />
+                          {gA.first_name} {gA.last_name}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "rgba(255,255,255,0.55)" }}>
+                          <div style={{ width: 14, height: 3, background: "rgba(212,168,67,0.85)", borderRadius: 2 }} />
+                          {gB.first_name} {gB.last_name}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 6, textAlign: "center" }}>
+                        Avg Stableford pts per hole category · {season} season
+                      </div>
                     </div>
                   );
                 })()}
 
                 {/* Side-by-side stat comparison */}
-                <div className="card-title" style={{ marginBottom: 8 }}>Stat Comparison</div>
-                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 16, boxShadow: "var(--shadow-sm)" }}>
+                <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", fontWeight: 700, padding: "12px 14px 8px" }}>
+                    Stat Comparison
+                  </div>
                   {[
                     { label: "Projected Score", a: profA.proj, b: profB.proj, hi: "high" },
                     { label: "Weighted Avg", a: profA.wAvg, b: profB.wAvg, hi: "high" },
@@ -500,42 +517,37 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                     const aNum = parseFloat(row.a) || 0;
                     const bNum = parseFloat(row.b) || 0;
                     const total = Math.abs(aNum) + Math.abs(bNum);
-                    // favA = A has the better value on this stat
                     const favA = aWins;
                     const favB = bWins;
-                    // For the bar: A fills from left, B from right; midpoint shifts toward the winner.
-                    // We convert to a 0–1 proportion where 0.5 = tied.
                     let aPct = 0.5;
                     if (row.hi !== "any" && total > 0) {
                       if (row.hi === "high") {
                         aPct = aNum / total;
                       } else {
-                        // "low" = lower is better; invert
                         aPct = bNum / total;
                       }
-                      // Clamp to [0.1, 0.9] so bar never fully disappears
                       aPct = Math.min(0.9, Math.max(0.1, aPct));
                     }
                     return (
-                      <div key={row.label} style={{ padding: "9px 14px", borderBottom: "1px solid var(--border)" }}>
+                      <div key={row.label} style={{ padding: "9px 14px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
                         {/* Values row */}
                         <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center" }}>
-                          <div style={{ fontWeight: aWins ? 700 : 400, fontSize: 18, textAlign: "left", color: aWins ? "var(--green-700)" : "var(--text-primary)" }}>{row.a}</div>
-                          <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "0 8px", letterSpacing: "0.03em" }}>{row.label}</div>
-                          <div style={{ fontWeight: bWins ? 700 : 400, fontSize: 18, color: bWins ? "var(--green-700)" : "var(--text-primary)", textAlign: "right" }}>{row.b}</div>
+                          <div style={{ fontWeight: aWins ? 700 : 400, fontSize: 18, textAlign: "left", color: aWins ? "#7dc07d" : "rgba(255,255,255,0.75)" }}>{row.a}</div>
+                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", textAlign: "center", padding: "0 8px", letterSpacing: "0.03em" }}>{row.label}</div>
+                          <div style={{ fontWeight: bWins ? 700 : 400, fontSize: 18, color: bWins ? "rgba(212,168,67,0.9)" : "rgba(255,255,255,0.75)", textAlign: "right" }}>{row.b}</div>
                         </div>
                         {/* Advantage bar */}
                         {row.hi !== "any" && (
-                          <div style={{ marginTop: 5, height: 5, borderRadius: 3, background: "var(--surface2)", overflow: "hidden", display: "flex" }}>
+                          <div style={{ marginTop: 5, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.08)", overflow: "hidden", display: "flex" }}>
                             <div style={{
                               width: `${aPct * 100}%`,
-                              background: favA ? "var(--green-600)" : favB ? "var(--earth-300,#c4b4a4)" : "var(--border)",
+                              background: favA ? "#7dc07d" : favB ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.12)",
                               borderRadius: "3px 0 0 3px",
                               transition: "width 0.4s ease",
                             }} />
                             <div style={{
                               flex: 1,
-                              background: favB ? "var(--gold-500)" : favA ? "var(--earth-300,#c4b4a4)" : "var(--border)",
+                              background: favB ? "rgba(212,168,67,0.75)" : favA ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.12)",
                               borderRadius: "0 3px 3px 0",
                               transition: "flex 0.4s ease",
                             }} />

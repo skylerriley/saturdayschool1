@@ -791,10 +791,10 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
             <Trophy size={56} strokeWidth={1.5}/>
           </div>
 
-          <div style={{fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.45)",fontWeight:700}}>
+          <div style={{fontSize:13,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.45)",fontWeight:700}}>
             Win leader
           </div>
-          <div style={{fontSize:15,fontWeight:500,color:"rgba(255,255,255,0.75)",marginTop:2}}>
+          <div style={{fontSize:18,fontWeight:500,color:"rgba(255,255,255,0.75)",marginTop:2}}>
             {winLeader.golfer.first_name} {winLeader.golfer.last_name}
           </div>
           <div style={{fontSize:38,fontWeight:700,color:"#7dc07d",lineHeight:1.05,margin:"2px 0 10px"}}>
@@ -826,7 +826,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
                       aspectRatio:"1",
                       borderRadius:7,
                       display:"flex",alignItems:"center",justifyContent:"center",
-                      fontSize:10,fontWeight:700,
+                      fontSize:14,fontWeight:700,
                       background:b.won?"#7dc07d":"rgba(255,255,255,0.10)",
                       color:b.won?"var(--green-900)":"rgba(255,255,255,0.3)",
                     }}
@@ -840,10 +840,10 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
 
           {/* Legend */}
           <div style={{display:"flex",gap:12,alignItems:"center"}}>
-            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"rgba(255,255,255,0.45)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:"rgba(255,255,255,0.45)"}}>
               <div style={{width:12,height:12,borderRadius:3,background:"#7dc07d"}}/>Won
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"rgba(255,255,255,0.45)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:"rgba(255,255,255,0.45)"}}>
               <div style={{width:12,height:12,borderRadius:3,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)"}}/>Played
             </div>
           </div>
@@ -920,9 +920,9 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
           {showSeasonRef&&(
             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,justifyContent:"flex-end"}}>
               <svg width="22" height="8" style={{flexShrink:0}}>
-                <line x1="0" y1="4" x2="22" y2="4" stroke="rgba(232,200,74,0.85)" strokeWidth="1.5" strokeDasharray="4 3"/>
+                <line x1="0" y1="4" x2="22" y2="4" stroke="rgba(232,200,74,0.85)" strokeWidth="2.5" strokeDasharray="4 3"/>
               </svg>
-              <span style={{fontSize:11,color:"var(--text-muted)"}}>{season} season avg ({currentSeasonAvg} pts)</span>
+              <span style={{fontSize:13,color:"var(--text-muted)"}}>{season} season avg ({currentSeasonAvg} pts)</span>
             </div>
           )}
         </div>
