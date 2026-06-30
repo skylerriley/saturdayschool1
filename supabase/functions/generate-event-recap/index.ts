@@ -97,7 +97,7 @@ function grossLabel(holeNumber: number, grossScore: number, holePars: number[]):
   const par = holePars[holeNumber - 1];
   if (par == null) return `${grossScore} strokes`;
   const diff = grossScore - par;
-  if (diff <= -2) return "eagle or better";
+  if (diff <= -2) return "eagle";
   if (diff === -1) return "birdie";
   if (diff === 0) return "par";
   if (diff === 1) return "bogey";
@@ -235,43 +235,64 @@ async function generateRecap(eventId: number, force: boolean): Promise<{ skipped
   const seasonRankMap: Record<number, number> = {};
   seasonStandings.forEach((row, i) => { seasonRankMap[row.golfer_id] = i + 1; });
 
-  // 10. Determine positions for this event (sort by total_stableford_points desc)
+  // 10. Determine positions for this event with tie detection
   const sortedEligible = [...eligibleRows].sort(
     (a: any, b: any) => b.total_stableford_points - a.total_stableford_points
   );
   const eventPositionMap: Record<number, number> = {};
-  for (let i = 0; i < sortedEligible.length; i++) {
-    eventPositionMap[sortedEligible[i].golfer_id] = i + 1;
+  const eventPositionDisplayMap: Record<number, string> = {};
+  for (let i = 0; i < sortedEligible.length; ) {
+    const pts = sortedEligible[i].total_stableford_points;
+    let j = i + 1;
+    while (j < sortedEligible.length && sortedEligible[j].total_stableford_points === pts) j++;
+    const rank = i + 1;
+    const tied = j - i > 1;
+    const display = tied ? `T${rank}` : (rank === 1 ? "1st" : rank === 2 ? "2nd" : rank === 3 ? "3rd" : `${rank}th`);
+    for (let k = i; k < j; k++) {
+      eventPositionMap[sortedEligible[k].golfer_id] = rank;
+      eventPositionDisplayMap[sortedEligible[k].golfer_id] = display;
+    }
+    i = j;
   }
 
-  // 11. Skins: compute hole winners from hole_scores for skins_paid entries
-  const skinsPaidEntries = eligibleRows.filter((r: any) => r.skins_paid);
-  const skinsWinners: Array<{ golfer_id: number; hole: number; type: string }> = [];
+  // 11. Skins: compute hole winners from hole_scores for ALL skins_paid entries including guests.
+  // Guests affect which holes are won/tied by non-guests, so they must be in the pool.
+  // We track guest golfer_ids separately so their wins count toward the total but don't
+  // appear as named insights in the golfer array.
+  const allSkinsPaidEntries = lbRows.filter((r: any) => r.skins_paid);
+  const guestGolferIds = new Set(
+    lbRows.filter((r: any) => golferMap[r.golfer_id]?.is_guest).map((r: any) => r.golfer_id)
+  );
+  const skinsWinners: Array<{ golfer_id: number; hole: number; type: string; is_guest: boolean }> = [];
 
-  if (skinsPaidEntries.length >= 2) {
-    // Build playerHoleMap: {golfer_id: {hole_number: {pts, gross}}}
+  if (allSkinsPaidEntries.length >= 1) {
+    // Build playerHoleMap only for golfers who have hole scores (Total-Only entrants are excluded,
+    // matching the client-side calcSkinHoleWinnersForEvent logic in LeaderboardTab)
     const playerHoleMap: Record<number, Record<number, { pts: number; gross: number }>> = {};
-    for (const entry of skinsPaidEntries) {
+    for (const entry of allSkinsPaidEntries) {
       const gid = entry.golfer_id;
       const hs = golferHoleScores[gid] ?? [];
-      if (!playerHoleMap[gid]) playerHoleMap[gid] = {};
       for (const h of hs) {
         if (h.stableford_points != null) {
+          if (!playerHoleMap[gid]) playerHoleMap[gid] = {};
           playerHoleMap[gid][h.hole_number] = { pts: h.stableford_points, gross: h.gross_score };
         }
       }
     }
-    const pids = skinsPaidEntries.map((r: any) => r.golfer_id);
-    for (let hNum = 1; hNum <= 18; hNum++) {
-      const scored = pids.map((id: number) => ({ id, ...playerHoleMap[id]?.[hNum] })).filter((x) => x.pts != null);
-      if (scored.length < 2) continue;
-      const maxPts = Math.max(...scored.map((x) => x.pts));
-      const leaders = scored.filter((x) => x.pts === maxPts);
-      if (leaders.length === 1) {
-        const winner = leaders[0];
-        const resultType = winner.gross != null ? grossLabel(hNum, winner.gross, holePars) : (maxPts >= EAGLE_PTS ? "eagle" : maxPts >= BIRDIE_PTS ? "birdie" : "par");
-        skinsWinners.push({ golfer_id: winner.id, hole: hNum, type: resultType });
+    const pids = Object.keys(playerHoleMap).map(Number);
+    if (pids.length >= 2) {
+      for (let hNum = 1; hNum <= 18; hNum++) {
+        const scored = pids.map((id: number) => ({ id, ...playerHoleMap[id]?.[hNum] })).filter((x) => x.pts != null);
+        if (scored.length < 1) continue; // skip only if nobody has a score (matches client logic)
+        const maxPts = Math.max(...scored.map((x) => x.pts));
+        const leaders = scored.filter((x) => x.pts === maxPts);
+        if (leaders.length === 1) {
+          const winner = leaders[0];
+          const resultType = winner.gross != null ? grossLabel(hNum, winner.gross, holePars) : (maxPts >= EAGLE_PTS ? "eagle" : maxPts >= BIRDIE_PTS ? "birdie" : "par");
+          skinsWinners.push({ golfer_id: winner.id, hole: hNum, type: resultType, is_guest: guestGolferIds.has(winner.id) });
+        }
       }
+      console.log(`Skins computed: ${skinsWinners.length} total. Per golfer: ${JSON.stringify(skinsWinners.reduce((acc: any, s) => { acc[s.golfer_id] = (acc[s.golfer_id] || 0) + 1; return acc; }, {}))}`);
     }
   }
 
@@ -282,11 +303,8 @@ async function generateRecap(eventId: number, force: boolean): Promise<{ skipped
     .filter((e: any) => e.event_id !== thisEventId)
     .sort((a: any, b: any) => a.event_id - b.event_id); // proxy for chronological (event_id ascending)
 
-  function recentTrend(golfer_id: number, seasonAvg: number): string | null {
-    const rounds = golferSeasonRounds[golfer_id] ?? [];
-    if (rounds.length < 2) return null;
-
-    // Get per-event breakdown sorted chronologically (excluding current event)
+  function recentTrend(golfer_id: number): string | null {
+    // All prior rounds for this golfer (excludes current event since seasonEventsChronological filters it out)
     const priorEvents = seasonEventsChronological.slice(-4);
     const priorPts = priorEvents
       .map((e: any) => seasonLbRows.find((r: any) => r.golfer_id === golfer_id && r.event_id === e.event_id))
@@ -295,21 +313,36 @@ async function generateRecap(eventId: number, force: boolean): Promise<{ skipped
 
     if (priorPts.length < 2) return null;
 
-    const lastFewAvg = priorPts.reduce((a: number, b: number) => a + b, 0) / priorPts.length;
-    const aboveBelowCount = priorPts.filter((p: number) => p > seasonAvg).length;
-    const belowCount = priorPts.filter((p: number) => p < seasonAvg).length;
+    // Season avg computed from prior rounds only (excluding this event) for an accurate baseline
+    const allPriorRounds = seasonLbRows
+      .filter((r: any) => r.golfer_id === golfer_id && r.event_id !== thisEventId)
+      .map((r: any) => r.total_stableford_points);
+    if (!allPriorRounds.length) return null;
+    const priorSeasonAvg = allPriorRounds.reduce((a: number, b: number) => a + b, 0) / allPriorRounds.length;
 
-    if (aboveBelowCount >= 3) {
-      return `${aboveBelowCount} of last ${priorPts.length} rounds above season average`;
+    const lastFewAvg = priorPts.reduce((a: number, b: number) => a + b, 0) / priorPts.length;
+    const aboveCount = priorPts.filter((p: number) => p > priorSeasonAvg).length;
+    const belowCount = priorPts.filter((p: number) => p < priorSeasonAvg).length;
+    const avgStr = Math.round(priorSeasonAvg * 10) / 10;
+    const n = priorPts.length;
+
+    if (aboveCount === n) {
+      return `last ${n} rounds all above season average of ${avgStr} pts`;
+    }
+    if (aboveCount >= 3) {
+      return `${aboveCount} of last ${n} rounds above season average of ${avgStr} pts`;
+    }
+    if (belowCount === n) {
+      return `last ${n} rounds all below season average of ${avgStr} pts`;
     }
     if (belowCount >= 3) {
-      return `${belowCount} of last ${priorPts.length} rounds below season average`;
+      return `${belowCount} of last ${n} rounds below season average of ${avgStr} pts`;
     }
-    if (lastFewAvg - seasonAvg >= 2.5) {
-      return `Trending up over last ${priorPts.length} rounds`;
+    if (lastFewAvg - priorSeasonAvg >= 2.5) {
+      return `trending up over last ${n} rounds (avg ${Math.round(lastFewAvg * 10) / 10} pts vs season avg ${avgStr})`;
     }
-    if (seasonAvg - lastFewAvg >= 2.5) {
-      return `Trending down over last ${priorPts.length} rounds`;
+    if (priorSeasonAvg - lastFewAvg >= 2.5) {
+      return `trending down over last ${n} rounds (avg ${Math.round(lastFewAvg * 10) / 10} pts vs season avg ${avgStr})`;
     }
     return null;
   }
@@ -363,7 +396,14 @@ async function generateRecap(eventId: number, force: boolean): Promise<{ skipped
   const golferPayloads = eligibleRows.map((row: any) => {
     const gid = row.golfer_id;
     const g = golferMap[gid];
-    const name = g ? `${g.first_name} ${g.last_name}` : `Golfer ${gid}`;
+    const firstName = g?.first_name ?? "";
+    const isDupe = firstName && eligibleRows.some((other: any) => {
+      const og = golferMap[other.golfer_id];
+      return og && og.golfer_id !== gid && og.first_name === firstName;
+    });
+    const name = g
+      ? isDupe ? `${firstName} ${(g.last_name ?? "").charAt(0)}.` : firstName
+      : `Golfer ${gid}`;
     const seasonRounds = golferSeasonRounds[gid] ?? [];
     const seasonAvg = seasonRounds.length
       ? seasonRounds.reduce((a: number, b: number) => a + b, 0) / seasonRounds.length
@@ -378,11 +418,13 @@ async function generateRecap(eventId: number, force: boolean): Promise<{ skipped
       name,
       points_this_week: row.total_stableford_points,
       position: eventPositionMap[gid] ?? 0,
+      position_display: eventPositionDisplayMap[gid] ?? String(eventPositionMap[gid] ?? ""),
       season_avg_points: Math.round(seasonAvg * 100) / 100,
       season_position: seasonRankMap[gid] ?? 0,
+      skins_won_this_event: skinsWinners.filter((s) => s.golfer_id === gid).length,
       hole_data_available: holeDataAvailable,
       pairing_note: null,
-      recent_trend: recentTrend(gid, seasonAvg),
+      recent_trend: recentTrend(gid),
     };
 
     if (holeDataAvailable) {
@@ -402,8 +444,9 @@ async function generateRecap(eventId: number, force: boolean): Promise<{ skipped
       field_avg_points_this_week: Math.round(fieldAvgThisWeek * 100) / 100,
       season_field_avg_points: Math.round(seasonFieldAvgPoints * 100) / 100,
       scoring_day_flag: scoringDayFlag,
+      total_skins_awarded: skinsWinners.length,
     },
-    skins: skinsWinners.map((s) => ({
+    skins: skinsWinners.filter((s) => !s.is_guest).map((s) => ({
       golfer_id: String(s.golfer_id),
       hole: s.hole,
       type: s.type,
@@ -412,38 +455,76 @@ async function generateRecap(eventId: number, force: boolean): Promise<{ skipped
   };
 
   // 16. Build prompt
-  const prompt = `You are Tony, the wry analyst persona for a private weekly golf league called Saturday School. Write in a confident, slightly dry sports-column voice -- think a local beat writer, not a hype man. Never invent facts. Only use the data provided below.
+  const prompt = `You are Tony, the wry analyst for Saturday School — a private weekly Stableford golf league among ~25 guys who know each other well. Your voice is a confident, slightly dry local beat writer: direct, occasionally wry, never a hype man and never a grief counselor. You call it like you see it. A bad round is a bad round.
 
-Produce two things:
+Never invent facts. Only use the data provided.
 
-1. EVENT SUMMARY (2-3 sentences max):
-   - Lead with the headline moment of the day (usually the winner, but a dramatic swing or collapse can lead instead if it's the better story).
-   - Layer in ONE piece of historical/season context that adds weight (a streak, a standings implication, a personal pattern, a skins note) -- don't just describe the round, contextualize it.
-   - If event.scoring_day_flag is "tough": explicitly attribute the tight/low scores to difficult conditions, and frame the winner as having "ground out" a win rather than describing the day as uneventful. Reward grit over flash in the language you use.
-   - If event.scoring_day_flag is "easy": you may note scores ran hot across the field.
-   - Do not editorialize about weather you have no data on -- only say "tough conditions" if scoring_day_flag indicates it, never guess at specific causes like wind or rain unless given that data explicitly.
+DATA RULES (read before writing anything):
+- Positions: always use position_display ("1st", "T2", "5th") — never bare numbers.
+- Skins: use event.total_skins_awarded for the event total; golfer.skins_won_this_event for per-golfer. Skins are a weekly cash game with no season implications — don't lead with them unless truly nothing else is interesting. Never mention guest skins.
+- Trends: recent_trend is pre-computed from prior events only — weave it naturally, never quote it verbatim. Do NOT infer trends by comparing points_this_week to season_avg_points (season_avg includes this event).
 
-2. GOLFER INSIGHTS (1 sentence max per golfer, for every golfer in the golfers array):
-   - Each insight should use ONE of these angles, chosen per golfer based on what's actually most interesting in their data -- do not force an angle if the data doesn't support it:
-     a) STANDINGS IMPACT -- this week's result and its effect on season standing, scoring average, skins count, or head-to-head record
-     b) PERSONAL TREND -- a streak, a dip, or a return to form relative to their own season average (use recent_trend if provided)
-     c) IN-ROUND TURNING POINT -- only usable if hole_data_available is true AND notable_holes is non-empty; reference a specific hole or run of holes
-     d) PAIRING NOTE -- only usable if pairing_note is present
-   - On a "tough" scoring day, do not frame a golfer's below-average round as a personal slump in isolation -- contextualize it against the field-wide dip.
-   - Across the full set of insights for this event, vary which angle is used -- do not let more than 2-3 golfers in the same event share the same angle if better options exist for some of them.
-   - It is fine, and expected, for some golfers to get a plain standings-impact insight if nothing else in their data stands out. Do not invent drama.
-   - Keep each insight to one sentence. No preamble.
+---
 
-Return ONLY valid JSON, no markdown fences, no commentary, in exactly this shape:
+PART 1 — EVENT SUMMARY (2-3 sentences):
+
+Write this like the first two sentences of a game recap. Ask yourself: what's the actual story of this round? Usually it's the winner, but a collapse, a comeback, or a historically bad/good field day can be the lede instead.
+
+- Sentence 1: the headline. Who won, or what happened.
+- Sentence 2: why it matters — season context, a streak, a standings shift, something that gives the round weight beyond the scoreboard.
+- Sentence 3 (optional): a texture detail — skins action, a notable individual performance, or a field-wide pattern worth flagging.
+- scoring_day_flag "tough": scores were suppressed field-wide — say so, credit the winner for grinding, don't describe the day as uneventful.
+- scoring_day_flag "easy": scores ran hot — you may note it briefly.
+- Never editorialize about weather you have no data on.
+
+---
+
+PART 2 — GOLFER INSIGHTS (one sentence per golfer, every golfer in the array):
+
+For each golfer, find the single most interesting true thing about their round. Ask yourself: "Would a friend actually say this out loud at the 19th hole?" If yes, write it. If it sounds like a press release, rewrite it.
+
+WHAT MAKES A GOOD INSIGHT:
+- It adds a layer of meaning the score alone doesn't show
+- It reframes the obvious, or surfaces something that would otherwise go unnoticed
+- It has a point of view — not just "scored X and finished Y"
+
+WHAT MAKES A BAD INSIGHT:
+- Restating the score and position with no context ("scored 34 to finish T3")
+- Forced positivity on a bad round ("despite a tough day, showed resilience")
+- Generic trend language that could apply to anyone
+
+VOICE EXAMPLES — bad vs good:
+✗ "Mark scored 28 points to finish in 8th place, maintaining his position in the standings."
+✓ "Mark had one of those days — 28 points when he's been averaging 34, a round he'll want to forget quickly."
+
+✗ "Dave had a solid performance, finishing T2 with 36 points and continuing his consistent play."
+✓ "Dave's 36 was good enough for T2, and with his last three rounds all above his season average, he's quietly become one of the more reliable names on the leaderboard."
+
+✗ "Joe posted 22 points in a difficult outing."
+✓ "Joe left a lot out there today — 22 points on a day when the field was scoring well is a tough pill."
+
+TONE GUIDANCE:
+- If someone had a genuinely bad round (well below their season average, especially on an easy scoring day): call it out plainly. Light ribbing is fine. Don't spin it.
+- If someone had a great round: let it land — don't undercut it, but don't oversell it either.
+- Vary the angles across the full field. Don't write 10 standings sentences in a row. Use these as thought-starters, not a checklist:
+  · How does this result move the needle on their season?
+  · Is there a trend in the recent_trend field worth surfacing?
+  · If hole data is available and notable_holes is non-empty, is there a specific hole moment worth calling out?
+  · Did they finish better or worse than their season position would suggest?
+- On a "tough" scoring day: don't frame a below-average round as a personal failure in isolation — the whole field struggled.
+- Keep each insight to one sentence. No preamble ("For [name],..."). Just the sentence.
+
+---
+
+Return ONLY valid JSON, no markdown fences, no commentary:
 {
   "event_summary": "string",
   "golfer_insights": {
-    "<golfer_id>": "string",
-    ...
+    "<golfer_id>": "string"
   }
 }
 
-Every golfer_id present in the input golfers array must have a corresponding key in the output. If you cannot find a confident angle for a golfer, return a brief neutral standings-based sentence rather than omitting them.
+Every golfer_id in the input golfers array must have a key in the output. If nothing interesting stands out, a plain honest standings sentence is fine — just make sure it says something, not nothing.
 
 DATA:
 ${JSON.stringify(geminiPayload, null, 2)}`;

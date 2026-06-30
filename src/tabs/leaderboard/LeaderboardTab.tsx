@@ -2202,6 +2202,17 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
                   <div style={{opacity:feedOverlayReady?1:0,transition:"opacity 0.25s ease",pointerEvents:feedOverlayReady?"auto":"none"}}>
 
+                  {/* AI event recap -- rendered only when available; no spinner/placeholder */}
+                  {displayEvent?.ai_event_summary&&(
+                    <div style={{marginBottom:14,padding:"14px 16px",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",boxShadow:"var(--shadow-sm)"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
+                        <Sparkles size={11} fill="currentColor" style={{color:"var(--text-muted)",flexShrink:0}}/>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.08em",textTransform:"uppercase"}}>EVENT SUMMARY</div>
+                      </div>
+                      <p style={{margin:0,fontSize:14,lineHeight:1.6,color:"var(--text-primary)"}}>{displayEvent.ai_event_summary}</p>
+                    </div>
+                  )}
+
                   {/* Pot tiles */}
                   <div className="event-hero-pot-row">
                     <div className="event-hero-pot-tile">
@@ -2215,17 +2226,6 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                       </div>
                     )}
                   </div>
-
-                  {/* AI event recap -- rendered only when available; no spinner/placeholder */}
-                  {displayEvent?.ai_event_summary&&(
-                    <div style={{marginBottom:14,padding:"14px 16px",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",boxShadow:"var(--shadow-sm)"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
-                        <Sparkles size={11} fill="currentColor" style={{color:"var(--text-muted)",flexShrink:0}}/>
-                        <div style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.08em",textTransform:"uppercase"}}>EVENT SUMMARY</div>
-                      </div>
-                      <p style={{margin:0,fontSize:14,lineHeight:1.6,color:"var(--text-primary)"}}>{displayEvent.ai_event_summary}</p>
-                    </div>
-                  )}
 
                   {!skinsEligible&&eventEntries.some((e:any)=>e.entry_type==="Total Only")&&(
                     <div className="skins-warning"><span>⚠</span><span>Mixed entry -- skins cannot be calculated until all players have hole-by-hole scores.</span></div>
