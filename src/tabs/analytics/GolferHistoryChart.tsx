@@ -988,7 +988,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                 <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px 14px"}}>
                   <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:12}}>Hole Streaks</div>
 
-                  <div style={{marginBottom:16,display:"flex",justifyContent:"center"}}>
+                  <div style={{marginBottom:32,display:"flex",justifyContent:"center"}}>
                     <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
                       <select
                         value={streakType}
