@@ -13,6 +13,7 @@ import { ensureShimmer } from "../../components/weather/WeatherSkeleton";
 import { FieldStrengthMeter } from "./FieldStrengthMeter";
 import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
+import { WinProbabilityChart } from "../../WinProbabilityChart";
 
 ensureShimmer();
 
@@ -2552,6 +2553,24 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               />
             );
           })()}
+
+          {(()=>{
+            const wpHoleScores=holeScores
+              .filter((h:any)=>eventEntries.some((e:any)=>e.summary_id===h.summary_id))
+              .map((h:any)=>{
+                const entry=eventEntries.find((e:any)=>e.summary_id===h.summary_id);
+                return{player_id:entry?.golfer_id,hole_number:h.hole_number,stableford_points:h.stableford_points};
+              })
+              .filter((h:any)=>h.player_id!=null&&h.stableford_points!=null);
+            const wpPlayers=eventEntries.map((e:any)=>({id:e.golfer_id,name:golferName(golfers,e.golfer_id)}));
+            return(
+              <WinProbabilityChart
+                eventId={displayEvent.event_id}
+                players={wpPlayers}
+                holeScores={wpHoleScores}
+              />
+            );
+          })()}
                   </div>{/* end feedOverlayReady fade wrapper */}
                 </div>{/* end event-hero-content */}
               </>
@@ -2720,7 +2739,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
   ];
 
   return(
-    <div style={{paddingBottom:100,marginTop:20}}>
+    <div style={{paddingBottom:10,marginTop:20}}>
       {/* Toggle */}
       <ToggleGroup
         options={[{value:"course",label:"Course Overview"},{value:"stats",label:"Hole Stats"}]}
