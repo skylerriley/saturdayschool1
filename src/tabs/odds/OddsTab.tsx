@@ -466,37 +466,6 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                   </div>
                 </div>
 
-                {/* Scoring Fingerprint overlay -- tactical matchup shape */}
-                {(() => {
-                  const h2hSeasonEvents = events.filter((e: any) => e.season === season && e.status === "Completed");
-                  const fpA = computeScoringFingerprint(gA.golfer_id, h2hSeasonEvents, leaderboard, holeScores || [], courses);
-                  const fpB = computeScoringFingerprint(gB.golfer_id, h2hSeasonEvents, leaderboard, holeScores || [], courses);
-                  return (
-                    <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", padding: 16, marginBottom: 16 }}>
-                      <div style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", fontWeight: 700, marginBottom: 10 }}>
-                        Scoring Fingerprint
-                      </div>
-                      <ScoringFingerprintRadar datasets={[
-                        { label: gA.first_name + " " + gA.last_name, color: "#7dc07d", fill: "rgba(125,200,125,0.18)", values: fpA },
-                        { label: gB.first_name + " " + gB.last_name, color: "rgba(212,168,67,0.85)", fill: "rgba(212,168,67,0.08)", values: fpB },
-                      ]} darkMode />
-                      <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 8, flexWrap: "wrap" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
-                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#7dc07d" }} />
-                          {gA.first_name} {gA.last_name}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "rgba(255,255,255,0.55)" }}>
-                          <div style={{ width: 14, height: 3, background: "rgba(212,168,67,0.85)", borderRadius: 2 }} />
-                          {gB.first_name} {gB.last_name}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 6, textAlign: "center" }}>
-                        Avg Stableford pts per hole category · {season} season
-                      </div>
-                    </div>
-                  );
-                })()}
-
                 {/* Side-by-side stat comparison */}
                 <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 16 }}>
                   <div style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", fontWeight: 700, padding: "12px 14px 8px" }}>
