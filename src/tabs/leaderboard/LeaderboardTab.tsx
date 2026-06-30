@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import { Sparkles } from "lucide-react";
 import ReactDOM from "react-dom";
 import { SeasonScrubber, FlickCarousel, SubTabPanel, ToggleGroup, ScoreSymbol } from "../../components/common";
 import { golferName, formatDate } from "../../lib/formatters";
@@ -1250,9 +1251,23 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                         ?`${evPts} pts is +${absDiff} above their ${seasonAvgForGolfer.toFixed(1)} season avg`
                         :`${evPts} pts, ${absDiff} below their ${seasonAvgForGolfer.toFixed(1)} season avg`)
                       :null;
+                    const aiInsight=!g?.is_guest&&displayEvent?.ai_golfer_insights
+                      ?displayEvent.ai_golfer_insights[String(gid)]??null
+                      :null;
                     return(
                       <div className="" style={{marginTop:12}}>
-                        
+                        {/* AI per-golfer insight from Tony -- only shown when available */}
+                        {aiInsight&&(
+                          <div className="drawer-card" style={{marginBottom:10}}>
+                            <div className="drawer-card-body">
+                              <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
+                                <Sparkles size={11} fill="currentColor" style={{color:"var(--text-muted)",flexShrink:0}}/>
+                                <div className="drawer-card-section-label" style={{marginBottom:0}}>PLAYER INSIGHT</div>
+                              </div>
+                              <p style={{margin:0,fontSize:13,lineHeight:1.55,color:"var(--text-primary)"}}>{aiInsight}</p>
+                            </div>
+                          </div>
+                        )}
                         <div className="drawer-card-footer">
                           {onNavigateToAnalyticsGolfer&&(
                             <button className="drawer-profile-pill" onClick={(e:any)=>{e.stopPropagation();onNavigateToAnalyticsGolfer(String(gid),"Weekly",subTab);}}>
@@ -2201,7 +2216,16 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     )}
                   </div>
 
-                  
+                  {/* AI event recap -- rendered only when available; no spinner/placeholder */}
+                  {displayEvent?.ai_event_summary&&(
+                    <div style={{marginBottom:14,padding:"14px 16px",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",boxShadow:"var(--shadow-sm)"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
+                        <Sparkles size={11} fill="currentColor" style={{color:"var(--text-muted)",flexShrink:0}}/>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.08em",textTransform:"uppercase"}}>EVENT SUMMARY</div>
+                      </div>
+                      <p style={{margin:0,fontSize:14,lineHeight:1.6,color:"var(--text-primary)"}}>{displayEvent.ai_event_summary}</p>
+                    </div>
+                  )}
 
                   {!skinsEligible&&eventEntries.some((e:any)=>e.entry_type==="Total Only")&&(
                     <div className="skins-warning"><span>⚠</span><span>Mixed entry -- skins cannot be calculated until all players have hole-by-hole scores.</span></div>
@@ -2554,23 +2578,6 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             );
           })()}
 
-          {(()=>{
-            const wpHoleScores=holeScores
-              .filter((h:any)=>eventEntries.some((e:any)=>e.summary_id===h.summary_id))
-              .map((h:any)=>{
-                const entry=eventEntries.find((e:any)=>e.summary_id===h.summary_id);
-                return{player_id:entry?.golfer_id,hole_number:h.hole_number,stableford_points:h.stableford_points};
-              })
-              .filter((h:any)=>h.player_id!=null&&h.stableford_points!=null);
-            const wpPlayers=eventEntries.map((e:any)=>({id:e.golfer_id,name:golferName(golfers,e.golfer_id)}));
-            return(
-              <WinProbabilityChart
-                eventId={displayEvent.event_id}
-                players={wpPlayers}
-                holeScores={wpHoleScores}
-              />
-            );
-          })()}
                   </div>{/* end feedOverlayReady fade wrapper */}
                 </div>{/* end event-hero-content */}
               </>
@@ -2739,7 +2746,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
   ];
 
   return(
-    <div style={{paddingBottom:10,marginTop:20}}>
+    <div style={{paddingBottom:100,marginTop:20}}>
       {/* Toggle */}
       <ToggleGroup
         options={[{value:"course",label:"Course Overview"},{value:"stats",label:"Hole Stats"}]}

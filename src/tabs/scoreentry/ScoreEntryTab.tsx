@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { ScoreSymbol, ToggleGroup } from "../../components/common";
 import { golferName, formatDate, teeBoxesForCourse, scrollMainTop } from "../../lib/formatters";
 import { calcPlayingHandicap, calcHoleNetScore, calcStablefordPoints, calcHoleScores } from "../../lib/golfMath";
-import { supabase } from "../../lib/supabaseClient";
+import { supabase, SUPABASE_URL, SUPABASE_KEY } from "../../lib/supabaseClient";
 
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false,started:false,summaryId:null as number|null});
 
@@ -965,6 +965,13 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                   setScoreEventId("");
                   setScorers([emptyScorer()]);
                   showSuccess("Event finalized and marked Completed!");
+                  // Fire-and-forget: generate AI recap server-side after event is finalized.
+                  // Does not block or affect the UI -- failure is silent to golfers.
+                  fetch(`${SUPABASE_URL}/functions/v1/generate-event-recap`,{
+                    method:"POST",
+                    headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
+                    body:JSON.stringify({event_id:selEvent.event_id}),
+                  }).catch((_:any)=>{});
                 }}
                 style={{flex:1,padding:"12px 0",borderRadius:"var(--radius-md)",border:"none",background:"#78350f",fontSize:15,fontWeight:700,color:"white",cursor:"pointer"}}
               >Yes, Finalize</button>
