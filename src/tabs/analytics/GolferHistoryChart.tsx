@@ -504,96 +504,205 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
       {/* ── OVERVIEW ──────────────────────────────────────── */}
       {golferSubTab==="overview"&&(
         <>
-          {/* Rank stat triple card */}
+          {/* Rank stat triple card + stats all inside one green card */}
           <div style={{
             background:"var(--green-900)",
             borderRadius:"var(--radius-md)",
             padding:"16px 12px",
             marginBottom:14,
-            display:"grid",
-            gridTemplateColumns:"1fr 1px 1fr 1px 1fr",
-            gap:0,
           }}>
-            {/* Top 15 */}
-            <div style={{textAlign:"center",padding:"0 6px"}}>
-              <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.38)",marginBottom:6}}>Top 15</div>
-              <div style={{fontSize:34,fontWeight:700,color:"#7dc07d",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
-                {top15Rank!=null?(top15RankTied?`T${top15Rank}`:String(top15Rank)):"—"}
+            {/* 3-column rank grid — center column is visually dominant */}
+            <div style={{
+              display:"grid",
+              gridTemplateColumns:"1fr 1px 1.4fr 1px 1fr",
+              gap:0,
+              alignItems:"center",
+            }}>
+              {/* Top 15 */}
+              <div style={{textAlign:"center",padding:"0 8px"}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.32)",marginBottom:5}}>Top 15</div>
+                <div style={{fontSize:28,fontWeight:700,lineHeight:1,fontVariantNumeric:"tabular-nums",color:
+                  top15Rank===1?"#e8a020":top15Rank===2?"#b0b8c8":top15Rank===3?"#7dc07d":"white"
+                }}>
+                  {top15Rank!=null?(top15RankTied?"T":""): ""}{top15Rank!=null?<CountUp value={top15Rank}/>:"—"}
+                </div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.28)",marginTop:4,fontVariantNumeric:"tabular-nums"}}>
+                  {top15AvgPts!=null?`${top15AvgPts.toFixed(1)} pts avg`:""}
+                </div>
               </div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:5,fontVariantNumeric:"tabular-nums"}}>
-                {top15AvgPts!=null?`${top15AvgPts.toFixed(1)} pts avg`:""}
+
+              {/* Divider */}
+              <div style={{background:"rgba(255,255,255,0.1)",alignSelf:"stretch",margin:"0"}}/>
+
+              {/* Season avg rank — focal column */}
+              <div style={{textAlign:"center",padding:"0 10px"}}>
+                <div style={{fontSize:12,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",marginBottom:7}}>Season AVG</div>
+                <div style={{fontSize:46,fontWeight:700,lineHeight:1,fontVariantNumeric:"tabular-nums",color:
+                  seasonAvgRank===1?"#e8a020":seasonAvgRank===2?"#b0b8c8":seasonAvgRank===3?"#7dc07d":"white"
+                }}>
+                  {seasonAvgRank!=null?(seasonAvgRankTied?"T":""): ""}{seasonAvgRank!=null?<CountUp value={seasonAvgRank}/>:"—"}
+                </div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginTop:6,fontVariantNumeric:"tabular-nums"}}>
+                  {mySeasonAvgPts!=null?`${mySeasonAvgPts.toFixed(1)} pts avg`:""}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div style={{background:"rgba(255,255,255,0.1)",alignSelf:"stretch",margin:"0"}}/>
+
+              {/* Last event */}
+              <div style={{textAlign:"center",padding:"0 8px"}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.32)",marginBottom:5}}>Last Event</div>
+                <div style={{fontSize:28,fontWeight:700,lineHeight:1,fontVariantNumeric:"tabular-nums",color:(()=>{
+                  if(!lastFinishLabel)return"rgba(255,255,255,0.4)";
+                  const pos=parseInt(lastFinishLabel.replace("T",""));
+                  if(pos===1)return"#e8a020";
+                  if(pos===2)return"#b0b8c8";
+                  if(pos===3)return"#7dc07d";
+                  return"white";
+                })()}}>
+                  {lastFinishLabel?(()=>{
+                    const isTied=lastFinishLabel.startsWith("T");
+                    const pos=parseInt(lastFinishLabel.replace("T",""));
+                    return <>{isTied?"T":""}<CountUp value={pos}/></>;
+                  })():"—"}
+                </div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.28)",marginTop:4,fontVariantNumeric:"tabular-nums"}}>
+                  {lastRound?`${lastRound.pts} pts`:""}
+                </div>
               </div>
             </div>
 
-            {/* Divider */}
-            <div style={{background:"rgba(255,255,255,0.1)",margin:"4px 0"}}/>
-
-            {/* Season avg rank */}
-            <div style={{textAlign:"center",padding:"0 6px"}}>
-              <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.38)",marginBottom:6}}>Season Avg Rank</div>
-              <div style={{fontSize:34,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
-                {seasonAvgRank!=null?(seasonAvgRankTied?`T${seasonAvgRank}`:String(seasonAvgRank)):"—"}
+            {/* Trend indicator */}
+            {rounds.length>3&&(
+              <div style={{marginTop:14,display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(255,255,255,0.06)",borderRadius:"var(--radius-sm,6px)"}}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={trend>0?"#7dc07d":trend<0?"#e07070":"rgba(255,255,255,0.35)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {trend>0
+                    ?<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                    :trend<0
+                    ?<polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/>
+                    :<line x1="5" y1="12" x2="19" y2="12"/>
+                  }
+                  {trend>0&&<polyline points="17 6 23 6 23 12"/>}
+                  {trend<0&&<polyline points="17 18 23 18 23 12"/>}
+                </svg>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:trend>0?"#7dc07d":trend<0?"#e07070":"rgba(255,255,255,0.45)"}}>
+                    {trend>0?"Trending up":trend<0?"Trending down":"Holding steady"} {Math.abs(trend)>0.1?`(${trend>0?"+":""}${trend.toFixed(1)} pts recent vs early)`:""}</div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>Based on comparing first vs last rounds this season</div>
+                </div>
               </div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:5,fontVariantNumeric:"tabular-nums"}}>
-                {mySeasonAvgPts!=null?`${mySeasonAvgPts.toFixed(1)} pts avg`:""}
-              </div>
-            </div>
+            )}
 
-            {/* Divider */}
-            <div style={{background:"rgba(255,255,255,0.1)",margin:"4px 0"}}/>
+            {/* Best / Rounds / Worst */}
+            {(()=>{
+              const totalEvents=seasonEvents.length;
+              const played=rounds.length;
+              const frac=totalEvents>0?Math.min(1,played/totalEvents):0;
+              // All geometry in one SVG so text can never overlap the arc.
+              // Circle center (cx, cy). Arc spans top half. Text sits at cy (chord level).
+              // ViewBox tall enough for: arc top (cy-r-stroke/2) through text below chord.
+              // SVG text y positions (SVG text y = baseline)
+              // numY: number baseline just below chord
+              // subY: "of N" baseline below number
+              // lblY: "ROUNDS PLAYED" baseline below subY
+              const r=38, stroke=12, cx=60, cy=44;
+              const numY=cy+stroke/2+3;   // number baseline
+              const subY=numY+16;           // "of N" baseline
+              const lblY=subY+18;           // "ROUNDS PLAYED" baseline
+              const lx=cx-r, rx=cx+r;
+              const angleDeg=180-frac*180;
+              const angleRad=angleDeg*(Math.PI/180);
+              const ex=cx+r*Math.cos(angleRad);
+              const ey=cy-r*Math.sin(angleRad);
+              const fillPath=frac<=0?"":frac>=1
+                ?`M ${lx} ${cy} A ${r} ${r} 0 0 1 ${rx} ${cy}`
+                :`M ${lx} ${cy} A ${r} ${r} 0 0 1 ${ex} ${ey}`;
+              const W=cx*2;
+              const H=lblY+6; // tight bottom — just enough for label descenders
+              return(
+                <div style={{marginTop:25,display:"flex",alignItems:"center",gap:0}}>
+                  {/* Best — left */}
+                  <div style={{flex:"0 0 72px",textAlign:"center"}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#e8a020",marginBottom:6}}>Best</div>
+                    <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}><CountUp value={best}/></div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:3}}>pts</div>
+                  </div>
 
-            {/* Last event */}
-            <div style={{textAlign:"center",padding:"0 6px"}}>
-              <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.38)",marginBottom:6}}>Last Event</div>
-              <div style={{fontSize:34,fontWeight:700,color:lastRound?.won?"#e8a020":"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
-                {lastFinishLabel??"—"}
+                  {/* Center: arc + all text inside one SVG */}
+                  {(()=>{
+                    const arcLen=Math.PI*r; // half-circle arc length
+                    const animId=`arc-fill-${golfer.golfer_id}`;
+                    return(
+                      <div style={{flex:1,display:"flex",justifyContent:"center"}}>
+                        <div style={{position:"relative",width:W,height:H}}>
+                          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{display:"block",position:"absolute",top:0,left:0}}>
+                            <defs>
+                              <style>{`
+                                @keyframes ${animId} {
+                                  from { stroke-dashoffset: ${arcLen}; }
+                                  to   { stroke-dashoffset: ${arcLen - Math.PI*r*frac}; }
+                                }
+                              `}</style>
+                            </defs>
+                            {/* Track */}
+                            <path
+                              d={`M ${lx} ${cy} A ${r} ${r} 0 0 1 ${rx} ${cy}`}
+                              fill="none"
+                              stroke="rgba(255,255,255,0.1)"
+                              strokeWidth={stroke}
+                              strokeLinecap="round"
+                            />
+                            {/* Fill — animates from 0 to filled length */}
+                            {frac>0&&(
+                              <path
+                                key={golfer.golfer_id}
+                                d={`M ${lx} ${cy} A ${r} ${r} 0 0 1 ${rx} ${cy}`}
+                                fill="none"
+                                stroke="#7dc07d"
+                                strokeWidth={stroke}
+                                strokeLinecap="round"
+                                strokeDasharray={arcLen}
+                                strokeDashoffset={arcLen - Math.PI*r*frac}
+                                style={{animation:`${animId} 0.9s cubic-bezier(0.4,0,0.2,1) both`}}
+                              />
+                            )}
+                            {/* "of N" and label stay in SVG — only the number moves to HTML */}
+                            <text x={cx} y={subY} textAnchor="middle" fontSize={11} fontWeight={500} fill="rgba(255,255,255,0.35)" fontFamily="'DM Sans',sans-serif">of {totalEvents}</text>
+                            <text x={cx} y={lblY} textAnchor="middle" fontSize={11} fontWeight={700} fill="rgba(255,255,255,0.38)" fontFamily="'DM Sans',sans-serif" style={{textTransform:"uppercase",letterSpacing:"0.08em"}}>ROUNDS PLAYED</text>
+                          </svg>
+                          {/* CountUp number as HTML overlay, positioned at numY */}
+                          <div style={{position:"absolute",top:numY-28,left:0,right:0,textAlign:"center",fontSize:34,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums",fontFamily:"'DM Sans',sans-serif"}}>
+                            <CountUp value={played}/>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Worst — right */}
+                  <div style={{flex:"0 0 72px",textAlign:"center"}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#e07070",marginBottom:6}}>Worst</div>
+                    <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}><CountUp value={worst}/></div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:3}}>pts</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Earnings card */}
+            <div style={{marginTop:20,background:"rgba(255,255,255,0.05)",borderRadius:"var(--radius-sm,6px)",padding:"12px 14px",display:"grid",gridTemplateColumns:"1fr 1px 1fr",gap:0,alignItems:"center"}}>
+              <div style={{textAlign:"center",padding:"0 8px"}}>
+                <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"rgba(255,255,255,0.32)",marginBottom:5}}>Stableford Earned</div>
+                <div style={{fontSize:26,fontWeight:700,color:"#7dc07d",fontVariantNumeric:"tabular-nums"}}><CountUp value={totalEarned} prefix="$"/></div>
               </div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:5,fontVariantNumeric:"tabular-nums"}}>
-                {lastRound?`${lastRound.pts} pts`:""}
+              <div style={{background:"rgba(255,255,255,0.1)",alignSelf:"stretch"}}/>
+              <div style={{textAlign:"center",padding:"0 8px"}}>
+                <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"rgba(255,255,255,0.32)",marginBottom:5}}>Net (−Entry Fees)</div>
+                <div style={{fontSize:26,fontWeight:700,color:netEarnings>=0?"#7dc07d":"#e07070",fontVariantNumeric:"tabular-nums"}}>{netEarnings>=0?"+":"-"}<CountUp value={Math.abs(netEarnings)} prefix="$"/></div>
               </div>
             </div>
           </div>
-
-          {/* Stat hero cards */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-            <div className="stat-card"><div className="stat-value" style={{fontSize:26}}><CountUp value={avg} decimals={1}/></div><div className="stat-label">Season Avg</div></div>
-            <div className="stat-card"><div className="stat-value" style={{fontSize:26}}><CountUp value={rounds.length}/></div><div className="stat-label">Rounds Played</div></div>
-            <div className="stat-card"><div className="stat-value" style={{color:"var(--gold-600)",fontSize:26}}><CountUp value={best}/></div><div className="stat-label">Best Round</div></div>
-            <div className="stat-card"><div className="stat-value" style={{color:"var(--red-600)",fontSize:26}}><CountUp value={worst}/></div><div className="stat-label">Worst Round</div></div>
-          </div>
-
-          {/* Earnings summary */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",padding:"12px",textAlign:"center",boxShadow:"var(--shadow-sm)"}}>
-              <div style={{fontSize:22,fontWeight:700,color:"var(--green-700)"}}><CountUp value={totalEarned} prefix="$"/></div>
-              <div style={{fontSize:12,color:"var(--text-muted)",fontWeight:500}}>Stableford Earned</div>
-            </div>
-            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",padding:"12px",textAlign:"center",boxShadow:"var(--shadow-sm)"}}>
-              <div style={{fontSize:22,fontWeight:700,color:netEarnings>=0?"var(--green-700)":"var(--red-600)"}}><CountUp value={Math.abs(netEarnings)} prefix={netEarnings>=0?"+$":"-$"}/></div>
-              <div style={{fontSize:12,color:"var(--text-muted)",fontWeight:500}}>Net (−Entry Fees)</div>
-            </div>
-          </div>
-
-          {/* Trend indicator */}
-          {rounds.length>3&&(
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"10px 14px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)"}}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={trend>0?"var(--green-700)":trend<0?"var(--red-600)":"var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                {trend>0
-                  ?<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
-                  :trend<0
-                  ?<polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/>
-                  :<line x1="5" y1="12" x2="19" y2="12"/>
-                }
-                {trend>0&&<polyline points="17 6 23 6 23 12"/>}
-                {trend<0&&<polyline points="17 18 23 18 23 12"/>}
-              </svg>
-              <div>
-                <div style={{fontSize:14,fontWeight:600,color:trend>0?"var(--green-700)":trend<0?"var(--red-600)":"var(--text-muted)"}}>
-                  {trend>0?"Trending up":trend<0?"Trending down":"Holding steady"} {Math.abs(trend)>0.1?`(${trend>0?"+":""}${trend.toFixed(1)} pts recent vs early)`:""}</div>
-                <div style={{fontSize:12,color:"var(--text-muted)"}}>Based on comparing first vs last rounds this season</div>
-              </div>
-            </div>
-          )}
 
           {/* Scoring Fingerprint */}
           <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:16,marginBottom:16}}>
@@ -622,35 +731,33 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
             <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:6,textAlign:"center"}}>
               Avg Stableford pts per hole category · {fp.sampleSize} round{fp.sampleSize===1?"":"s"}
             </div>
-          </div>
 
-          {/* Rival & Twin */}
-          {(rivalStats.rival||rivalStats.twin)&&(
-            <div style={{marginBottom:16}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {/* Rival & Twin */}
+            {(rivalStats.rival||rivalStats.twin)&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:16}}>
                 {rivalStats.rival&&(
-                  <div style={{background:"rgba(192,32,32,0.07)",border:"1.5px solid rgba(192,32,32,0.25)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center",boxShadow:"var(--shadow-sm)"}}>
-                    <div style={{fontSize:15,fontWeight:700,color:"var(--red-600)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Rival</div>
-                    <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{rivalStats.rival.g.first_name} {rivalStats.rival.g.last_name}</div>
-                    <div style={{fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
+                  <div style={{background:"rgba(192,32,32,0.12)",border:"1.5px solid rgba(192,32,32,0.3)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center"}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"#e07070",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Rival</div>
+                    <div style={{fontSize:18,fontWeight:700,color:"white",marginBottom:6}}>{rivalStats.rival.g.first_name} {rivalStats.rival.g.last_name}</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",lineHeight:1.6}}>
                       Beats you {rivalStats.rival.beats}/{rivalStats.rival.total} events<br/>
-                      <span style={{color:"var(--red-500)",fontWeight:600}}>{Math.round(rivalStats.rival.beats/rivalStats.rival.total*100)}% win rate vs you</span>
+                      <span style={{color:"#e07070",fontWeight:600}}>{Math.round(rivalStats.rival.beats/rivalStats.rival.total*100)}% win rate vs you</span>
                     </div>
                   </div>
                 )}
                 {rivalStats.twin&&(
-                  <div style={{background:"rgba(26,115,64,0.07)",border:"1.5px solid rgba(26,115,64,0.25)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center",boxShadow:"var(--shadow-sm)"}}>
-                    <div style={{fontSize:15,fontWeight:700,color:"var(--green-700)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Twin</div>
-                    <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{rivalStats.twin.g.first_name} {rivalStats.twin.g.last_name}</div>
-                    <div style={{fontSize:12,color:"var(--text-muted)",lineHeight:1.6}}>
+                  <div style={{background:"rgba(80,140,220,0.12)",border:"1.5px solid rgba(80,140,220,0.3)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center"}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"#7ab0e8",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Twin</div>
+                    <div style={{fontSize:18,fontWeight:700,color:"white",marginBottom:6}}>{rivalStats.twin.g.first_name} {rivalStats.twin.g.last_name}</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",lineHeight:1.6}}>
                       Tied scores {rivalStats.twin.ties}/{rivalStats.twin.total} events<br/>
-                      <span style={{color:"var(--green-600)",fontWeight:600}}>{Math.round(rivalStats.twin.ties/rivalStats.twin.total*100)}% match rate</span>
+                      <span style={{color:"#7ab0e8",fontWeight:600}}>{Math.round(rivalStats.twin.ties/rivalStats.twin.total*100)}% match rate</span>
                     </div>
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
 
@@ -682,7 +789,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                     <div style={{flex:"0 0 80px",textAlign:"center"}}>
                       <div style={{fontSize:12,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:f9Color,marginBottom:5}}>Front 9</div>
                       <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
-                        {grossAvgStats.f9!=null?grossAvgStats.f9.toFixed(1):"—"}
+                        {grossAvgStats.f9!=null?<CountUp value={grossAvgStats.f9} decimals={1}/>:"—"}
                       </div>
                       {grossAvgStats.f9delta!=null&&(
                         <div style={{fontSize:13,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:3}}>
@@ -693,70 +800,71 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
 
                     {/* Donut — flex-grow so it claims the center space */}
                     <div style={{flex:1,display:"flex",justifyContent:"center"}}>
-                      <svg key={donutKey} width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-                        <defs>
-                          <linearGradient id="donut-b9-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stopColor="#e8a020"/>
-                            <stop offset="100%" stopColor="#c47800"/>
-                          </linearGradient>
-                          <linearGradient id="donut-f9-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stopColor="#a8dba8"/>
-                            <stop offset="100%" stopColor="#4a9b6f"/>
-                          </linearGradient>
-                          {/* strokeDashoffset keyframes: sweep from full-hidden to final position */}
-                          <style>{`
-                            @keyframes donut-b9-draw {
-                              from { stroke-dashoffset: ${CIRC/4+CIRC}; opacity: 0; }
-                              to   { stroke-dashoffset: ${CIRC/4}; opacity: 1; }
-                            }
-                            @keyframes donut-f9-draw {
-                              from { stroke-dashoffset: ${CIRC/4-b9Dash+CIRC}; opacity: 0; }
-                              to   { stroke-dashoffset: ${CIRC/4-b9Dash}; opacity: 1; }
-                            }
-                          `}</style>
-                        </defs>
-                        {/* Track */}
-                        <circle cx={CX} cy={CY} r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={STROKE}/>
-                        {/* Back 9 arc */}
-                        <circle
-                          cx={CX} cy={CY} r={R}
-                          fill="none" stroke="url(#donut-b9-grad)" strokeWidth={STROKE} strokeLinecap="round"
-                          strokeDasharray={`${Math.max(0,b9Dash-GAP)} ${CIRC-(b9Dash-GAP)}`}
-                          strokeDashoffset={CIRC/4}
-                          style={{animation:"donut-b9-draw 0.8s cubic-bezier(0.4,0,0.2,1) both"}}
-                        />
-                        {/* Front 9 arc */}
-                        <circle
-                          cx={CX} cy={CY} r={R}
-                          fill="none" stroke="url(#donut-f9-grad)" strokeWidth={STROKE} strokeLinecap="round"
-                          strokeDasharray={`${Math.max(0,f9Dash-GAP)} ${CIRC-(f9Dash-GAP)}`}
-                          strokeDashoffset={CIRC/4-b9Dash}
-                          style={{animation:"donut-f9-draw 0.8s cubic-bezier(0.4,0,0.2,1) 0.15s both"}}
-                        />
-                        {/* Center text */}
-                        <text x={CX} y={CY-(totalDelta!=null?22:14)} textAnchor="middle" dominantBaseline="middle"
-                          fontSize={11} fontWeight={700} fill="rgba(255,255,255,0.4)" fontFamily="'DM Sans',sans-serif"
-                          style={{textTransform:"uppercase",letterSpacing:"0.08em"}}>
-                          18 HOLES
-                        </text>
-                        <text x={CX} y={CY+(totalDelta!=null?2:6)} textAnchor="middle" dominantBaseline="middle"
-                          fontSize={29} fontWeight={700} fill="white" fontFamily="'DM Sans',sans-serif">
-                          {grossAvgStats.total!=null?grossAvgStats.total.toFixed(1):"—"}
-                        </text>
-                        {totalDelta!=null&&(
-                          <text x={CX} y={CY+26} textAnchor="middle" dominantBaseline="middle"
-                            fontSize={13} fontWeight={700} fill="rgba(255,255,255,0.45)" fontFamily="'DM Sans',sans-serif">
-                            {totalDelta>0?"+":""}{totalDelta.toFixed(1)}
+                      <div style={{position:"relative",width:SIZE,height:SIZE}}>
+                        <svg key={donutKey} width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+                          <defs>
+                            <linearGradient id="donut-b9-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                              <stop offset="0%" stopColor="#e8a020"/>
+                              <stop offset="100%" stopColor="#c47800"/>
+                            </linearGradient>
+                            <linearGradient id="donut-f9-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                              <stop offset="0%" stopColor="#a8dba8"/>
+                              <stop offset="100%" stopColor="#4a9b6f"/>
+                            </linearGradient>
+                            <style>{`
+                              @keyframes donut-b9-draw {
+                                from { stroke-dashoffset: ${CIRC/4+CIRC}; opacity: 0; }
+                                to   { stroke-dashoffset: ${CIRC/4}; opacity: 1; }
+                              }
+                              @keyframes donut-f9-draw {
+                                from { stroke-dashoffset: ${CIRC/4-b9Dash+CIRC}; opacity: 0; }
+                                to   { stroke-dashoffset: ${CIRC/4-b9Dash}; opacity: 1; }
+                              }
+                            `}</style>
+                          </defs>
+                          {/* Track */}
+                          <circle cx={CX} cy={CY} r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={STROKE}/>
+                          {/* Back 9 arc */}
+                          <circle
+                            cx={CX} cy={CY} r={R}
+                            fill="none" stroke="url(#donut-b9-grad)" strokeWidth={STROKE} strokeLinecap="round"
+                            strokeDasharray={`${Math.max(0,b9Dash-GAP)} ${CIRC-(b9Dash-GAP)}`}
+                            strokeDashoffset={CIRC/4}
+                            style={{animation:"donut-b9-draw 0.8s cubic-bezier(0.4,0,0.2,1) both"}}
+                          />
+                          {/* Front 9 arc */}
+                          <circle
+                            cx={CX} cy={CY} r={R}
+                            fill="none" stroke="url(#donut-f9-grad)" strokeWidth={STROKE} strokeLinecap="round"
+                            strokeDasharray={`${Math.max(0,f9Dash-GAP)} ${CIRC-(f9Dash-GAP)}`}
+                            strokeDashoffset={CIRC/4-b9Dash}
+                            style={{animation:"donut-f9-draw 0.8s cubic-bezier(0.4,0,0.2,1) 0.15s both"}}
+                          />
+                          {/* Center text */}
+                          <text x={CX} y={CY-(totalDelta!=null?22:14)} textAnchor="middle" dominantBaseline="middle"
+                            fontSize={11} fontWeight={700} fill="rgba(255,255,255,0.4)" fontFamily="'DM Sans',sans-serif"
+                            style={{textTransform:"uppercase",letterSpacing:"0.08em"}}>
+                            18 HOLES
                           </text>
-                        )}
-                      </svg>
+                          <text x={CX} y={CY+(totalDelta!=null?2:6)} textAnchor="middle" dominantBaseline="middle"
+                            fontSize={29} fontWeight={700} fill="white" fontFamily="'DM Sans',sans-serif">
+                            {grossAvgStats.total!=null?grossAvgStats.total.toFixed(1):"—"}
+                          </text>
+                          {totalDelta!=null&&(
+                            <text x={CX} y={CY+26} textAnchor="middle" dominantBaseline="middle"
+                              fontSize={13} fontWeight={700} fill="rgba(255,255,255,0.45)" fontFamily="'DM Sans',sans-serif">
+                              {totalDelta>0?"+":""}{totalDelta.toFixed(1)}
+                            </text>
+                          )}
+                        </svg>
+                      </div>
                     </div>
 
                     {/* Back 9 stat — right */}
                     <div style={{flex:"0 0 80px",textAlign:"center"}}>
                       <div style={{fontSize:12,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:b9Color,marginBottom:5}}>Back 9</div>
                       <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
-                        {grossAvgStats.b9!=null?grossAvgStats.b9.toFixed(1):"—"}
+                        {grossAvgStats.b9!=null?<CountUp value={grossAvgStats.b9} decimals={1}/>:"—"}
                       </div>
                       {grossAvgStats.b9delta!=null&&(
                         <div style={{fontSize:13,fontWeight:700,color:"rgba(255,255,255,0.45)",marginTop:3}}>
@@ -782,7 +890,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                     <div style={{fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:4}}>{b.label}'s</div>
                     {b.gross!=null?(
                       <>
-                        <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{b.gross.toFixed(1)}</div>
+                        <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}><CountUp value={b.gross} decimals={1}/></div>
                         {(isStrength||isWeakness)&&(
                           <div style={{fontSize:9,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",marginTop:4,color:isStrength?"#7dc07d":"#e07070"}}>
                             {isStrength?"Strength":"Weakness"}
@@ -816,8 +924,18 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:0}}/>
                 <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px 12px"}}>
                   <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Scoring by Distance</div>
-                  <div style={{display:"flex",alignItems:"flex-end",gap:0}}>
-                    {sections.map((sec,si)=>{
+                  <style>{`
+                    @keyframes dist-bar-rise {
+                      from { transform: scaleY(0); }
+                      to   { transform: scaleY(1); }
+                    }
+                    @keyframes dist-label-fade {
+                      from { opacity: 0; transform: translateY(4px); }
+                      to   { opacity: 1; transform: translateY(0); }
+                    }
+                  `}</style>
+                  <div key={donutKey} style={{display:"flex",alignItems:"flex-end",gap:0}}>
+                    {(()=>{let barIdx=0; return sections.map((sec,si)=>{
                       const activeBuckets=sec.buckets.filter(b=>b.avg!=null);
                       return(
                         <div key={sec.title} style={{display:"flex",flex:activeBuckets.length,minWidth:0,gap:0}}>
@@ -830,12 +948,13 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                             <div style={{display:"flex",alignItems:"flex-end",gap:3,height:BAR_H,paddingLeft:si>0?6:0,paddingRight:si<sections.length-1?6:0}}>
                               {activeBuckets.map(b=>{
                                 const heightPx=Math.max(3,Math.min(1,(b.avg as number)/Y_MAX)*BAR_H);
+                                const delay=`${(barIdx++)*60}ms`;
                                 return(
                                   <div key={b.label} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,minWidth:0,justifyContent:"flex-end",height:BAR_H}}>
-                                    <div style={{fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.85)",marginBottom:3,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap"}}>
+                                    <div style={{fontSize:14,fontWeight:700,color:"rgba(255,255,255,0.85)",marginBottom:3,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",animation:`dist-label-fade 0.35s ease both`,animationDelay:delay}}>
                                       {(b.avg as number).toFixed(1)}
                                     </div>
-                                    <div style={{width:"75%",height:heightPx,background:sec.barGrad,borderRadius:"3px 3px 0 0",opacity:0.9}}/>
+                                    <div style={{width:"75%",height:heightPx,background:sec.barGrad,borderRadius:"3px 3px 0 0",opacity:0.9,transformOrigin:"bottom",animation:`dist-bar-rise 0.5s cubic-bezier(0.4,0,0.2,1) both`,animationDelay:delay}}/>
                                   </div>
                                 );
                               })}
@@ -855,7 +974,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                           </div>
                         </div>
                       );
-                    })}
+                    });})()}
                   </div>
                 </div>
               </div>

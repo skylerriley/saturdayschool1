@@ -242,63 +242,96 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
     return delta >= 0 ? "var(--green-700)" : "var(--red-600)";
   };
 
+  // Most frequent partner name
+  const mostFrequentPartner = sortedPairings.length ? sortedPairings[0] : null;
+
+  // Collect all first names across all partners to detect duplicates
+  const allFirstNames = pairingRecords.map((r) => r.partnerName.split(" ")[0]);
+  const firstNameCounts: Record<string, number> = {};
+  allFirstNames.forEach((fn) => { firstNameCounts[fn] = (firstNameCounts[fn] ?? 0) + 1; });
+
+  function displayName(fullName: string): string {
+    const parts = fullName.split(" ");
+    const first = parts[0];
+    if (firstNameCounts[first] > 1 && parts.length > 1) {
+      return `${first} ${parts[parts.length - 1][0]}.`;
+    }
+    return first;
+  }
+
   return (
     <div style={{ marginTop: 24, marginBottom: 20 }}>
-      {/* Section header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: infoOpen ? 0 : 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--green-700)" }}>
-          Pairing History
-        </div>
-        <button
-          onClick={() => setInfoOpen(!infoOpen)}
-          style={{
-            width: 18, height: 18, borderRadius: "50%", border: "1.5px solid var(--green-700)",
-            background: "transparent", color: "var(--green-700)", fontSize: 11, fontWeight: 700,
-            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-            padding: 0, lineHeight: 1, WebkitTapHighlightColor: "transparent",
-          }}
-        >
-          i
-        </button>
-      </div>
-
-      {/* Info tooltip panel */}
-      {infoOpen && (
-        <div style={{
-          background: "var(--green-900)", color: "var(--gold-100)", borderRadius: "var(--radius-md)",
-          padding: "12px 14px", marginBottom: 10, fontSize: 12, lineHeight: 1.6,
-        }}>
-          <div style={{ marginBottom: 8 }}>Shows every round this season where both players were present in the field.</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--green-400)", display: "inline-block" }} />
-              <span style={{ color: "var(--green-300)" }}>Paired together</span>
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #9c7c65", background: "transparent", display: "inline-block" }} />
-              <span style={{ color: "var(--green-300)" }}>One player absent</span>
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#9c7c65", display: "inline-block" }} />
-              <span style={{ color: "var(--green-300)" }}>Different group</span>
-            </span>
+      {/* Summary card — dark green with three sub-cards */}
+      <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", padding: "16px 12px", marginBottom: 14 }}>
+        {/* Title row */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)" }}>
+            Pairing History
           </div>
+          <button
+            onClick={() => setInfoOpen(!infoOpen)}
+            style={{
+              width: 16, height: 16, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.3)",
+              background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700,
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 0, lineHeight: 1, WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            i
+          </button>
         </div>
-      )}
 
-      {/* Summary strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-        <div className="stat-card" style={{ padding: "10px 8px", textAlign: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 700, color: "var(--green-700)" }}>{uniquePartners}</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, marginTop: 2 }}>Partners</div>
-        </div>
-        <div className="stat-card" style={{ padding: "10px 8px", textAlign: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 700, color: neverPlayedWith.length > 0 ? "var(--red-600)" : "var(--text-muted)" }}>{neverPlayedWith.length}</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, marginTop: 2 }}>Never played with*</div>
-        </div>
-        <div className="stat-card" style={{ padding: "10px 8px", textAlign: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 700, color: "var(--gold-600)" }}>{mostFrequentTimes > 0 ? `${mostFrequentTimes}x` : "--"}</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, marginTop: 2 }}>Most frequent</div>
+        {/* Info panel */}
+        {infoOpen && (
+          <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-sm,6px)", padding: "10px 12px", marginBottom: 12, fontSize: 12, lineHeight: 1.6, color: "rgba(255,255,255,0.55)" }}>
+            <div style={{ marginBottom: 8 }}>Shows every round this season where both players were present in the field.</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--green-400)", display: "inline-block" }} />
+                <span>Paired together</span>
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", border: "1.5px solid #9c7c65", background: "transparent", display: "inline-block" }} />
+                <span>One player absent</span>
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#9c7c65", display: "inline-block" }} />
+                <span>Different group</span>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Three sub-cards: Never Played With | Partners | Most Frequent */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          {/* Never Played With */}
+          <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-sm,6px)", padding: "10px 8px", textAlign: "center" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Never Played</div>
+            <div style={{ fontSize: 35, fontWeight: 700, lineHeight: 1, color: neverPlayedWith.length > 0 ? "#e07070" : "rgba(255,255,255,0.4)", fontVariantNumeric: "tabular-nums" }}>
+              {neverPlayedWith.length}
+            </div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", marginTop: 5 }}>active players</div>
+          </div>
+
+          {/* Partners */}
+          <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-sm,6px)", padding: "10px 8px", textAlign: "center" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Partners</div>
+            <div style={{ fontSize: 45, fontWeight: 700, lineHeight: 1, color: "#7dc07d", fontVariantNumeric: "tabular-nums" }}>
+              {uniquePartners}
+            </div>
+           
+          </div>
+
+          {/* Most Frequent */}
+          <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-sm,6px)", padding: "10px 8px", textAlign: "center" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Most Frequent</div>
+            <div style={{ fontSize: mostFrequentPartner ? 28 : 35, fontWeight: 700, lineHeight: 1.1, color: "#e8a020", fontVariantNumeric: "tabular-nums" }}>
+              {mostFrequentPartner ? displayName(mostFrequentPartner.partnerName) : "--"}
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.28)", marginTop: 5 }}>
+              {mostFrequentTimes > 0 ? `${mostFrequentTimes}x paired` : ""}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -355,11 +388,8 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
       {/* Never played with subsection */}
       {neverPlayedWith.length > 0 && (
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--green-700)", marginBottom: 4 }}>
-            Never Played With
-          </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.5 }}>
-            * Active players only. &ldquo;Shared rounds&rdquo; = rounds where both were present in the field on the same day.
+            Active players only. &ldquo;Shared rounds&rdquo; = rounds where both were present in the field on the same day.
           </div>
           <div style={{ background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", overflow: "hidden" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 44px 54px", padding: "8px 12px", background: "var(--green-900)" }}>
