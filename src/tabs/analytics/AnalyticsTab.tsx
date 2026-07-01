@@ -25,6 +25,10 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
   const allSeasons=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
   const [selSeason,setSelSeason]=useState<number>(allSeasons[0]||new Date().getFullYear());
 
+  useEffect(()=>{
+    if(selSeason<2026&&subTab==="points-gained") setSubTab("overview");
+  },[selSeason]);
+
   const seasonData=calcSeasonLeaderData(golfers,leaderboard,events,selSeason);
   const seasonEvents=events.filter((e:any)=>e.season===selSeason&&e.status==="Completed");
 
@@ -97,7 +101,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
       return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned,won:tied1st.some((r:any)=>r.golfer_id===selG.golfer_id)};
     }).filter(Boolean):[];
 
-  const SUBTABS=[{id:"overview",label:"Overview"},{id:"golfer",label:"By Golfer"},{id:"odds",label:"Odds"},{id:"points-gained",label:"Pts Gained"},{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"},{id:"consistency",label:"Consistency"},{id:"champions",label:"Champions"}];
+  const SUBTABS=[{id:"overview",label:"Overview"},{id:"golfer",label:"By Golfer"},{id:"odds",label:"Odds"},...(selSeason>=2026?[{id:"points-gained",label:"Pts Gained"}]:[]),({id:"course",label:"By Course"}),{id:"scatter",label:"HCP vs Pts"},{id:"consistency",label:"Consistency"},{id:"champions",label:"Champions"}];
 
   const switchSubTab=(id:string)=>{
     setSubTab(id);
