@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
 import { Sparkles } from "lucide-react";
 import ReactDOM from "react-dom";
 import { SeasonScrubber, FlickCarousel, SubTabPanel, ToggleGroup, ScoreSymbol } from "../../components/common";
@@ -306,11 +306,12 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   const [feedOverlayReady,setFeedOverlayReady]=useState(false);
   const feedScrollPosRef=useRef<number>(0);
   const overlayScrollRef=useRef<HTMLDivElement|null>(null);
-  // Ref callback: fires synchronously on mount so scrollTop=0 lands before paint.
-  const overlayRefCallback=(node:HTMLDivElement|null)=>{
+  // Stable ref callback (useCallback with []) so React doesn't re-invoke it on
+  // every re-render (which would reset scrollTop=0 on each Supabase update).
+  const overlayRefCallback=useCallback((node:HTMLDivElement|null)=>{
     overlayScrollRef.current=node;
     if(node)node.scrollTop=0;
-  };
+  },[]);
   // While the overlay is open: disable pull-to-refresh and fill the nav bowl
   // cutout so the feed behind the overlay doesn't show through the transparent
   // hole in the active tab.

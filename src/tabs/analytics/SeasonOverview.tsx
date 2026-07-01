@@ -499,7 +499,7 @@ function ArcProgress({played,total=52}:{played:number,total?:number}){
   return <canvas ref={canvasRef} style={{width:80,height:48,display:"block",margin:"4px auto 0"}}/>;
 }
 
-export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers,events}:any){
+export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers,events,charityDonations}:any){
   const totalRounds=seasonData.reduce((s:number,d:any)=>s+d.rounds,0);
   const allPts=seasonData.flatMap((d:any)=>d.allPts);
   const highScoreEntry=allPts.length?Math.max(...allPts):0;
@@ -697,6 +697,15 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
   };
 
   // ── Win leader badge data ────────────────────────────────────
+  // ── Season charity calculation ───────────────────────────────
+  const seasonEventIds=new Set(seasonEvents.map((e:any)=>e.event_id));
+  const charityFromRounds=leaderboard.filter((r:any)=>r.charity_paid&&seasonEventIds.has(r.event_id)).length*5;
+  const extraDonations=(charityDonations||[]).filter((d:any)=>{
+    const yr=d.date?parseInt(d.date.slice(0,4)):null;
+    return yr===season;
+  }).reduce((s:number,d:any)=>s+Number(d.amount),0);
+  const seasonCharity=charityFromRounds+extraDonations;
+
   const winLeaderBadges=(()=>{
     if(!winLeader||!winLeader.wins)return[];
     const sorted=[...seasonEvents].sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
@@ -715,6 +724,25 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
 
   return(
     <div>
+      {/* ── Charity Total — full-width gold card ───────────── */}
+      {seasonCharity>0&&(
+        <div style={{
+          position:"relative",overflow:"hidden",
+          background:"linear-gradient(135deg,#7a5c00,#c49a00,#e8c840,#c49a00)",
+          borderRadius:"var(--radius-md)",
+          padding:"16px 18px",
+          marginBottom:16,
+          color:"#2a1a00",
+          textAlign:"center",
+        }}>
+<div style={{fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:700,opacity:0.65,marginBottom:4}}>Charity Collected</div>
+          <div style={{fontSize:42,fontWeight:700,lineHeight:1,fontVariantNumeric:"tabular-nums",marginBottom:6}}>
+            ${seasonCharity.toLocaleString()}
+          </div>
+          <div style={{fontSize:13,opacity:0.6}}>${charityFromRounds} contribution · ${extraDonations.toFixed(0)} add'l donations</div>
+        </div>
+      )}
+
       {/* ── Stat tiles ─────────────────────────────────────── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
 
