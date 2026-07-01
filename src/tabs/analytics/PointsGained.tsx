@@ -39,16 +39,17 @@ function bucketsForPar(par: number): YdBucket[] {
   return [];
 }
 
-// ── Ink underline nav (same as GolferSubNav in GolferHistoryChart) ────────────
+// ── Ink underline nav ────────────────────────────────────────────────────────
 function InkNav({ tabs, active, onChange }: { tabs: { id: string; label: string }[]; active: string; onChange: (id: string) => void }) {
   const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [inkStyle, setInkStyle] = useState<{ left: number; width: number } | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
     const idx = tabs.findIndex(t => t.id === active);
     const el = btnRefs.current[idx];
     if (!el) return;
-    const parent = el.parentElement;
+    const parent = scrollRef.current;
     if (!parent) return;
     const parentRect = parent.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
@@ -56,42 +57,81 @@ function InkNav({ tabs, active, onChange }: { tabs: { id: string; label: string 
   }, [active, tabs]);
 
   return (
-    <div style={{ position: "relative", display: "flex", gap: 16, marginBottom: 16, paddingBottom: 0, overflowX: "auto", scrollbarWidth: "none" }}>
-      {tabs.map((t, i) => (
-        <button
-          key={t.id}
-          ref={el => { btnRefs.current[i] = el; }}
-          onClick={() => onChange(t.id)}
-          style={{
-            background: "none", border: "none", cursor: "pointer",
-            padding: "0 4px 12px",
-            fontSize: 12, fontWeight: 700,
-            color: active === t.id ? "var(--text-primary)" : "var(--text-muted)",
-            WebkitTapHighlightColor: "transparent",
-            transition: "color 0.2s",
-            letterSpacing: "0.07em",
-            textTransform: "uppercase",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}
-        >
-          {t.label}
-        </button>
-      ))}
-      {/* Track line */}
+    // Outer wrapper holds the full-width track line, unaffected by scroll clip
+    <div style={{ position: "relative", marginBottom: 16 }}>
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 1, background: "var(--border)" }} />
-      {/* Ink indicator */}
-      {inkStyle && (
-        <div style={{
-          position: "absolute", bottom: 0,
-          left: inkStyle.left,
-          width: inkStyle.width,
-          height: 2,
-          background: "var(--green-700)",
-          borderRadius: 2,
-          transition: "left 0.28s cubic-bezier(0.4,0,0.2,1), width 0.28s cubic-bezier(0.4,0,0.2,1)",
-        }} />
-      )}
+      {/* Scrollable pill row */}
+      <div ref={scrollRef} style={{ position: "relative", display: "flex", gap: 16, overflowX: "auto", scrollbarWidth: "none" }}>
+        {tabs.map((t, i) => (
+          <button
+            key={t.id}
+            ref={el => { btnRefs.current[i] = el; }}
+            onClick={() => onChange(t.id)}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: "0 4px 12px",
+              fontSize: 12, fontWeight: 700,
+              color: active === t.id ? "var(--text-primary)" : "var(--text-muted)",
+              WebkitTapHighlightColor: "transparent",
+              transition: "color 0.2s",
+              letterSpacing: "0.07em",
+              textTransform: "uppercase",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+        {/* Ink indicator — positioned inside scroll container so left offset is in scroll-space */}
+        {inkStyle && (
+          <div style={{
+            position: "absolute", bottom: 0,
+            left: inkStyle.left,
+            width: inkStyle.width,
+            height: 2,
+            background: "var(--green-700)",
+            borderRadius: 2,
+            transition: "left 0.28s cubic-bezier(0.4,0,0.2,1), width 0.28s cubic-bezier(0.4,0,0.2,1)",
+          }} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Skeleton loader ───────────────────────────────────────────────────────────
+function PGSkeleton() {
+  return (
+    <div style={{ animation: "pg-skeleton-fade 0.18s ease-out" }}>
+      <style>{`
+        @keyframes pg-skeleton-fade { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes pg-shimmer { 0%,100% { opacity: 0.45 } 50% { opacity: 0.9 } }
+        .pg-skel { background: var(--border); border-radius: 4px; animation: pg-shimmer 1.2s ease-in-out infinite; }
+      `}</style>
+      {[1,2,3,4,5,6,7,8].map(i => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 0", borderBottom: "1px solid var(--border)" }}>
+          <div className="pg-skel" style={{ width: 24, height: 14, flexShrink: 0, animationDelay: `${i*0.06}s` }} />
+          <div className="pg-skel" style={{ width: 90 + (i % 3) * 20, height: 14, animationDelay: `${i*0.06+0.03}s` }} />
+          <div style={{ flex: 1 }} />
+          <div className="pg-skel" style={{ width: 36, height: 20, animationDelay: `${i*0.06+0.06}s` }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Slide-in content wrapper ──────────────────────────────────────────────────
+function PGSlide({ dir, children }: { dir: "left" | "right" | "none"; children: React.ReactNode }) {
+  return (
+    <div style={{
+      animation: dir === "none" ? undefined : `pg-slide-${dir} 0.22s cubic-bezier(0.4,0,0.2,1) both`,
+    }}>
+      <style>{`
+        @keyframes pg-slide-left  { from { opacity:0; transform:translateX(28px)  } to { opacity:1; transform:translateX(0) } }
+        @keyframes pg-slide-right { from { opacity:0; transform:translateX(-28px) } to { opacity:1; transform:translateX(0) } }
+      `}</style>
+      {children}
     </div>
   );
 }
@@ -503,7 +543,7 @@ function OverviewSection({ defs, golfers, events, leaderboard, holeScores, cours
             </div>
 
             {/* Chevron */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", alignSelf: "center", color: "var(--text-muted)" }}>
+            <div style={{ width: 28, display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0, color: "var(--text-muted)" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -521,9 +561,9 @@ const OAK_CREEK  = "Oak Creek GC";
 
 const TOP_TABS = [
   { id: "overview",     label: "OVERVIEW"    },
-  { id: "par3",         label: "PAR 3S"      },
-  { id: "par4",         label: "PAR 4S"      },
-  { id: "par5",         label: "PAR 5S"      },
+  { id: "par3",         label: "PAR 3'S"     },
+  { id: "par4",         label: "PAR 4'S"     },
+  { id: "par5",         label: "PAR 5'S"     },
   { id: "front9",       label: "FRONT 9"     },
   { id: "back9",        label: "BACK 9"      },
   { id: "strawberry",   label: "STRAWBERRY"  },
@@ -531,9 +571,9 @@ const TOP_TABS = [
 ];
 
 const METRIC_DEFS: MetricDef[] = [
-  { id: "par3",        label: "Par 3s",         filter: (_h, p) => p === 3 },
-  { id: "par4",        label: "Par 4s",         filter: (_h, p) => p === 4 },
-  { id: "par5",        label: "Par 5s",         filter: (_h, p) => p === 5 },
+  { id: "par3",        label: "Par 3's",        filter: (_h, p) => p === 3 },
+  { id: "par4",        label: "Par 4's",        filter: (_h, p) => p === 4 },
+  { id: "par5",        label: "Par 5's",        filter: (_h, p) => p === 5 },
   { id: "front9",      label: "Front 9",        filter: (h) => h >= 1 && h <= 9 },
   { id: "back9",       label: "Back 9",         filter: (h) => h >= 10 && h <= 18 },
   { id: "strawberry",  label: "Strawberry Farms", filter: () => true },
@@ -542,6 +582,21 @@ const METRIC_DEFS: MetricDef[] = [
 
 export function PointsGained({ golfers, events, leaderboard, holeScores, courses, signups, selSeason }: any) {
   const [activeTab, setActiveTab] = useState("overview");
+  const [slideDir, setSlideDir] = useState<"left"|"right"|"none">("none");
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  const prevTabIdx = useRef(0);
+  const skeletonTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const navigateTo = (id: string) => {
+    const newIdx = TOP_TABS.findIndex(t => t.id === id);
+    const oldIdx = prevTabIdx.current;
+    setSlideDir(newIdx > oldIdx ? "left" : newIdx < oldIdx ? "right" : "none");
+    prevTabIdx.current = newIdx;
+    setShowSkeleton(true);
+    if (skeletonTimer.current) clearTimeout(skeletonTimer.current);
+    skeletonTimer.current = setTimeout(() => setShowSkeleton(false), 180);
+    setActiveTab(id);
+  };
 
   const noData = events.filter((e: any) => e.season === selSeason && e.status === "Completed").length === 0;
 
@@ -573,53 +628,44 @@ export function PointsGained({ golfers, events, leaderboard, holeScores, courses
         </div>
       ) : (
         <>
-          <InkNav tabs={TOP_TABS} active={activeTab} onChange={setActiveTab} />
+          <InkNav tabs={TOP_TABS} active={activeTab} onChange={navigateTo} />
 
-          {activeTab === "overview" && (
-            <div>
-              <OverviewSection defs={METRIC_DEFS} {...commonProps} onNavigate={setActiveTab} />
-              <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11.5, paddingBottom: 8, lineHeight: 1.5 }}>
-                Season {selSeason} &middot; guests excluded &middot; min {MIN_HOLES_PER_SPLIT} holes per split
-              </div>
-            </div>
-          )}
+          {showSkeleton ? <PGSkeleton /> : (
+            <PGSlide dir={slideDir}>
+              {activeTab === "overview" && (
+                <div>
+                  <OverviewSection defs={METRIC_DEFS} {...commonProps} onNavigate={navigateTo} />
+                  <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11.5, paddingBottom: 8, lineHeight: 1.5 }}>
+                    Season {selSeason} &middot; guests excluded &middot; min {MIN_HOLES_PER_SPLIT} holes per split
+                  </div>
+                </div>
+              )}
 
-          {activeTab === "par3" && (
-            <ParView par={3} {...commonProps} />
-          )}
+              {activeTab === "par3" && <ParView par={3} {...commonProps} />}
+              {activeTab === "par4" && <ParView par={4} {...commonProps} />}
+              {activeTab === "par5" && <ParView par={5} {...commonProps} />}
 
-          {activeTab === "par4" && (
-            <ParView par={4} {...commonProps} />
-          )}
+              {activeTab === "front9" && (
+                <>
+                  <PGLeaderboard playerRows={frontData.playerRows} fieldAvg={frontData.fieldAvg} />
+                  <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11.5, paddingTop: 6, paddingBottom: 8 }}>
+                    Season {selSeason} &middot; guests excluded
+                  </div>
+                </>
+              )}
 
-          {activeTab === "par5" && (
-            <ParView par={5} {...commonProps} />
-          )}
+              {activeTab === "back9" && (
+                <>
+                  <PGLeaderboard playerRows={backData.playerRows} fieldAvg={backData.fieldAvg} />
+                  <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11.5, paddingTop: 6, paddingBottom: 8 }}>
+                    Season {selSeason} &middot; guests excluded
+                  </div>
+                </>
+              )}
 
-          {activeTab === "front9" && (
-            <>
-              <PGLeaderboard playerRows={frontData.playerRows} fieldAvg={frontData.fieldAvg} />
-              <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11.5, paddingTop: 6, paddingBottom: 8 }}>
-                Season {selSeason} &middot; guests excluded
-              </div>
-            </>
-          )}
-
-          {activeTab === "back9" && (
-            <>
-              <PGLeaderboard playerRows={backData.playerRows} fieldAvg={backData.fieldAvg} />
-              <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11.5, paddingTop: 6, paddingBottom: 8 }}>
-                Season {selSeason} &middot; guests excluded
-              </div>
-            </>
-          )}
-
-          {activeTab === "strawberry" && (
-            <CourseView courseName={STRAWBERRY} {...commonProps} />
-          )}
-
-          {activeTab === "oakcreek" && (
-            <CourseView courseName={OAK_CREEK} {...commonProps} />
+              {activeTab === "strawberry" && <CourseView courseName={STRAWBERRY} {...commonProps} />}
+              {activeTab === "oakcreek" && <CourseView courseName={OAK_CREEK} {...commonProps} />}
+            </PGSlide>
           )}
         </>
       )}
