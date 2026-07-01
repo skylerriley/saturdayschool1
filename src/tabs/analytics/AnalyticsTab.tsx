@@ -9,6 +9,7 @@ import { CourseChart } from "./CourseChart";
 import { ScatterChart } from "./ScatterChart";
 import { ChampionsView } from "./ChampionsView";
 import { GolferHistoryChart } from "./GolferHistoryChart";
+import { PointsGained } from "./PointsGained";
 
 export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase,refreshLiveData,initialGolfer,onInitialGolferConsumed,onBack,backLabel}:any){
   const [subTab,setSubTab]=useState("overview");
@@ -96,7 +97,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
       return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned,won:tied1st.some((r:any)=>r.golfer_id===selG.golfer_id)};
     }).filter(Boolean):[];
 
-  const SUBTABS=[{id:"overview",label:"Overview"},{id:"golfer",label:"By Golfer"},{id:"odds",label:"Odds"},{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"},{id:"consistency",label:"Consistency"},{id:"champions",label:"Champions"}];
+  const SUBTABS=[{id:"overview",label:"Overview"},{id:"golfer",label:"By Golfer"},{id:"odds",label:"Odds"},{id:"points-gained",label:"Pts Gained"},{id:"course",label:"By Course"},{id:"scatter",label:"HCP vs Pts"},{id:"consistency",label:"Consistency"},{id:"champions",label:"Champions"}];
 
   const switchSubTab=(id:string)=>{
     setSubTab(id);
@@ -182,6 +183,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
             case "consistency":return <ConsistencyTable seasonData={seasonData}/>;
             case "scatter":return <ScatterChart scatterData={scatterData} flightWinData={flightWinData}/>;
             case "champions":return <ChampionsView golfers={golfers} leaderboard={leaderboard} events={events}/>;
+            case "points-gained":return <PointsGained golfers={golfers} events={events} leaderboard={leaderboard} holeScores={holeScores} courses={courses} signups={signups} selSeason={selSeason}/>;
             case "golfer":return(
               <>
                 <div className="form-group">
