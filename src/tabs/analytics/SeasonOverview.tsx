@@ -727,15 +727,14 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
       {/* ── Charity Total — full-width gold card ───────────── */}
       {seasonCharity>0&&(
         <div style={{
-          position:"relative",overflow:"hidden",
-          background:"linear-gradient(135deg,#7a5c00,#c49a00,#e8c840,#c49a00)",
+          background:"var(--gold-500)",
           borderRadius:"var(--radius-md)",
           padding:"16px 18px",
           marginBottom:16,
-          color:"#2a1a00",
+          color:"var(--green-900)",
           textAlign:"center",
         }}>
-<div style={{fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:700,opacity:0.65,marginBottom:4}}>Charity Collected</div>
+          <div style={{fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:700,opacity:0.6,marginBottom:4}}>Tzedakah Collected</div>
           <div style={{fontSize:42,fontWeight:700,lineHeight:1,fontVariantNumeric:"tabular-nums",marginBottom:6}}>
             ${seasonCharity.toLocaleString()}
           </div>
