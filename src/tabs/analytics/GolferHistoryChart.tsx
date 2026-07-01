@@ -702,6 +702,32 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                 <div style={{fontSize:26,fontWeight:700,color:netEarnings>=0?"#7dc07d":"#e07070",fontVariantNumeric:"tabular-nums"}}>{netEarnings>=0?"+":"-"}<CountUp value={Math.abs(netEarnings)} prefix="$"/></div>
               </div>
             </div>
+
+            {/* Rival & Twin */}
+            {(rivalStats.rival||rivalStats.twin)&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
+                {rivalStats.rival&&(
+                  <div style={{background:"rgba(192,32,32,0.12)",border:"1.5px solid rgba(192,32,32,0.3)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center"}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"#e07070",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Rival</div>
+                    <div style={{fontSize:18,fontWeight:700,color:"white",marginBottom:6}}>{rivalStats.rival.g.first_name} {rivalStats.rival.g.last_name}</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",lineHeight:1.6}}>
+                      Beats you {rivalStats.rival.beats}/{rivalStats.rival.total} events<br/>
+                      <span style={{color:"#e07070",fontWeight:600}}>{Math.round(rivalStats.rival.beats/rivalStats.rival.total*100)}% win rate vs you</span>
+                    </div>
+                  </div>
+                )}
+                {rivalStats.twin&&(
+                  <div style={{background:"rgba(80,140,220,0.12)",border:"1.5px solid rgba(80,140,220,0.3)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center"}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"#7ab0e8",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Twin</div>
+                    <div style={{fontSize:18,fontWeight:700,color:"white",marginBottom:6}}>{rivalStats.twin.g.first_name} {rivalStats.twin.g.last_name}</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",lineHeight:1.6}}>
+                      Tied scores {rivalStats.twin.ties}/{rivalStats.twin.total} events<br/>
+                      <span style={{color:"#7ab0e8",fontWeight:600}}>{Math.round(rivalStats.twin.ties/rivalStats.twin.total*100)}% match rate</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Scoring Fingerprint */}
@@ -731,32 +757,6 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
             <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:6,textAlign:"center"}}>
               Avg Stableford pts per hole category · {fp.sampleSize} round{fp.sampleSize===1?"":"s"}
             </div>
-
-            {/* Rival & Twin */}
-            {(rivalStats.rival||rivalStats.twin)&&(
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:16}}>
-                {rivalStats.rival&&(
-                  <div style={{background:"rgba(192,32,32,0.12)",border:"1.5px solid rgba(192,32,32,0.3)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center"}}>
-                    <div style={{fontSize:11,fontWeight:700,color:"#e07070",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Rival</div>
-                    <div style={{fontSize:18,fontWeight:700,color:"white",marginBottom:6}}>{rivalStats.rival.g.first_name} {rivalStats.rival.g.last_name}</div>
-                    <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",lineHeight:1.6}}>
-                      Beats you {rivalStats.rival.beats}/{rivalStats.rival.total} events<br/>
-                      <span style={{color:"#e07070",fontWeight:600}}>{Math.round(rivalStats.rival.beats/rivalStats.rival.total*100)}% win rate vs you</span>
-                    </div>
-                  </div>
-                )}
-                {rivalStats.twin&&(
-                  <div style={{background:"rgba(80,140,220,0.12)",border:"1.5px solid rgba(80,140,220,0.3)",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center"}}>
-                    <div style={{fontSize:11,fontWeight:700,color:"#7ab0e8",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Twin</div>
-                    <div style={{fontSize:18,fontWeight:700,color:"white",marginBottom:6}}>{rivalStats.twin.g.first_name} {rivalStats.twin.g.last_name}</div>
-                    <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",lineHeight:1.6}}>
-                      Tied scores {rivalStats.twin.ties}/{rivalStats.twin.total} events<br/>
-                      <span style={{color:"#7ab0e8",fontWeight:600}}>{Math.round(rivalStats.twin.ties/rivalStats.twin.total*100)}% match rate</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </>
       )}
