@@ -122,8 +122,8 @@ export function ScatterChart({scatterData,flightWinData}:any){
         }}
       },
       scales:{
-        x:{title:{display:true,text:"Handicap Index",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"}},
-        y:{title:{display:true,text:"Avg Stableford Pts",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{color:"rgba(74,55,40,0.1)"},max:35}
+        x:{title:{display:true,text:"Handicap Index",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{display:false}},
+        y:{title:{display:true,text:"Avg Stableford Pts",color:"#6b5240",font:{family:"DM Sans, sans-serif",size:13}},ticks:{color:"#6b5240"},grid:{display:false},max:35}
       }
     }
   };
@@ -135,28 +135,31 @@ export function ScatterChart({scatterData,flightWinData}:any){
 
   if(scatterData.length<2) return(
     <div>
-      <div className="card-title" style={{marginBottom:5}}>Handicap Index vs Avg Performance</div>
-      <div style={{textAlign:"center",padding:"40px 20px",color:"var(--text-muted)",fontSize:14}}>
-        📊 This chart needs at least 2 golfers with rounds this season to display.
+      <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",padding:"16px",boxShadow:"var(--shadow-sm)"}}>
+        <div className="card-title" style={{marginBottom:5}}>Handicap Index vs Avg Performance</div>
+        <div style={{textAlign:"center",padding:"40px 20px",color:"var(--text-muted)",fontSize:14}}>
+          📊 This chart needs at least 2 golfers with rounds this season to display.
+        </div>
       </div>
     </div>
   );
 
   return(
-    <div>
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div ref={sentinelRef}/>
-      <div className="card-title" style={{marginBottom:5}}>Handicap Index vs Avg Performance</div>
-      <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:6}}>Higher scores for a given HCP = outperforming handicap. Tap a dot for name.</p>
-      
-      <div style={{
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(12px)",
-        transition: "opacity 0.5s ease, transform 0.5s ease",
-      }}>
-        <ChartCanvas config={config} deps={[scatterData.length,scatterData.map((d:any)=>d.golfer.golfer_id).join(),visible]} height={270}/>
+      <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",padding:"16px",boxShadow:"var(--shadow-sm)"}}>
+        <div className="card-title" style={{marginBottom:5}}>Handicap Index vs Avg Performance</div>
+        <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:6}}>Higher scores for a given HCP = outperforming handicap. Tap a dot for name.</p>
+        <div style={{
+          opacity: visible ? 1 : 0,
+          transform: visible ? "translateY(0)" : "translateY(12px)",
+          transition: "opacity 0.5s ease, transform 0.5s ease",
+        }}>
+          <ChartCanvas config={config} deps={[scatterData.length,scatterData.map((d:any)=>d.golfer.golfer_id).join(),visible]} height={270}/>
+        </div>
       </div>
 
-      <div style={{marginTop:32}}>
+      <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",padding:"16px",boxShadow:"var(--shadow-sm)"}}>
         <div className="card-title" style={{marginBottom:4}}>Win % by Handicap Flight</div>
         <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:12}}>1st or 2nd place finish counts as a win. Based on paid buy-in entries only.</p>
         {hasFlightData?(

@@ -2519,7 +2519,16 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               }
               yardVotes.forEach((v,i)=>{holeYards[i]=v.length>0?Math.round(v.reduce((a:number,b:number)=>a+b,0)/v.length):0;});
             }
-            type HoleStat={hole:number;par:number;yards:number;avgPts:number;plusMinus:number;count:number;eagles:number;birdies:number;pars:number;bogeys:number;dblPlus:number;};
+            const holeSIs:number[]=Array(holeCount).fill(0);
+            {
+              const siVotes:number[][]=Array.from({length:holeCount},()=>[]);
+              for(const s of eventSignups){
+                const c=courses.find((c:any)=>c.course_id===s.tee_box_course_id);
+                if(c?.hole_stroke_indices){c.hole_stroke_indices.forEach((si:number,i:number)=>{if(si>0)siVotes[i].push(si);});}
+              }
+              siVotes.forEach((v,i)=>{holeSIs[i]=v.length>0?Math.round(v.reduce((a:number,b:number)=>a+b,0)/v.length):0;});
+            }
+            type HoleStat={hole:number;par:number;yards:number;strokeIndex:number;avgPts:number;plusMinus:number;count:number;eagles:number;birdies:number;pars:number;bogeys:number;dblPlus:number;};
             const holeStats:HoleStat[]=Array.from({length:holeCount},(_,i)=>{
               const hNum=i+1;
               const par=holePars[i]||4;
@@ -2536,7 +2545,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                 else if(diff===1)bogeys++;
                 else dblPlus++;
               }
-              return{hole:hNum,par,yards:holeYards[i]||0,avgPts,plusMinus,count,eagles,birdies,pars,bogeys,dblPlus};
+              return{hole:hNum,par,yards:holeYards[i]||0,strokeIndex:holeSIs[i]||0,avgPts,plusMinus,count,eagles,birdies,pars,bogeys,dblPlus};
             }).filter(h=>h.count>0);
             const sorted=[...holeStats].sort((a,b)=>a.avgPts-b.avgPts);
             const rankMap:Record<number,number>={};
@@ -2835,7 +2844,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
                     <div style={{padding:"12px 16px 4px",borderBottom:"1px solid rgba(255,255,255,0.12)"}}>
                       <div style={{display:"flex",alignItems:"center",gap:10}}>
                         <div style={{fontSize:28,fontWeight:900,color:"white",fontFamily:"var(--font-serif)",lineHeight:1}}>{h.hole}</div>
-                        <div style={{fontSize:13,paddingTop:1,color:"rgba(255,255,255,0.6)",fontWeight:600}}>Par {h.par}{(hasYards&&h.yards>0)?` · ${h.yards} yds`:""}</div>
+                        <div style={{fontSize:13,paddingTop:1,color:"rgba(255,255,255,0.6)",fontWeight:600}}>Par {h.par}{(hasYards&&h.yards>0)?` · ${h.yards} yds`:""}{h.strokeIndex>0?` · SI ${h.strokeIndex}`:""}</div>
                       </div>
                       <div style={{display:"flex",gap:16,marginTop:8,fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>
                         <span style={{flex:1,textAlign:"left"}}>Player</span>
@@ -2879,7 +2888,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
             </colgroup>
             <thead>
               <tr style={{background:"var(--green-900)"}}>
-                {["HOLE","PAR",hasYards?"YDS":null,"AVG PTS","+/−","EAGLE","BIRDIE","PAR","BOGEY","DBL+"].filter(Boolean).map((h:any,i:number)=>(
+                {["HOLE","PAR","SI",hasYards?"YDS":null,"AVG PTS","+/−","EAGLE","BIRDIE","PAR","BOGEY","DBL+"].filter(Boolean).map((h:any,i:number)=>(
                   <th key={i} style={{color:"var(--gold-300,#d4a843)",fontWeight:700,padding:"7px 8px",textAlign:i===0?"left":"center",fontSize:11,letterSpacing:"0.06em",whiteSpace:"nowrap",borderBottom:"2px solid var(--gold-300,#d4a843)",position:"sticky",top:0,zIndex:i<2?12:10,background:"var(--green-900)",...(i===0?{left:0}:i===1?{left:52,boxShadow:"2px 0 0 0 rgba(212,168,67,0.3)"}:{})}}>{h}</th>
                 ))}
               </tr>
@@ -2894,6 +2903,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
                   <tr key={idx} style={{background:rowBg,borderBottom:"1px solid var(--border)"}}>
                     <td style={{padding:"8px 8px",fontWeight:isTotal?700:600,fontSize:isTotal?13:14,color:isTotal?"var(--green-800)":"var(--text-primary)",whiteSpace:"nowrap",position:"sticky",left:0,zIndex:2,background:rowBg}}>{h.hole}</td>
                     <td style={{padding:"8px 8px",textAlign:"center",fontWeight:isTotal?700:400,position:"sticky",left:52,zIndex:2,background:rowBg,boxShadow:"2px 0 0 0 var(--border)"}}>{h.par}</td>
+                    <td style={{padding:"8px 8px",textAlign:"center",color:"var(--text-secondary)"}}>{isTotal?"—":h.strokeIndex>0?h.strokeIndex:"—"}</td>
                     {hasYards&&<td style={{padding:"8px 8px",textAlign:"center",color:"var(--text-secondary)"}}>{h.yards>0?h.yards:"—"}</td>}
                     <td style={{padding:"8px 8px",textAlign:"center",fontWeight:isTotal?700:500}}>{avgPts}</td>
                     <td style={{padding:"8px 8px",textAlign:"center",fontWeight:700,color:typeof pm==="number"?pmColor(pm):"var(--text-primary)"}}>{typeof pm==="number"?fmtPlusMinus(pm):pm}</td>

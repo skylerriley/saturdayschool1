@@ -265,7 +265,7 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
       <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", padding: "16px 12px", marginBottom: 14 }}>
         {/* Title row */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>
             Pairing History
           </div>
           <button
@@ -306,7 +306,7 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
           {/* Never Played With */}
           <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-sm,6px)", padding: "10px 8px", textAlign: "center" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Never Played</div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Never Paired</div>
             <div style={{ fontSize: 35, fontWeight: 700, lineHeight: 1, color: neverPlayedWith.length > 0 ? "#e07070" : "rgba(255,255,255,0.4)", fontVariantNumeric: "tabular-nums" }}>
               {neverPlayedWith.length}
             </div>
@@ -315,7 +315,7 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
 
           {/* Partners */}
           <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-sm,6px)", padding: "10px 8px", textAlign: "center" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Partners</div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Playing Partners</div>
             <div style={{ fontSize: 45, fontWeight: 700, lineHeight: 1, color: "#7dc07d", fontVariantNumeric: "tabular-nums" }}>
               {uniquePartners}
             </div>

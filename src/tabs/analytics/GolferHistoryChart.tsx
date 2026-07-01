@@ -128,6 +128,31 @@ function RoundScrubber({config,deps,height=160,rounds,winFlags,avgPtsSpanRef,sub
 
   useEffect(()=>{drawOverlay();},[...deps]);
 
+  // Animate line draw left→right by driving _drawProgress on the chart instance
+  const drawAnimRafRef=useRef<number|null>(null);
+  useEffect(()=>{
+    if(drawAnimRafRef.current!=null)cancelAnimationFrame(drawAnimRafRef.current);
+    const DURATION=900;
+    const start=performance.now();
+    const getChart=()=>{
+      const el=wrapperRef.current;if(!el)return null;
+      const c=el.querySelector("canvas");if(!c)return null;
+      return ChartJS.getChart(c as HTMLCanvasElement)||null;
+    };
+    const tick=(now:number)=>{
+      const chart=getChart();
+      if(!chart){drawAnimRafRef.current=requestAnimationFrame(tick);return;}
+      const t=Math.min(1,(now-start)/DURATION);
+      const e=t<0.5?2*t*t:1-(2*(1-t)*(1-t));
+      (chart as any)._drawProgress=e;
+      chart.draw();
+      if(t<1)drawAnimRafRef.current=requestAnimationFrame(tick);
+      else drawAnimRafRef.current=null;
+    };
+    drawAnimRafRef.current=requestAnimationFrame(tick);
+    return()=>{ if(drawAnimRafRef.current!=null)cancelAnimationFrame(drawAnimRafRef.current); };
+  },[...deps]);
+
   useEffect(()=>{
     const el=outerRef.current;if(!el)return;
     let active=false;
@@ -217,10 +242,10 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
   const [expandedRound,setExpandedRound]=useState<number|null>(null);
   const [golferSubTab,setGolferSubTab]=useState("overview");
   const [donutKey,setDonutKey]=useState(0);
+  const [chartDrawKey,setChartDrawKey]=useState(0);
   const [streakType,setStreakType]=useState("pars");
   const [selectedBar,setSelectedBar]=useState<number|null>(null);
-  useEffect(()=>{ setDonutKey(k=>k+1); },[golfer.golfer_id]);
-  useEffect(()=>{ setSelectedBar(null); },[streakType,golfer.golfer_id]);
+  useEffect(()=>{ setDonutKey(k=>k+1); setChartDrawKey(k=>k+1); },[golfer.golfer_id]);
   const avg=rounds.reduce((s:number,r:any)=>s+r.pts,0)/rounds.length;
   const best=Math.max(...rounds.map((r:any)=>r.pts));
   const worst=Math.min(...rounds.map((r:any)=>r.pts));
@@ -329,6 +354,41 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
   const avgPtsSpanRef=useRef<HTMLSpanElement>(null);
   const roundSubLabelRef=useRef<HTMLSpanElement>(null);
 
+  // CountUp tween for the big avg number on mount / golfer switch
+  const avgTweenRef=useRef<{raf:number}|null>(null);
+  useEffect(()=>{
+    if(avgTweenRef.current)cancelAnimationFrame(avgTweenRef.current.raf);
+    const target=parseFloat(avg.toFixed(1));
+    const start=performance.now();
+    const duration=900;
+    const tick=(now:number)=>{
+      const t=Math.min(1,(now-start)/duration);
+      const e=1-(1-t)*(1-t)*(1-t); // cubic ease-out
+      if(avgPtsSpanRef.current)avgPtsSpanRef.current.textContent=(target*e).toFixed(1);
+      if(t<1)avgTweenRef.current={raf:requestAnimationFrame(tick)};
+      else avgTweenRef.current=null;
+    };
+    avgTweenRef.current={raf:requestAnimationFrame(tick)};
+    return()=>{ if(avgTweenRef.current)cancelAnimationFrame(avgTweenRef.current.raf); };
+  },[golfer.golfer_id,avg]);
+
+  // Inline plugin: clip draw from left to right over 900ms
+  const lineDrawPlugin={
+    id:"lineDrawClip",
+    beforeDatasetsDraw(chart:any){
+      const {ctx,chartArea}=chart;
+      if(!chartArea)return;
+      const p=(chart as any)._drawProgress??1;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(chartArea.left,chartArea.top-20,Math.max(0,(chartArea.right-chartArea.left)*p),chartArea.height+40);
+      ctx.clip();
+    },
+    afterDatasetsDraw(chart:any){
+      chart.ctx.restore();
+    },
+  };
+
   const histConfig = {
     type:"line" as const,
     data:{
@@ -359,13 +419,14 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
     },
     options:{responsive:true,maintainAspectRatio:false,
       animation:{duration:0},
-      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      plugins:{legend:{display:false},tooltip:{enabled:false},lineDrawClip:{}},
       scales:{
         x:{display:false},
         y:{display:false,min:Math.max(0,worst-4),max:best+3}
       },
       layout:{padding:{left:0,right:0,top:16,bottom:0}},
-    }
+    },
+    plugins:[lineDrawPlugin],
   };
 
   // Running avg line for trend arrow
@@ -478,6 +539,8 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
   const seasonAvgRankTied=mySeasonRow?.tied??false;
   const mySeasonAvgPts=myAllPts.length?myAllPts.reduce((a,b)=>a+b,0)/myAllPts.length:null;
 
+  const ordSuffix=(n:number)=>{const abs=Math.abs(n);const t=abs%100;if(t>=11&&t<=13)return"th";const r=abs%10;return r===1?"st":r===2?"nd":r===3?"rd":"th";};
+
   const lastRound=rounds.length?rounds[rounds.length-1]:null;
   // Last event finish with tie detection
   const lastFinishLabel=(()=>{
@@ -524,7 +587,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                 <div style={{fontSize:28,fontWeight:700,lineHeight:1,fontVariantNumeric:"tabular-nums",color:
                   top15Rank===1?"#e8a020":top15Rank===2?"#b0b8c8":top15Rank===3?"#7dc07d":"white"
                 }}>
-                  {top15Rank!=null?(top15RankTied?"T":""): ""}{top15Rank!=null?<CountUp value={top15Rank}/>:"—"}
+                  {top15Rank!=null?(top15RankTied?"T":""): ""}{top15Rank!=null?<><CountUp value={top15Rank}/>{!top15RankTied&&<span style={{fontSize:"0.55em",fontWeight:700,verticalAlign:"super",lineHeight:0}}>{ordSuffix(top15Rank)}</span>}</>:"—"}
                 </div>
                 <div style={{fontSize:10,color:"rgba(255,255,255,0.28)",marginTop:4,fontVariantNumeric:"tabular-nums"}}>
                   {top15AvgPts!=null?`${top15AvgPts.toFixed(1)} pts avg`:""}
@@ -540,7 +603,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                 <div style={{fontSize:46,fontWeight:700,lineHeight:1,fontVariantNumeric:"tabular-nums",color:
                   seasonAvgRank===1?"#e8a020":seasonAvgRank===2?"#b0b8c8":seasonAvgRank===3?"#7dc07d":"white"
                 }}>
-                  {seasonAvgRank!=null?(seasonAvgRankTied?"T":""): ""}{seasonAvgRank!=null?<CountUp value={seasonAvgRank}/>:"—"}
+                  {seasonAvgRank!=null?(seasonAvgRankTied?"T":""): ""}{seasonAvgRank!=null?<><CountUp value={seasonAvgRank}/>{!seasonAvgRankTied&&<span style={{fontSize:"0.45em",fontWeight:700,verticalAlign:"super",lineHeight:0}}>{ordSuffix(seasonAvgRank)}</span>}</>:"—"}
                 </div>
                 <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginTop:6,fontVariantNumeric:"tabular-nums"}}>
                   {mySeasonAvgPts!=null?`${mySeasonAvgPts.toFixed(1)} pts avg`:""}
@@ -564,7 +627,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                   {lastFinishLabel?(()=>{
                     const isTied=lastFinishLabel.startsWith("T");
                     const pos=parseInt(lastFinishLabel.replace("T",""));
-                    return <>{isTied?"T":""}<CountUp value={pos}/></>;
+                    return <>{isTied?"T":""}<CountUp value={pos}/>{!isTied&&<span style={{fontSize:"0.55em",fontWeight:700,verticalAlign:"super",lineHeight:0}}>{ordSuffix(pos)}</span>}</>;
                   })():"—"}
                 </div>
                 <div style={{fontSize:10,color:"rgba(255,255,255,0.28)",marginTop:4,fontVariantNumeric:"tabular-nums"}}>
@@ -621,11 +684,11 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
               const W=cx*2;
               const H=lblY+6; // tight bottom — just enough for label descenders
               return(
-                <div style={{marginTop:25,display:"flex",alignItems:"center",gap:0}}>
+                <div style={{marginTop:25,padding:"0 25px 0 25px",display:"flex",alignItems:"center",gap:0}}>
                   {/* Best — left */}
                   <div style={{flex:"0 0 72px",textAlign:"center"}}>
                     <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#e8a020",marginBottom:6}}>Best</div>
-                    <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}><CountUp value={best}/></div>
+                    <div style={{fontSize:28,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}><CountUp value={best}/></div>
                     <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:3}}>pts</div>
                   </div>
 
@@ -683,7 +746,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                   {/* Worst — right */}
                   <div style={{flex:"0 0 72px",textAlign:"center"}}>
                     <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#e07070",marginBottom:6}}>Worst</div>
-                    <div style={{fontSize:24,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}><CountUp value={worst}/></div>
+                    <div style={{fontSize:28,fontWeight:700,color:"white",lineHeight:1,fontVariantNumeric:"tabular-nums"}}><CountUp value={worst}/></div>
                     <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:3}}>pts</div>
                   </div>
                 </div>
@@ -730,9 +793,9 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
             )}
           </div>
 
-          {/* Scoring Fingerprint */}
-          <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:16,marginBottom:16}}>
-            <div style={{fontSize:14,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",fontWeight:700,marginBottom:10}}>
+          {/* Scoring Fingerprint — only for 2026+ seasons where hole-by-hole data exists */}
+          {season>=2026&&<div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:16,marginBottom:16}}>
+            <div style={{fontSize:14,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",fontWeight:700,marginBottom:10}}>
               Scoring fingerprint
             </div>
             <ScoringFingerprintRadar
@@ -757,7 +820,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
             <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:6,textAlign:"center"}}>
               Avg Stableford pts per hole category · {fp.sampleSize} round{fp.sampleSize===1?"":"s"}
             </div>
-          </div>
+          </div>}
         </>
       )}
 
@@ -767,7 +830,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
           {/* Avg score summary */}
           {grossAvgStats.hasData&&(
             <div style={{marginBottom:16,background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px"}}>
-              <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Avg Scores</div>
+              <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",marginBottom:14}}>Avg Scores</div>
 
               {/* Donut + flanking stats */}
               {(()=>{
@@ -923,7 +986,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
               <div style={{marginBottom:20}}>
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:0}}/>
                 <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px 12px"}}>
-                  <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Scoring by Distance</div>
+                  <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",marginBottom:14}}>Scoring by Distance</div>
                   <style>{`
                     @keyframes dist-bar-rise {
                       from { transform: scaleY(0); }
@@ -986,7 +1049,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
             {/* Header */}
             <div style={{display:"flex",alignItems:"center",padding:"0 14px",marginBottom:4}}>
               <div style={{flex:1}}/>
-              <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)"}}>Round History</div>
+              <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)"}}>Round History</div>
               <div style={{flex:1,display:"flex",justifyContent:"flex-end"}}>
                 {winFlags.some(Boolean)&&(
                   <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"rgba(255,255,255,0.4)"}}>
@@ -1006,7 +1069,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
             <div style={{margin:"0 0"}}>
               <RoundScrubber
                 config={histConfig}
-                deps={[golfer.golfer_id,rounds.length]}
+                deps={[golfer.golfer_id,rounds.length,chartDrawKey]}
                 height={160}
                 rounds={rounds}
                 winFlags={winFlags}
@@ -1105,7 +1168,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
             return(
               <div style={{marginBottom:16}}>
                 <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px 14px"}}>
-                  <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:12}}>Hole Streaks</div>
+                  <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",marginBottom:12}}>Hole Streaks</div>
 
                   <div style={{marginBottom:32,display:"flex",justifyContent:"center"}}>
                     <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
