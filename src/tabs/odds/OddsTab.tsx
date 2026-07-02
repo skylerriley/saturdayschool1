@@ -22,26 +22,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
   const allEventsSorted = [...completedAndUpcoming].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const [selEventId, setSelEventId] = useState<string>(String(upcomingEvents[0]?.event_id || allEventsSorted[0]?.event_id || ""));
 
-  // Default-exclude golfers who haven't played in the last 60 days.
-  // Computed once at mount via the lazy useState initializer.
-  const [excludedIds, setExcludedIds] = useState<Set<number>>(() => {
-    const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000; // 60 days ago in ms
-    const lastPlayed: Record<number, number> = {};
-    const evDateMap: Record<number, number> = {};
-    events.forEach((e: any) => { evDateMap[e.event_id] = new Date(e.date + "T00:00:00").getTime(); });
-    leaderboard.forEach((r: any) => {
-      const evMs = evDateMap[r.event_id];
-      if (!evMs) return;
-      if (!lastPlayed[r.golfer_id] || evMs > lastPlayed[r.golfer_id])
-        lastPlayed[r.golfer_id] = evMs;
-    });
-    const inactive: Set<number> = new Set();
-    golfers.filter((g: any) => !g.is_guest && g.status === "Active").forEach((g: any) => {
-      const last = lastPlayed[g.golfer_id];
-      if (!last || last < cutoff) inactive.add(g.golfer_id as number);
-    });
-    return inactive as Set<number>;
-  });
+  const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set());
 
   // H2H state
   const [h2hA, setH2hA] = useState("");
