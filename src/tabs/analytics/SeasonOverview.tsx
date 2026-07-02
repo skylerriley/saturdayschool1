@@ -499,6 +499,96 @@ function ArcProgress({played,total=52}:{played:number,total?:number}){
   return <canvas ref={canvasRef} style={{width:80,height:48,display:"block",margin:"4px auto 0"}}/>;
 }
 
+// ── SlotCounter — flip-clock style digit reveal ───────────────
+const SLOT_DIGITS = ["0","1","2","3","4","5","6","7","8","9"];
+const EXTRA_ROUNDS = 2;
+const STRIP_REPS = EXTRA_ROUNDS + 1;
+
+function SlotDigit({target, delay, duration=900, digitW, digitH}:{target:string, delay:number, duration?:number, digitW:number, digitH:number}){
+  const ref = useRef<HTMLDivElement>(null);
+  const [offset, setOffset] = useStateOv(0);
+  const startedRef = useRef(false);
+
+  useEffect(()=>{
+    const el = ref.current;
+    if(!el || typeof IntersectionObserver === "undefined"){
+      setOffset(-(parseInt(target,10)||0)*digitH);
+      return;
+    }
+    if(startedRef.current) return;
+    const obs = new IntersectionObserver((entries)=>{
+      for(const entry of entries){
+        if(entry.isIntersecting && !startedRef.current){
+          startedRef.current = true;
+          obs.disconnect();
+          const finalIdx = parseInt(target,10)||0;
+          const totalDistance = (EXTRA_ROUNDS * 10 + finalIdx) * digitH;
+          const startTime = performance.now() + delay;
+          const tick = (now:number)=>{
+            const elapsed = now - startTime;
+            if(elapsed < 0){ requestAnimationFrame(tick); return; }
+            const t = Math.min(1, elapsed / duration);
+            const eased = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+            setOffset(-(eased * totalDistance));
+            if(t < 1) requestAnimationFrame(tick);
+            else setOffset(-totalDistance);
+          };
+          requestAnimationFrame(tick);
+        }
+      }
+    },{threshold:0.1});
+    obs.observe(el);
+    return ()=>obs.disconnect();
+  },[target, delay, duration, digitH]);
+
+  const strip = Array.from({length: STRIP_REPS}, (_, r) =>
+    SLOT_DIGITS.map(d => (
+      <div key={`${r}-${d}`} style={{height:digitH,lineHeight:`${digitH}px`,textAlign:"center"}}>{d}</div>
+    ))
+  ).flat();
+
+  return(
+    <div ref={ref} style={{overflow:"hidden",height:digitH,width:digitW,flexShrink:0}}>
+      <div style={{transform:`translateY(${offset}px)`,willChange:"transform"}}>
+        {strip}
+      </div>
+    </div>
+  );
+}
+
+function SlotCounter({value, fontSize=42, color}:{value:number, fontSize?:number, color?:string}){
+  const formatted = Math.round(value).toLocaleString();
+  const chars = formatted.split("");
+  const digitH = fontSize;
+  const digitDelay = 60;
+
+  // Measure the actual rendered width of one digit at this font/weight
+  const rulerRef = useRef<HTMLSpanElement>(null);
+  const [digitW, setDigitW] = useStateOv(0);
+  useEffect(()=>{
+    if(rulerRef.current) setDigitW(rulerRef.current.offsetWidth);
+  },[fontSize]);
+
+  let digitIndex = 0;
+  const totalDigits = chars.filter(c => /\d/.test(c)).length;
+
+  return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize,fontWeight:700,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.04em",color:color||"inherit"}}>
+      {/* Hidden ruler — measures one digit at the exact font/weight */}
+      <span ref={rulerRef} aria-hidden style={{visibility:"hidden",position:"absolute",pointerEvents:"none"}}>0</span>
+      <span>$</span>
+      {digitW > 0 && chars.map((ch, i)=>{
+        if(/\d/.test(ch)){
+          const staggerDelay = (totalDigits - 1 - digitIndex) * digitDelay;
+          digitIndex++;
+          return <SlotDigit key={i} target={ch} delay={staggerDelay} duration={800+staggerDelay} digitW={digitW} digitH={digitH} />;
+        }
+        return <span key={i}>{ch}</span>;
+      })}
+    </div>
+  );
+}
+
 export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfers,events,charityDonations}:any){
   const totalRounds=seasonData.reduce((s:number,d:any)=>s+d.rounds,0);
   const allPts=seasonData.flatMap((d:any)=>d.allPts);
@@ -736,7 +826,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
         }}>
           <div style={{fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:700,opacity:0.6,marginBottom:4}}>Tzedakah Collected</div>
           <div style={{fontSize:42,fontWeight:700,lineHeight:1,fontVariantNumeric:"tabular-nums",marginBottom:6}}>
-            ${seasonCharity.toLocaleString()}
+            <SlotCounter value={seasonCharity} fontSize={42} color="var(--green-900)" />
           </div>
           <div style={{fontSize:13,opacity:0.6}}>${charityFromRounds} contribution · ${extraDonations.toFixed(0)} add'l donations</div>
         </div>

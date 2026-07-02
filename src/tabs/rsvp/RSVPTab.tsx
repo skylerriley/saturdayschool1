@@ -263,7 +263,8 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
     const now=new Date().toISOString();
     setSignups((p:any)=>p.map((s:any)=>{
       if(s.signup_id!==signup_id)return s;
-      const updated={...s,attending:next,rsvp_updated_at:now};
+      const clearEarly=next!=="Yes";
+      const updated={...s,attending:next,rsvp_updated_at:now,...(clearEarly?{early_tee_request:false}:{})};
       // Guard: skip DB writes if the signup or its event haven't been persisted yet
       // (signup_id >= 1e12 = temp signup, event_id >= 1e12 = temp event still inserting)
       const canWrite=s.signup_id<1e12&&!(s.event_id>=1e12);
@@ -282,7 +283,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
         }
       } else {
         if(canWrite)
-          supabase.from("event_signups").update({attending:next,rsvp_updated_at:now},{signup_id:s.signup_id}).catch(()=>{});
+          supabase.from("event_signups").update({attending:next,rsvp_updated_at:now,...(clearEarly?{early_tee_request:false}:{})},{signup_id:s.signup_id}).catch(()=>{});
       }
       return updated;
     }));
