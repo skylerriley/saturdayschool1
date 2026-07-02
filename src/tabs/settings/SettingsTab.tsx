@@ -106,6 +106,15 @@ export function SettingsTab(){
   const [changelogOpen,setChangelogOpen]=useState(false);
   const versions=[
     {
+      version:"v4.0.0 Seraph",
+      date:"July 1, 2026",
+      sections:[
+        {type:"NEW",items:["Full analytics overhaul — by-golfer deep stats UI","Win probability chart","Hole streaks chart","Scoring fingerprint radar re-added","Weekly AI recap — Gemini-powered round summary","Weekly AI insights on by-golfer view","Tzedakah / charity card","4th of July easter egg"]},
+        {type:"IMPROVED",items:["Analytics visual refresh — typography, shadows, animations","Points gained analytics view","Pairings and analytics layout upgrades"]},
+        {type:"FIXED",items:["Visibility bugs","General formatting and bug fixes"]}
+      ]
+    },
+    {
       version:"v3.5.0 The Architect",
       date:"June 28, 2026",
       sections:[
@@ -180,7 +189,7 @@ export function SettingsTab(){
             <span style={{fontSize:18}}>📋</span>
             <div>
               <div style={{fontSize:15,fontWeight:700,color:"var(--text-primary)"}}>Version History</div>
-              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:1}}>v3.5.0 · June 28, 2026</div>
+              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:1}}>v4.0.0 · July 1, 2026</div>
             </div>
           </div>
           <span style={{fontSize:18,color:"var(--text-muted)",transition:"transform 0.2s",display:"inline-block",transform:changelogOpen?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
