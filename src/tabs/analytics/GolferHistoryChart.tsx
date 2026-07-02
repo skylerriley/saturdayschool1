@@ -1,6 +1,7 @@
 import { useState, useRef, useLayoutEffect, useEffect, useCallback } from "react";
 
 import { computeScoringFingerprint } from "../../lib/scoringFingerprint";
+import { computeRows } from "./PointsGained";
 import { ScoringFingerprintRadar } from "../../components/charts/ScoringFingerprintRadar";
 import { CountUp, ScoreSymbol } from "../../App";
 import { ChartCanvas } from "./ChartCanvas";
@@ -238,7 +239,7 @@ function GolferSubNav({view,setView}:{view:string;setView:(v:string)=>void}){
   );
 }
 
-export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEvents,holeScores,courses,signups}:any){
+export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEvents,holeScores,courses,signups,onNavigatePtsGained}:any){
   const [expandedRound,setExpandedRound]=useState<number|null>(null);
   const [golferSubTab,setGolferSubTab]=useState("overview");
   const [donutKey,setDonutKey]=useState(0);
@@ -1289,6 +1290,167 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                       )}
                     </>
                   )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── PTs Gained Summary ──────────────────────────── */}
+          {(()=>{
+            const STRAWBERRY="Strawberry Farms GC";
+            const OAK_CREEK="Oak Creek GC";
+            const SUMMARY_DEFS=[
+              {id:"par3",       label:"Par 3's",    filter:(_h:number,p:number)=>p===3, courseFilter:undefined as string|undefined},
+              {id:"par4",       label:"Par 4's",    filter:(_h:number,p:number)=>p===4, courseFilter:undefined},
+              {id:"par5",       label:"Par 5's",    filter:(_h:number,p:number)=>p===5, courseFilter:undefined},
+              {id:"front9",     label:"Front Nine", filter:(h:number)=>h>=1&&h<=9,      courseFilter:undefined},
+              {id:"back9",      label:"Back Nine",  filter:(h:number)=>h>=10&&h<=18,    courseFilter:undefined},
+              {id:"strawberry", label:"Strawberry", filter:()=>true,                     courseFilter:STRAWBERRY},
+              {id:"oakcreek",   label:"Oak Creek",  filter:()=>true,                     courseFilter:OAK_CREEK},
+            ];
+
+            // Derive the season from the rounds/leaderboard entries already computed above
+            const pgSeason:number=leaderboard.find((r:any)=>rounds.some((rd:any)=>rd.eid===r.event_id))?.season
+              ?? new Date().getFullYear();
+
+            // Compute each category: full field rows + find this golfer's rank
+            const summaryRows=SUMMARY_DEFS.map(def=>{
+              const {playerRows,fieldAvg}=computeRows(
+                def.filter,golfers,seasonEvents,leaderboard,holeScores,courses,pgSeason,def.courseFilter,signups
+              );
+              const myIdx=playerRows.findIndex((r:any)=>r.golfer.golfer_id===golfer.golfer_id);
+              if(myIdx===-1)return null;
+              return{
+                id:def.id,
+                label:def.label,
+                rank:myIdx+1,
+                total:playerRows.length,
+                avg:playerRows[myIdx].avg,
+                delta:playerRows[myIdx].delta,
+                maxAbsDelta:Math.max(...playerRows.map((r:any)=>Math.abs(r.delta)),0.01),
+              };
+            }).filter(Boolean) as {id:string;label:string;rank:number;total:number;avg:number;delta:number;maxAbsDelta:number}[];
+
+            if(!summaryRows.length)return null;
+
+            const fmtDelta=(d:number)=>(d>=0?"+":"−")+Math.abs(d).toFixed(2);
+            const rankColor=(r:number)=>r===1?"#e8a020":r===2?"#b0b8c8":r===3?"#7dc07d":"rgba(255,255,255,0.85)";
+            const ordSfx=(n:number)=>{const t=Math.abs(n)%100;if(t>=11&&t<=13)return"th";const r=Math.abs(n)%10;return r===1?"st":r===2?"nd":r===3?"rd":"th";};
+
+            return(
+              <div style={{marginBottom:16}}>
+                {/* Title */}
+                <div className="card-title" style={{marginBottom:8}}>Points Gained</div>
+                <div style={{
+                  background:"var(--green-900)",
+                  borderRadius:"var(--radius-md)",
+                  overflow:"hidden",
+                  border:"1px solid rgba(255,255,255,0.08)",
+                }}>
+                  {/* Header */}
+                  <div style={{
+                    display:"grid",
+                    gridTemplateColumns:"44px 8px 1fr 1fr 48px 24px",
+                    padding:"8px 12px",
+                    background:"rgba(0,0,0,0.25)",
+                    borderBottom:"1px solid rgba(255,255,255,0.08)",
+                  }}>
+                    {["Rank","","Category","","Avg",""].map((h,i)=>(
+                      <div key={i} style={{
+                        fontSize:10,fontWeight:700,
+                        letterSpacing:"0.07em",textTransform:"uppercase",
+                        color:"rgba(255,255,255,0.35)",
+                        textAlign:i===4?"right":"left",
+                      }}>{h}</div>
+                    ))}
+                  </div>
+
+                  {summaryRows.map((row,i)=>{
+                    const pos=row.delta>=0;
+                    const near0=Math.abs(row.delta)<0.005;
+                    const fillPct=Math.min(40,(Math.abs(row.delta)/row.maxAbsDelta)*40);
+                    const deltaColor=near0?"rgba(255,255,255,0.35)":pos?"#7dc07d":"#e07070";
+                    const canNavigate=!!onNavigatePtsGained;
+                    return(
+                      <div key={row.label} style={{
+                        display:"grid",
+                        gridTemplateColumns:"44px 8px 1fr 1fr 48px 24px",
+                        padding:"10px 12px",
+                        alignItems:"center",
+                        borderTop:i>0?"1px solid rgba(255,255,255,0.06)":"none",
+                        background:i%2===1?"rgba(255,255,255,0.03)":"transparent",
+                        cursor:canNavigate?"pointer":"default",
+                        WebkitTapHighlightColor:"transparent",
+                      }}
+                      onClick={canNavigate?()=>onNavigatePtsGained(row.id):undefined}
+                      >
+                        {/* Rank */}
+                        <div style={{
+                          fontSize:20,fontWeight:700,
+                          color:rankColor(row.rank),
+                          fontVariantNumeric:"tabular-nums",
+                          lineHeight:1,
+                          textAlign:"center",
+                          width:"100%",
+                        }}>
+                          {row.rank}
+                        </div>
+
+                        {/* Spacer */}
+                        <div/>
+
+                        {/* Category */}
+                        <div style={{
+                          fontSize:16,fontWeight:700,
+                          color:"rgba(255,255,255,0.8)",
+                          letterSpacing:"0.02em",
+                          textAlign:"left",
+                        }}>
+                          {row.label}
+                        </div>
+
+                        {/* Diverging bar + delta superscript */}
+                        <div style={{position:"relative",paddingTop:16,paddingLeft:4,paddingRight:4}}>
+                          <div style={{
+                            position:"absolute",top:0,right:4,
+                            fontSize:10,fontWeight:800,
+                            fontVariantNumeric:"tabular-nums",
+                            color:deltaColor,
+                            whiteSpace:"nowrap",lineHeight:1,
+                          }}>
+                            {fmtDelta(row.delta)}
+                            <span style={{fontSize:8,fontWeight:600,color:"rgba(255,255,255,0.3)",marginLeft:1}}>pts</span>
+                          </div>
+                          <div style={{position:"relative",height:7,borderRadius:4,background:"rgba(255,255,255,0.08)",overflow:"hidden"}}>
+                            <div style={{position:"absolute",left:"50%",top:0,bottom:0,width:1,background:"rgba(255,255,255,0.2)",transform:"translateX(-0.5px)",zIndex:2}}/>
+                            {pos?(
+                              <div style={{position:"absolute",top:0,bottom:0,left:"50%",width:`${fillPct}%`,borderRadius:"0 4px 4px 0",background:"linear-gradient(90deg,#2d6a4f,#7dc07d)"}}/>
+                            ):(
+                              <div style={{position:"absolute",top:0,bottom:0,right:"50%",width:`${fillPct}%`,borderRadius:"4px 0 0 4px",background:"linear-gradient(270deg,#c05050,#e07070)"}}/>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Pt Avg */}
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontSize:16,fontWeight:700,color:"rgba(255,255,255,0.9)",fontVariantNumeric:"tabular-nums",lineHeight:1}}>
+                            {row.avg.toFixed(2)}
+                          </div>
+                        </div>
+
+                        {/* Chevron */}
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end"}}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="9 18 15 12 9 6"/>
+                          </svg>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <div style={{textAlign:"center",padding:"8px 12px",fontSize:10,color:"rgba(255,255,255,0.22)",borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+                    Pts gained vs. field avg · guests excluded
+                  </div>
                 </div>
               </div>
             );

@@ -14,6 +14,7 @@ import { PointsGained } from "./PointsGained";
 export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase,refreshLiveData,initialGolfer,onInitialGolferConsumed,onBack,backLabel,charityDonations}:any){
   const [subTab,setSubTab]=useState("overview");
   const [selGolfer,setSelGolfer]=useState("");
+  const [initialPtsTab,setInitialPtsTab]=useState<string|undefined>(undefined);
 
   useEffect(()=>{
     if(initialGolfer){
@@ -187,7 +188,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
             case "consistency":return <ConsistencyTable seasonData={seasonData}/>;
             case "scatter":return <ScatterChart scatterData={scatterData} flightWinData={flightWinData}/>;
             case "champions":return <ChampionsView golfers={golfers} leaderboard={leaderboard} events={events}/>;
-            case "points-gained":return <PointsGained golfers={golfers} events={events} leaderboard={leaderboard} holeScores={holeScores} courses={courses} signups={signups} selSeason={selSeason}/>;
+            case "points-gained":return <PointsGained golfers={golfers} events={events} leaderboard={leaderboard} holeScores={holeScores} courses={courses} signups={signups} selSeason={selSeason} initialTab={initialPtsTab}/>;
             case "golfer":return(
               <>
                 <div className="form-group">
@@ -199,7 +200,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
                     ))}
                   </select>
                 </div>
-                {selG&&golferRounds.length>0&&<GolferHistoryChart golfer={selG} rounds={golferRounds} seasonData={selGData} leaderboard={leaderboard} golfers={golfers} seasonEvents={seasonEvents} holeScores={holeScores} courses={courses} signups={signups}/>}
+                {selG&&golferRounds.length>0&&<GolferHistoryChart golfer={selG} rounds={golferRounds} seasonData={selGData} leaderboard={leaderboard} golfers={golfers} seasonEvents={seasonEvents} holeScores={holeScores} courses={courses} signups={signups} onNavigatePtsGained={(tabId:string)=>{setInitialPtsTab(tabId);switchSubTab("points-gained");}}/>}
                 {selG&&golferRounds.length===0&&<div className="empty-state"><div className="empty-text">No rounds recorded this season</div></div>}
               </>
             );

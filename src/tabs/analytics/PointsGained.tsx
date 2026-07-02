@@ -137,9 +137,9 @@ function PGSlide({ dir, children }: { dir: "left" | "right" | "none"; children: 
 }
 
 // ── Shared computation ────────────────────────────────────────────────────────
-type HoleFilter = (holeNum: number, par: number, yards: number | null) => boolean;
+export type HoleFilter = (holeNum: number, par: number, yards: number | null) => boolean;
 
-function computeRows(
+export function computeRows(
   filter: HoleFilter,
   golfers: any[], events: any[], leaderboard: any[], holeScores: any[], courses: any[], selSeason: number,
   courseNameFilter?: string, signups?: any[], minHoles?: number
@@ -580,8 +580,8 @@ const METRIC_DEFS: MetricDef[] = [
   { id: "oakcreek",    label: "Oak Creek",      filter: () => true },
 ];
 
-export function PointsGained({ golfers, events, leaderboard, holeScores, courses, signups, selSeason }: any) {
-  const [activeTab, setActiveTab] = useState("overview");
+export function PointsGained({ golfers, events, leaderboard, holeScores, courses, signups, selSeason, initialTab }: any) {
+  const [activeTab, setActiveTab] = useState(initialTab || "overview");
   const [slideDir, setSlideDir] = useState<"left"|"right"|"none">("none");
   const [showSkeleton, setShowSkeleton] = useState(false);
   const prevTabIdx = useRef(0);
