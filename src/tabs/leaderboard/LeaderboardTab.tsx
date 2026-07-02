@@ -1143,7 +1143,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     return(
                       <div>
                         <div style={{fontSize:14,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textAlign:"center",textTransform:"uppercase",marginBottom:4}}>Scorecard</div>
-                        <div style={{overflowX:"auto",margin:8}}>
+                        <div style={{overflowX:"auto",margin:8,paddingLeft:2,paddingRight:2}}>
                           <table className="scorecard-table" style={{minWidth:0,width:"100%"}}>
                             {/* ── COL sizing: label | 9 hole cols | summary | tot ── */}
                             <colgroup>
@@ -1578,12 +1578,12 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                             </div>
                           {row.hs.length>0&&playerCourse?(
                             <div>
-                              <div style={{fontSize:12,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>
-                                Live Scorecard · {playerCourse.tee_box_name} tees
+                              <div style={{fontSize:14,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textAlign:"center",textTransform:"uppercase",marginBottom:4}}>
+                                Scorecard · {playerCourse.tee_box_name} tees
                               </div>
                               {(()=>{
                                 return(
-                                  <div style={{overflowX:"auto"}}>
+                                  <div style={{overflowX:"auto",margin:8,paddingLeft:2,paddingRight:2}}>
                                     <table className="scorecard-table" style={{minWidth:0,width:"100%"}}>
                                       <colgroup>
                                         <col style={{width:"10%"}}/>
@@ -1595,86 +1595,84 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                                       {/* ── FRONT NINE ── */}
                                       <thead>
                                         <tr>
-                                          <th style={{textTransform:"uppercase"}}>HOLE</th>
+                                          <th className="label-col" style={{textTransform:"uppercase"}}>HOLE</th>
                                           {[1,2,3,4,5,6,7,8,9].map(hNum=>{
                                             const wonSkin=sk2(hNum);
                                             return<th key={hNum} style={wonSkin?{background:"var(--gold-100,#fef3cd)",color:"var(--gold-700)"}:{}}>{hNum}{wonSkin?" 💰":""}</th>;
                                           })}
-                                          <th>OUT</th>
-                                          <th style={{background:"var(--surface2)",color:"transparent",userSelect:"none"}}>TOT</th>
-                                        </tr>
-                                        <tr className="par-row">
-                                          <th style={{textTransform:"uppercase"}}>PAR</th>
-                                          {f9cells.map((_:any,i:number)=>{
-                                            const hNum=i+1;
-                                            return<th key={i} style={sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{}}>{pars[i]||"-"}</th>;
-                                          })}
-                                          <th>{pars.slice(0,9).reduce((a:number,b:number)=>a+b,0)||""}</th>
-                                          <th style={{background:"var(--surface2)"}}></th>
+                                          <th className="total-col">OUT</th>
+                                          <th className="total-col" style={{background:"var(--surface2)",color:"transparent",userSelect:"none"}}>TOT</th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         <tr>
-                                          <td style={{fontWeight:600,fontSize:12,textTransform:"uppercase"}}>SCORE</td>
+                                          <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>PAR</td>
+                                          {f9cells.map((_:any,i:number)=>{
+                                            const hNum=i+1;
+                                            return<td key={i} style={{color:"var(--text-muted)",fontSize:13,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{})}}>{pars[i]||"-"}</td>;
+                                          })}
+                                          <td className="total-col">{pars.slice(0,9).reduce((a:number,b:number)=>a+b,0)||""}</td>
+                                          <td className="total-col" style={{background:"var(--surface2)"}}></td>
+                                        </tr>
+                                        <tr>
+                                          <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>SCORE</td>
                                           {f9cells.map((h:any,i:number)=>{
                                             const hNum=i+1;
                                             return<td key={i} style={sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{}}>{h?<ScoreSymbolLive gross={h.gross_score} par={pars[i]||4}/>:<span style={{color:"var(--border)"}}>·</span>}</td>;
                                           })}
-                                          <td style={{fontWeight:700}}>{hasF9?f9gross||"":""}</td>
-                                          <td style={{background:"var(--surface2)"}}></td>
+                                          <td className="total-col">{hasF9?f9gross||"":""}</td>
+                                          <td className="total-col" style={{background:"var(--surface2)"}}></td>
                                         </tr>
                                         <tr>
-                                          <td style={{fontWeight:600,fontSize:13,textTransform:"uppercase",color:"var(--text-muted)"}}>PTS</td>
+                                          <td className="label-col" style={{textTransform:"uppercase",color:"var(--text-muted)",fontSize:12}}>PTS</td>
                                           {f9cells.map((h:any,i:number)=>{
                                             const hNum=i+1;
                                             const p=h?.stableford_points;
-                                            const cls=p===4?"pts-eagle":p===3?"pts-birdie":p===2?"pts-par":p===1?"pts-bogey":p===0?"pts-zero":"";
-                                            return<td key={i} className={cls} style={sk2(hNum)?{background:"var(--gold-50,#fffbeb)",fontWeight:700,color:"var(--gold-700)"}:{}}>{h!=null?p:<span style={{color:"var(--border)"}}>·</span>}</td>;
+                                            return<td key={i} style={{fontSize:15,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)",fontWeight:700,color:"var(--gold-700)"}:{color:"var(--text-muted)"})}}>{h!=null?p:<span style={{color:"var(--border)"}}>·</span>}</td>;
                                           })}
-                                          <td style={{fontWeight:700,color:"var(--green-700)"}}>{hasF9?f9pts||"":""}</td>
-                                          <td style={{background:"var(--surface2)"}}></td>
+                                          <td className="total-col" style={{color:"var(--green-700)"}}>{hasF9?f9pts||"":""}</td>
+                                          <td className="total-col" style={{background:"var(--surface2)"}}></td>
                                         </tr>
                                       </tbody>
 
                                       {/* ── BACK NINE ── */}
                                       <tbody>
                                         <tr style={{borderTop:"2px solid var(--border-md)"}}>
-                                          <th style={{textTransform:"uppercase",background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px 5px 8px",textAlign:"left",whiteSpace:"nowrap"}}>HOLE</th>
+                                          <th className="label-col" style={{textTransform:"uppercase",background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px 5px 8px",textAlign:"left",whiteSpace:"nowrap"}}>HOLE</th>
                                           {[10,11,12,13,14,15,16,17,18].map(hNum=>{
                                             const wonSkin=sk2(hNum);
                                             return<th key={hNum} style={{background:wonSkin?"var(--gold-100,#fef3cd)":"var(--green-900)",color:wonSkin?"var(--gold-700)":"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px",textAlign:"center"}}>{hNum}{wonSkin?" 💰":""}</th>;
                                           })}
-                                          <th style={{background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px",textAlign:"center"}}>IN</th>
-                                          <th style={{background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px",textAlign:"center"}}>TOT</th>
+                                          <th className="total-col" style={{background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px"}}>IN</th>
+                                          <th className="total-col" style={{background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px"}}>TOT</th>
                                         </tr>
                                         <tr>
-                                          <th style={{textTransform:"uppercase",background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px 5px 8px",textAlign:"left"}}>PAR</th>
+                                          <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>PAR</td>
                                           {b9cells.map((_:any,i:number)=>{
                                             const hNum=i+10;
-                                            return<th key={i} style={{background:sk2(hNum)?"var(--gold-50,#fffbeb)":"var(--green-900)",color:sk2(hNum)?"var(--gold-700)":"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px",textAlign:"center"}}>{pars[9+i]||"-"}</th>;
+                                            return<td key={i} style={{color:"var(--text-muted)",fontSize:14,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{})}}>{pars[9+i]||"-"}</td>;
                                           })}
-                                          <th style={{background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px",textAlign:"center"}}>{pars.slice(9,18).reduce((a:number,b:number)=>a+b,0)||""}</th>
-                                          <th style={{background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px",textAlign:"center"}}>{pars.reduce((a:number,b:number)=>a+b,0)||""}</th>
+                                          <td className="total-col">{pars.slice(9,18).reduce((a:number,b:number)=>a+b,0)||""}</td>
+                                          <td className="total-col">{pars.reduce((a:number,b:number)=>a+b,0)||""}</td>
                                         </tr>
                                         <tr>
-                                          <td style={{fontWeight:600,fontSize:12,textTransform:"uppercase"}}>SCORE</td>
+                                          <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>SCORE</td>
                                           {b9cells.map((h:any,i:number)=>{
                                             const hNum=i+10;
                                             return<td key={i} style={sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{}}>{h?<ScoreSymbolLive gross={h.gross_score} par={pars[9+i]||4}/>:<span style={{color:"var(--border)"}}>·</span>}</td>;
                                           })}
-                                          <td style={{fontWeight:700}}>{hasB9?b9gross||"":""}</td>
-                                          <td style={{fontWeight:700}}>{hasF9&&hasB9?totGross:""}</td>
+                                          <td className="total-col">{hasB9?b9gross||"":""}</td>
+                                          <td className="total-col">{hasF9&&hasB9?totGross:""}</td>
                                         </tr>
                                         <tr>
-                                          <td style={{fontWeight:600,fontSize:12,textTransform:"uppercase",color:"var(--text-muted)"}}>PTS</td>
+                                          <td className="label-col" style={{textTransform:"uppercase",color:"var(--text-muted)",fontSize:12}}>PTS</td>
                                           {b9cells.map((h:any,i:number)=>{
                                             const hNum=i+10;
                                             const p=h?.stableford_points;
-                                            const cls=p===4?"pts-eagle":p===3?"pts-birdie":p===2?"pts-par":p===1?"pts-bogey":p===0?"pts-zero":"";
-                                            return<td key={i} className={cls} style={sk2(hNum)?{background:"var(--gold-50,#fffbeb)",fontWeight:700,color:"var(--gold-700)"}:{}}>{h!=null?p:<span style={{color:"var(--border)"}}>·</span>}</td>;
+                                            return<td key={i} style={{fontSize:15,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)",fontWeight:700,color:"var(--gold-700)"}:{color:"var(--text-muted)"})}}>{h!=null?p:<span style={{color:"var(--border)"}}>·</span>}</td>;
                                           })}
-                                          <td style={{fontWeight:700,color:"var(--green-700)"}}>{hasB9?b9pts||"":""}</td>
-                                          <td style={{fontWeight:700,color:"var(--green-700)"}}>{hasF9&&hasB9?totPts:""}</td>
+                                          <td className="total-col" style={{color:"var(--green-700)"}}>{hasB9?b9pts||"":""}</td>
+                                          <td className="total-col" style={{color:"var(--green-700)",fontWeight:700}}>{hasF9&&hasB9?totPts:""}</td>
                                         </tr>
                                       </tbody>
                                     </table>
@@ -1685,6 +1683,39 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                           ):(
                             <div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",padding:"8px 9px"}}>No hole-by-hole data yet</div>
                           )}
+                          {(()=>{
+                            if(row.hs.length===0||row.thru>=18)return null;
+                            const nextHole=row.hs[row.hs.length-1].hole_number+1;
+                            if(nextHole>18)return null;
+                            const completedSummaryIds=new Set(
+                              leaderboardCompleted
+                                .filter((r:any)=>r.golfer_id===row.golfer_id)
+                                .map((r:any)=>r.summary_id)
+                            );
+                            const summaryDateMap:Record<number,string>={};
+                            leaderboardCompleted.filter((r:any)=>r.golfer_id===row.golfer_id).forEach((r:any)=>{
+                              const ev=events.find((e:any)=>e.event_id===r.event_id);
+                              if(ev)summaryDateMap[r.summary_id]=ev.date||"";
+                            });
+                            const holeHistory=holeScores.filter((h:any)=>
+                              completedSummaryIds.has(h.summary_id)&&
+                              h.hole_number===nextHole&&
+                              h.stableford_points!=null
+                            ).sort((a:any,b:any)=>(summaryDateMap[b.summary_id]||"").localeCompare(summaryDateMap[a.summary_id]||"")).slice(0,4);
+                            if(holeHistory.length<2)return null;
+                            const avg=holeHistory.reduce((s:number,h:any)=>s+h.stableford_points,0)/holeHistory.length;
+                            const firstName=g?.first_name||"Player";
+                            return(
+                              <div className="drawer-card" style={{margin:"10px 9px 0"}}>
+                                <div className="drawer-card-body">
+                                  <div className="drawer-card-section-label" style={{marginBottom:6,textAlign:"left"}}>HOLE {nextHole} INSIGHT</div>
+                                  <p style={{margin:0,fontSize:13,lineHeight:1.55,color:"var(--text-primary)",textAlign:"left"}}>
+                                    {firstName} has averaged <strong>{avg.toFixed(1)} pts</strong> on Hole {nextHole} over his last {holeHistory.length} round{holeHistory.length===1?"":"s"}.
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })()}
                           </div>{/* end drawer-shell */}
                         </div>
                         );

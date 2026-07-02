@@ -578,7 +578,7 @@ const CSS = `
   .lb-detail-val{font-size:18px;font-weight:700;color:var(--text-primary);line-height:1.2;}
 
   /* Unified drawer shell — full-bleed background, padding on inner zones only */
-  .drawer-shell{background:linear-gradient(160deg,#eef4ea 0%,#f5f7f2 60%,#ede9e1 100%);margin:0;padding-top:8px;}
+  .drawer-shell{background:linear-gradient(160deg,#eef4ea 0%,#f5f7f2 60%,#ede9e1 100%);margin:0;padding-top:8px;padding-bottom:12px;}
   .drawer-chart-zone{padding:10px 10px 4px;}
   .drawer-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:0 10px 8px;background:transparent;}
   .drawer-tile{background:#fff;border:0.5px solid var(--border,#ddd8ce);border-radius:8px;padding:8px 6px 7px;text-align:center;display:flex;flex-direction:column;align-items:center;}
