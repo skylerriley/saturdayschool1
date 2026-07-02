@@ -202,7 +202,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
 
   return (
     <div>
-      <div className="section-title">Odds</div>
+      <div className="card-title">Odds</div>
       <div className="section-sub">Projected win probabilities · powered by Monte Carlo simulation</div>
 
       {/* Mode toggle */}
