@@ -1905,7 +1905,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
         });
         return(
           <div>
-            <UpcomingCourseCard event={nextEvent} courses={courses} holeImages={holeImages} onClick={()=>setUpcomingWeatherOpen(true)} fieldCount={upEntries.length}/>
+            <UpcomingCourseCard event={nextEvent} courses={courses} holeImages={holeImages} onClick={()=>setUpcomingWeatherOpen(true)} fieldCount={upEntries.length} firstTeeTime={(nextEvent.tee_times||[]).slice().sort()[0]}/>
             <FieldStrengthMeter upEntries={upEntries} golfers={golfers} leaderboard={leaderboardCompleted} events={events} season={selSeason}/>
 
             {rows.length===0&&(
@@ -2051,15 +2051,13 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
       </SubTabPanel>
 
       {liveWeatherOpen&&liveEvent&&ReactDOM.createPortal(
-        <WeatherModal courseName={liveEvent.course_name} onClose={()=>setLiveWeatherOpen(false)}/>,
+        <WeatherModal courseName={liveEvent.course_name} onClose={()=>setLiveWeatherOpen(false)} eventDate={liveEvent.date} firstTeeTime={(liveEvent.tee_times||[]).slice().sort()[0]}/>,
         document.body
       )}
 
       {upcomingWeatherOpen&&nextEvent&&(()=>{
-        const upSignups=signups.filter((s:any)=>s.event_id===nextEvent.event_id&&s.attending==="Yes"&&s.assigned_tee_time);
-        const firstTee=upSignups.length>0
-          ?upSignups.map((s:any)=>String(s.assigned_tee_time)).sort()[0]
-          :undefined;
+        const sortedTeeTimes=(nextEvent.tee_times||[]).slice().sort();
+        const firstTee=sortedTeeTimes[0]||undefined;
         return <WeatherModal courseName={nextEvent.course_name} onClose={()=>setUpcomingWeatherOpen(false)} eventDate={nextEvent.date} firstTeeTime={firstTee}/>;
       })()}
 

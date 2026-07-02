@@ -9,7 +9,7 @@ import { useWeatherReady } from "../../hooks/useWeatherReady";
 // UPCOMING COURSE CARD -- rounded hero image (random hole photo) with
 // course name, longest-tee yardage, par, and event-date weather overlay.
 // ------------------------------------------------------------------
-export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldCount }: any) {
+export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldCount, firstTeeTime }: any) {
   const courseName = event?.course_name || "";
   const courseImages = (holeImages || []).filter((img: any) => img.course_name === courseName && img.public_url);
   const randomImg = useMemo(() => {
@@ -26,7 +26,7 @@ export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldC
   const totalYards = (longestTee?.hole_yards || []).reduce((a: number, b: number) => a + (b || 0), 0);
   const par = longestTee?.par;
 
-  const { wx } = useWeather(courseName, event?.date || "");
+  const { wx } = useWeather(courseName, event?.date || "", firstTeeTime);
   const wxReady = useWeatherReady(wx);
 
   return (

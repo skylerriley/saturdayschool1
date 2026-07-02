@@ -243,7 +243,9 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
   const selEvent=events.find((e:any)=>e.event_id===selEventId);
   const eventSignups=signups.filter((s:any)=>s.event_id===selEventId);
-  const {wx:forecastWx}=useWeather(selEvent?.course_name||"",selEvent?.date||"");
+  const firstTeeTimes=(selEvent?.tee_times||[]).slice().sort();
+  const earliestTee=firstTeeTimes[0]||undefined;
+  const {wx:forecastWx}=useWeather(selEvent?.course_name||"",selEvent?.date||"",earliestTee);
   const wxReady=useWeatherReady(forecastWx,350,selEventId);
 
   useEffect(()=>{

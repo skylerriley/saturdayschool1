@@ -36,8 +36,12 @@ function useEventForecast(courseName: string, eventDate: string, firstTeeHour: n
       .then(raw => {
         const times: string[] = raw.hourly.time;
         const get = (k: string, i: number) => raw.hourly[k]?.[i] ?? null;
-        const am8Idx = times.findIndex((t: string) => t === eventDate + "T08:00");
-        const snapIdx = am8Idx >= 0 ? am8Idx : times.findIndex((t: string) => t.startsWith(eventDate + "T07") || t.startsWith(eventDate + "T09"));
+        const teeStr = eventDate + "T" + String(firstTeeHour).padStart(2, "0") + ":00";
+        const exactIdx = times.findIndex((t: string) => t === teeStr);
+        const snapIdx = exactIdx >= 0 ? exactIdx : times.findIndex((t: string) => {
+          const h = parseInt(t.slice(11, 13));
+          return t.startsWith(eventDate) && Math.abs(h - firstTeeHour) <= 1;
+        });
         const cur = snapIdx >= 0 ? {
           temp: Math.round(get("temperature_2m", snapIdx) ?? 0),
           wind: Math.round(get("windspeed_10m", snapIdx) ?? 0),
