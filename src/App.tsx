@@ -518,6 +518,7 @@ const CSS = `
   /* Scoped to .app-booting (removed ~1s after load) so these rules vanish
      entirely afterward -- no lingering transform/containing-block effects. */
   @keyframes bootFadeIn{from{opacity:0;}to{opacity:1;}}
+  @keyframes phFadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
   @keyframes bootRowIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
   @keyframes bootRiseIn{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
   .app-booting .stat-grid{animation:bootFadeIn 0.4s ease-out backwards;}

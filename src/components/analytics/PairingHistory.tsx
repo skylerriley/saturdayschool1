@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { CountUp } from "../../App";
 
 interface TrailDot {
   eventId: number;
@@ -260,7 +261,7 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
   }
 
   return (
-    <div style={{ marginTop: 24, marginBottom: 20 }}>
+    <div style={{ marginBottom: 20 }}>
       {/* Summary card — dark green with three sub-cards */}
       <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", padding: "16px 12px", marginBottom: 14 }}>
         {/* Title row */}
@@ -308,7 +309,7 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
           <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-sm,6px)", padding: "10px 8px", textAlign: "center" }}>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Never Paired</div>
             <div style={{ fontSize: 35, fontWeight: 700, lineHeight: 1, color: neverPlayedWith.length > 0 ? "#e07070" : "rgba(255,255,255,0.4)", fontVariantNumeric: "tabular-nums" }}>
-              {neverPlayedWith.length}
+              <CountUp value={neverPlayedWith.length} />
             </div>
             <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", marginTop: 5 }}>active players</div>
           </div>
@@ -317,7 +318,7 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
           <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-sm,6px)", padding: "10px 8px", textAlign: "center" }}>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Playing Partners</div>
             <div style={{ fontSize: 45, fontWeight: 700, lineHeight: 1, color: "#7dc07d", fontVariantNumeric: "tabular-nums" }}>
-              {uniquePartners}
+              <CountUp value={uniquePartners} />
             </div>
            
           </div>
@@ -325,7 +326,10 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
           {/* Most Frequent */}
           <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-sm,6px)", padding: "10px 8px", textAlign: "center" }}>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 6 }}>Most Frequent</div>
-            <div style={{ fontSize: mostFrequentPartner ? 28 : 35, fontWeight: 700, lineHeight: 1.1, color: "#e8a020", fontVariantNumeric: "tabular-nums" }}>
+            <div
+              key={mostFrequentPartner?.partnerId ?? "none"}
+              style={{ fontSize: mostFrequentPartner ? 28 : 35, fontWeight: 700, lineHeight: 1.1, color: "#e8a020", fontVariantNumeric: "tabular-nums", animation: "phFadeIn 0.6s ease both" }}
+            >
               {mostFrequentPartner ? displayName(mostFrequentPartner.partnerName) : "--"}
             </div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.28)", marginTop: 5 }}>
