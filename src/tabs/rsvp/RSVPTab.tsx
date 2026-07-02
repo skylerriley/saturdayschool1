@@ -200,9 +200,6 @@ function SwipeMemberRow({ signup, golfer, isEarly, myGuests, allGolfers, onToggl
         <div ref={rowRef} className={`rsvp-swipe-row${isEarly ? ' early-active' : ''}`}>
           <div className="rsvp-name" style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
             {golfer.first_name} {golfer.last_name}
-            {myGuests.length > 0 && (
-              <span style={{fontSize:12,color:"var(--gold-700)"}}>+{myGuests.length} guest{myGuests.length > 1 ? "s" : ""}</span>
-            )}
           </div>
           {isEarly && (
             <span className="early-badge"><Sun size={11} strokeWidth={2.5} style={{flexShrink:0}} /> EARLY ✓</span>
@@ -216,8 +213,8 @@ function SwipeMemberRow({ signup, golfer, isEarly, myGuests, allGolfers, onToggl
       {myGuests.map((gs: any) => {
         const gg = allGolfers.find((x: any) => x.golfer_id === gs.golfer_id);
         return (
-          <div key={gs.signup_id} className="rsvp-row" style={{paddingLeft:20,background:"var(--gold-50)"}}>
-            <div className="rsvp-name" style={{fontSize:15,color:"var(--gold-800)"}}>↳ {gg ? `${gg.first_name} ${gg.last_name}` : "Guest"} <span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px"}}>guest</span></div>
+          <div key={gs.signup_id} className="rsvp-row" style={{paddingLeft:20,paddingRight:14,background:"var(--gold-50)"}}>
+            <div className="rsvp-name" style={{fontSize:15,color:"var(--gold-800)",flex:1,minWidth:0}}>↳ {gg ? `${gg.first_name} ${gg.last_name}` : "Guest"} <span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px"}}>guest</span></div>
             <div className="rsvp-actions">
               <button className={`rsvp-btn yes${gs.attending === "Yes" ? " active" : ""}`} onClick={() => onToggleGuestAttending(gs.signup_id, gs.golfer_id, "Yes", gs.attending)}>In</button>
               <button className={`rsvp-btn no${gs.attending === "No" ? " active" : ""}`} onClick={() => onToggleGuestAttending(gs.signup_id, gs.golfer_id, "No", gs.attending)}>Out</button>
@@ -404,9 +401,14 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
       if(!b.rsvp_updated_at)return -1;
       return new Date(a.rsvp_updated_at).getTime()-new Date(b.rsvp_updated_at).getTime();
     };
-    const going=eventSignups.filter((s:any)=>s.attending==="Yes").sort(sortByTime).map((s:any)=>golferName(golfers,s.golfer_id));
-    const out=eventSignups.filter((s:any)=>s.attending==="No").sort(sortByTime).map((s:any)=>golferName(golfers,s.golfer_id));
-    const unconf=eventSignups.filter((s:any)=>s.attending==="Unconfirmed").map((s:any)=>golferName(golfers,s.golfer_id));
+    const signupLabel=(s:any)=>{
+      const g=golfers.find((gl:any)=>gl.golfer_id===s.golfer_id);
+      const name=golferName(golfers,s.golfer_id);
+      return g?.is_guest?`${name} (Guest)`:name;
+    };
+    const going=eventSignups.filter((s:any)=>s.attending==="Yes").sort(sortByTime).map(signupLabel);
+    const out=eventSignups.filter((s:any)=>s.attending==="No").sort(sortByTime).map(signupLabel);
+    const unconf=eventSignups.filter((s:any)=>s.attending==="Unconfirmed").map(signupLabel);
     return`Reminder to sign up for ${formatDate(selEvent.date)} @ ${selEvent.course_name}\nTee times: ${selEvent.tee_times.join(", ")}\n\n✅ Going (${going.length}):\n${going.map((n:string)=>`  * ${n}`).join("\n")}\n\n❓ No response yet (${unconf.length}):\n${unconf.map((n:string)=>`  * ${n}`).join("\n")}\n\n❌ Not attending (${out.length}):\n${out.map((n:string)=>`  * ${n}`).join("\n")}\n\nSign up in the app: https://saturdayschool.vercel.app/?tab=rsvp`;
   };
 
@@ -484,8 +486,8 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
               const g=golfers.find((gl:any)=>gl.golfer_id===s.golfer_id);
               if(!g)return null;
               const name=firstNameCounts[g.first_name]>1?`${g.first_name} ${g.last_name.charAt(0)}.`:g.first_name;
-              return{name,early:!!s.early_tee_request};
-            }).filter(Boolean) as {name:string,early:boolean}[];
+              return{name,early:!!s.early_tee_request,isGuest:!!g.is_guest};
+            }).filter(Boolean) as {name:string,early:boolean,isGuest:boolean}[];
             return(
               <div className="info-row" style={{alignItems:"flex-start"}}>
                 <span className="info-key" style={{paddingTop:3}}>Field</span>
@@ -493,6 +495,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                   {displayNames.map((d,i:number)=>(
                     <span key={i} style={{display:"inline-flex",alignItems:"center",gap:5,background:"var(--green-50)",border:"1px solid var(--green-100)",borderRadius:14,padding:"3px 10px",fontSize:13,fontWeight:600,color:"var(--green-700)"}}>
                       {d.name}
+                      {d.isGuest&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--green-700)",color:"white",fontSize:9,fontWeight:800,lineHeight:1,flexShrink:0}}>G</span>}
                       {d.early&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--gold-600)",color:"white",fontSize:8,fontWeight:800,lineHeight:1,flexShrink:0}}>E</span>}
                     </span>
                   ))}
