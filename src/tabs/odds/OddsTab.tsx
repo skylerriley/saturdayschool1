@@ -78,11 +78,15 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
   const noHistoryGolfers = playingField.filter((g: any) => !profiles.find((p: any) => p.golfer.golfer_id === g.golfer_id));
   // Note: lateAddProfiles are built above and merged into allProfiles
 
-  // Late-add golfers: in eventOdds (backend computed odds for them)
-  // but not in the signed-up field. Add them to display if they have odds.
-  const lateAddGolferIds = (eventOdds ?? [])
-    .map((o: any) => o.golfer_id)
-    .filter((gid: number) => !allFieldIds.has(gid));
+  // Late-add golfers: only surface them when there is no confirmed signup field
+  // (allFieldIds empty = event hasn't opened signups yet, so odds covers all members).
+  // When a field IS confirmed, don't let eventOdds inject extra golfers — those rows
+  // may belong to a different event (App.tsx loads odds for the soonest event only).
+  const lateAddGolferIds = allFieldIds.size === 0
+    ? (eventOdds ?? [])
+        .map((o: any) => o.golfer_id)
+        .filter((gid: number) => !playingIds.has(gid))
+    : [];
   const lateAddProfiles = lateAddGolferIds
     .map((gid: number) => golfers.find((g: any) => g.golfer_id === gid))
     .filter(Boolean)

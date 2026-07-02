@@ -332,7 +332,12 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
     .map((g: any) => buildProfile(g, leaderboard, events, signups, courseName, playingIds, playingField))
     .filter(Boolean) as any[];
 
-  const lateAddGolferIds = (eventOdds ?? []).map((o: any) => o.golfer_id).filter((gid: number) => !allFieldIds.has(gid));
+  // Only use eventOdds to surface extra golfers when no confirmed field exists.
+  // When signups/leaderboard define the field, eventOdds may belong to a different
+  // event (App.tsx loads odds for the soonest event only) and must not add players.
+  const lateAddGolferIds = allFieldIds.size === 0
+    ? (eventOdds ?? []).map((o: any) => o.golfer_id).filter((gid: number) => !playingIds.has(gid))
+    : [];
   const lateAddProfiles = lateAddGolferIds
     .map((gid: number) => golfers.find((g: any) => g.golfer_id === gid))
     .filter(Boolean)
