@@ -1,11 +1,16 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
+import { CountUp } from "../../components/common";
 
 // Sparkline for a course: small canvas showing round-by-round avg trend
-function Sparkline({data,color="#7dc07d",height=44}:{data:number[],color?:string,height?:number}){
+function Sparkline({data,color="#7dc07d",height=44,reveal=false}:{data:number[],color?:string,height?:number,reveal?:boolean}){
   const canvasRef=useRef<HTMLCanvasElement>(null);
+  const rafRef=useRef<number>(0);
+
   useEffect(()=>{
     const c=canvasRef.current;
     if(!c||data.length<2)return;
+    cancelAnimationFrame(rafRef.current);
+
     const dpr=window.devicePixelRatio||1;
     const w=c.offsetWidth||120;
     c.width=w*dpr;
@@ -13,37 +18,106 @@ function Sparkline({data,color="#7dc07d",height=44}:{data:number[],color?:string
     const ctx=c.getContext("2d");
     if(!ctx)return;
     ctx.scale(dpr,dpr);
+
     const mn=Math.min(...data),mx=Math.max(...data);
     const range=mx-mn||1;
     const pad=4;
     const xStep=(w-pad*2)/(data.length-1);
     const yFor=(v:number)=>height-pad-(v-mn)/range*(height-pad*2);
-    // Fill under line
-    ctx.beginPath();
-    ctx.moveTo(pad,yFor(data[0]));
-    data.forEach((v,i)=>ctx.lineTo(pad+i*xStep,yFor(v)));
-    ctx.lineTo(pad+(data.length-1)*xStep,height);
-    ctx.lineTo(pad,height);
-    ctx.closePath();
-    ctx.fillStyle="rgba(125,192,125,0.15)";
-    ctx.fill();
-    // Line
-    ctx.beginPath();
-    ctx.moveTo(pad,yFor(data[0]));
-    data.forEach((v,i)=>ctx.lineTo(pad+i*xStep,yFor(v)));
-    ctx.strokeStyle=color;
-    ctx.lineWidth=1.5;
-    ctx.lineJoin="round";
-    ctx.stroke();
-    // Last dot
-    const lx=pad+(data.length-1)*xStep;
-    const ly=yFor(data[data.length-1]);
-    ctx.beginPath();
-    ctx.arc(lx,ly,3,0,Math.PI*2);
-    ctx.fillStyle=color;
-    ctx.fill();
-  },[data,color,height]);
+
+    const draw=(progress:number)=>{
+      ctx.clearRect(0,0,w,height);
+      const visibleX=pad+(w-pad*2)*progress;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0,0,visibleX,height);
+      ctx.clip();
+
+      // Fill under line
+      ctx.beginPath();
+      ctx.moveTo(pad,yFor(data[0]));
+      data.forEach((v,i)=>ctx.lineTo(pad+i*xStep,yFor(v)));
+      ctx.lineTo(pad+(data.length-1)*xStep,height);
+      ctx.lineTo(pad,height);
+      ctx.closePath();
+      ctx.fillStyle="rgba(125,192,125,0.15)";
+      ctx.fill();
+
+      // Line
+      ctx.beginPath();
+      ctx.moveTo(pad,yFor(data[0]));
+      data.forEach((v,i)=>ctx.lineTo(pad+i*xStep,yFor(v)));
+      ctx.strokeStyle=color;
+      ctx.lineWidth=1.5;
+      ctx.lineJoin="round";
+      ctx.stroke();
+
+      ctx.restore();
+
+      // Last dot — only when fully revealed
+      if(progress>=1){
+        const lx=pad+(data.length-1)*xStep;
+        const ly=yFor(data[data.length-1]);
+        ctx.beginPath();
+        ctx.arc(lx,ly,3,0,Math.PI*2);
+        ctx.fillStyle=color;
+        ctx.fill();
+      }
+    };
+
+    if(!reveal){
+      draw(1);
+      return;
+    }
+
+    const duration=700;
+    const start=performance.now();
+    const tick=(now:number)=>{
+      const t=Math.min(1,(now-start)/duration);
+      const eased=1-Math.pow(1-t,3);
+      draw(eased);
+      if(t<1)rafRef.current=requestAnimationFrame(tick);
+    };
+    rafRef.current=requestAnimationFrame(tick);
+    return()=>cancelAnimationFrame(rafRef.current);
+  },[data,color,height,reveal]);
+
   return <canvas ref={canvasRef} style={{width:"100%",height,display:"block"}}/>;
+}
+
+function CourseTile({tile,c,shortName,sparkData}:any){
+  const tileRef=useRef<HTMLDivElement>(null);
+  const [revealed,setRevealed]=useState(false);
+
+  useEffect(()=>{
+    const el=tileRef.current;
+    if(!el)return;
+    const obs=new IntersectionObserver(([entry])=>{
+      if(entry.isIntersecting){setRevealed(true);obs.disconnect();}
+    },{threshold:0.3});
+    obs.observe(el);
+    return()=>obs.disconnect();
+  },[]);
+
+  return(
+    <div ref={tileRef} style={{background:tile.bg,padding:"4px 4px 14px",color:"white",position:"relative",overflow:"hidden"}}>
+      <div style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.45)",fontWeight:700,marginBottom:4}}>
+        {shortName}
+      </div>
+      <div style={{fontSize:36,fontWeight:700,lineHeight:1,color:tile.numColor,fontVariantNumeric:"tabular-nums"}}>
+        {revealed?<CountUp value={c.avg} decimals={1} duration={700}/>:" "}
+      </div>
+      <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:3}}>
+        pts avg · {c.count} round{c.count===1?"":"s"}
+      </div>
+      {sparkData.length>=2&&(
+        <div style={{marginTop:8}}>
+          <Sparkline data={sparkData} color={tile.sparkColor} height={44} reveal={revealed}/>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function CourseChart({courseAvgs,holeScores,events,courses,leaderboard,golfers}:any){
@@ -95,57 +169,36 @@ export function CourseChart({courseAvgs,holeScores,events,courses,leaderboard,go
 
   // Course tile config — first two courses get hero tiles, rest fall back to info rows
   const TILE_CONFIGS=[
-    {bg:"var(--green-900)",numColor:"#7dc07d",sparkColor:"#7dc07d"},
-    {bg:"#4a2e05",numColor:"#e8c84a",sparkColor:"#e8c84a"},
+    {bg:"transparent",numColor:"#7dc07d",sparkColor:"#7dc07d"},
+    {bg:"transparent",numColor:"#e8c84a",sparkColor:"#e8c84a"},
   ];
 
   return(
     <div>
-      <div className="card-title" style={{marginBottom:4}}>Stableford Averages by Course</div>
-      <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:12}}>Field average stableford points per course this season.</p>
+      <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px",marginBottom:20}}>
+        <div className="card-title" style={{marginBottom:12,color:"#fff"}}>Stableford Averages by Course</div>
 
-      {/* Hero tiles — side by side, dark */}
-      {courseAvgs.length>0&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
-          {courseAvgs.slice(0,2).map((c:any,i:number)=>{
-            const tile=TILE_CONFIGS[i]||TILE_CONFIGS[0];
-            const sparkData=courseSparklines[c.name]||[];
-            const shortName=c.name.replace(" Golf Club","").replace(" GC","").replace("Golf Course","").replace("Golf Club","").trim();
-            return(
-              <div key={c.name} style={{
-                background:tile.bg,
-                borderRadius:"var(--radius-md)",
-                padding:"14px 12px",
-                color:"white",
-                position:"relative",
-                overflow:"hidden",
-              }}>
-                <div style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.45)",fontWeight:700,marginBottom:4}}>
-                  {shortName}
-                </div>
-                <div style={{fontSize:36,fontWeight:700,lineHeight:1,color:tile.numColor,fontVariantNumeric:"tabular-nums"}}>
-                  {c.avg.toFixed(1)}
-                </div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:3}}>
-                  pts avg · {c.count} round{c.count===1?"":"s"}
-                </div>
-                {sparkData.length>=2&&(
-                  <div style={{marginTop:8}}>
-                    <Sparkline data={sparkData} color={tile.sparkColor} height={44}/>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {/* Fallback info rows for any additional courses beyond 2 */}
-      {courseAvgs.slice(2).map((c:any)=>(
-        <div key={c.name} className="info-row">
-          <span className="info-key">{c.name}</span>
-          <span className="info-val">{c.count>0?(c.avg.toFixed(1)+" pts avg ("+c.count+" rounds)"):"No data"}</span>
-        </div>
-      ))}
+        {/* Hero tiles — side by side, dark */}
+        {courseAvgs.length>0&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:4}}>
+            {courseAvgs.slice(0,2).map((c:any,i:number)=>{
+              const tile=TILE_CONFIGS[i]||TILE_CONFIGS[0];
+              const sparkData=courseSparklines[c.name]||[];
+              const shortName=c.name.replace(" Golf Club","").replace(" GC","").replace("Golf Course","").replace("Golf Club","").trim();
+              return(
+                <CourseTile key={c.name} tile={tile} c={c} shortName={shortName} sparkData={sparkData}/>
+              );
+            })}
+          </div>
+        )}
+        {/* Fallback info rows for any additional courses beyond 2 */}
+        {courseAvgs.slice(2).map((c:any)=>(
+          <div key={c.name} className="info-row" style={{color:"rgba(255,255,255,0.7)"}}>
+            <span className="info-key" style={{color:"rgba(255,255,255,0.5)"}}>{c.name}</span>
+            <span className="info-val" style={{color:"rgba(255,255,255,0.85)"}}>{c.count>0?(c.avg.toFixed(1)+" pts avg ("+c.count+" rounds)"):"No data"}</span>
+          </div>
+        ))}
+      </div>
 
       {/* Hole-by-hole averages per course */}
       <div style={{marginTop:20}}>
