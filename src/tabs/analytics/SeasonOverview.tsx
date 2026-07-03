@@ -510,12 +510,13 @@ function SlotDigit({target, delay, duration=900, digitW, digitH}:{target:string,
   const startedRef = useRef(false);
 
   useEffect(()=>{
+    startedRef.current = false;
+    setOffset(0);
     const el = ref.current;
     if(!el || typeof IntersectionObserver === "undefined"){
       setOffset(-(parseInt(target,10)||0)*digitH);
       return;
     }
-    if(startedRef.current) return;
     const obs = new IntersectionObserver((entries)=>{
       for(const entry of entries){
         if(entry.isIntersecting && !startedRef.current){
