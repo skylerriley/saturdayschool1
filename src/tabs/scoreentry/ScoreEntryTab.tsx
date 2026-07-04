@@ -1089,7 +1089,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         };
         return(
           <div className="modal-overlay" onClick={()=>setScoreModal(null)}>
-            <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+            <div className="modal-sheet" style={{paddingBottom:124}} onClick={e=>e.stopPropagation()}>
               <div className="score-modal-title">Hole {scoreModal.holeIdx+1} · Par {par}</div>
               <div className="score-modal-name">{g?`${g.first_name} ${g.last_name}`:"Golfer"}</div>
               <div className="score-btn-grid">

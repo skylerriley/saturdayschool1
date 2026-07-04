@@ -7,10 +7,18 @@ export function calcPlayingHandicap(hcp: number, slope: number, rating: number, 
   return Math.round(hcp * (slope / 113) + (rating - par));
 }
 
-export function calcHoleNetScore(gross: number, phcp: number, si: number) {
+export function calcHoleNetScore(gross: number, phcp: number, si: number, holes = 18) {
   if (!gross || isNaN(gross) || (!phcp && phcp !== 0)) return gross;
-  const b = Math.floor(phcp / 18), e = phcp % 18;
-  return gross - b - (si <= e ? 1 : 0);
+  const abs = Math.abs(phcp);
+  const full = Math.floor(abs / holes);
+  const remainder = abs % holes;
+  let strokes = full;
+  if (phcp >= 0) {
+    if (si <= remainder) strokes += 1;           // extra stroke on hardest holes
+  } else {
+    if (si > holes - remainder) strokes += 1;    // plus-hcp: stroke back on easiest holes
+  }
+  return gross - Math.sign(phcp) * strokes;
 }
 
 export function calcStablefordPoints(net: number, par: number) {
