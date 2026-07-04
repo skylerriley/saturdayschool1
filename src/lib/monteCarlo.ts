@@ -157,7 +157,7 @@ export function hcpTrendAdj(signups: any[], events: any[], gid: number): number 
 // calculation with a reasonable (slightly worse-than-average)
 // projection rather than being silently excluded.
 // ---------------------------------------------------------------
-export const GUEST_PENALTY = 1.5; // pts below field avg (tunable)
+export const GUEST_PENALTY = 1.05; // pts below field avg (tunable)
 
 export function leagueAvgProfile(allLeaderboard: any[], allEvents: any[], fieldGolfers: any[], courseName: string) {
   // Compute field-wide weighted-average and pooled sd from all non-guest history
@@ -191,7 +191,8 @@ export function buildProfile(g: any, leaderboard: any[], events: any[], signups:
     const fieldHcps = fieldGolfers.map((fg: any) => fg.current_handicap_index).filter(Boolean);
     const avgHcp = fieldHcps.length ? fieldHcps.reduce((a: number, b: number) => a + b, 0) / fieldHcps.length : 18;
     const hcpDiff = (g.current_handicap_index ?? 18) - avgHcp;
-    const hcpAdj = Math.max(-3, Math.min(3, hcpDiff * 0.4));
+    // Lower hcp than field avg = better golfer = higher projected score
+    const hcpAdj = Math.max(-3, Math.min(3, -hcpDiff * 0.4));
     const proj = base.proj - GUEST_PENALTY + hcpAdj;
     return {
       golfer: g,
