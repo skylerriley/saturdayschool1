@@ -246,7 +246,8 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
   const [chartDrawKey,setChartDrawKey]=useState(0);
   const [streakType,setStreakType]=useState("pars");
   const [selectedBar,setSelectedBar]=useState<number|null>(null);
-  useEffect(()=>{ setDonutKey(k=>k+1); setChartDrawKey(k=>k+1); },[golfer.golfer_id]);
+  const [fingerprintFlipped,setFingerprintFlipped]=useState(false);
+  useEffect(()=>{ setDonutKey(k=>k+1); setChartDrawKey(k=>k+1); setFingerprintFlipped(false); },[golfer.golfer_id]);
   const avg=rounds.reduce((s:number,r:any)=>s+r.pts,0)/rounds.length;
   const best=Math.max(...rounds.map((r:any)=>r.pts));
   const worst=Math.min(...rounds.map((r:any)=>r.pts));
@@ -795,33 +796,84 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
           </div>
 
           {/* Scoring Fingerprint — only for 2026+ seasons where hole-by-hole data exists */}
-          {season>=2026&&<div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:16,marginBottom:16}}>
-            <div style={{fontSize:14,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",fontWeight:700,marginBottom:10}}>
-              Scoring fingerprint
-            </div>
-            <ScoringFingerprintRadar
-              datasets={[
-                ...(leagueAvgFp?[{label:"League avg",color:"rgba(212,168,67,0.75)",fill:"rgba(212,168,67,0.08)",values:leagueAvgFp,dashed:true}]:[]),
-                {label:golferName,color:"#7dc07d",fill:"rgba(125,200,125,0.18)",values:fp},
-              ]}
-              darkMode
-            />
-            <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:8,flexWrap:"wrap"}}>
-              {leagueAvgFp&&(
-                <div style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:"rgba(255,255,255,0.55)"}}>
-                  <div style={{width:14,height:3,background:"rgba(212,168,67,0.75)",borderRadius:2}}/>
-                  League avg
+          {season>=2026&&(()=>{
+            const isSkyler=golfer.first_name==="Skyler"&&golfer.last_name==="Riley";
+            return(
+              <div
+                onClick={isSkyler?()=>setFingerprintFlipped(f=>!f):undefined}
+                style={{
+                  perspective:1200,
+                  marginBottom:16,
+                  cursor:isSkyler?"pointer":undefined,
+                }}
+              >
+                <div style={{
+                  position:"relative",
+                  width:"100%",
+                  transition:"transform 0.6s cubic-bezier(0.4,0,0.2,1)",
+                  transformStyle:"preserve-3d",
+                  transform:fingerprintFlipped?"rotateY(180deg)":"rotateY(0deg)",
+                }}>
+                  {/* Front face */}
+                  <div style={{
+                    background:"var(--green-900)",
+                    borderRadius:"var(--radius-md)",
+                    padding:16,
+                    backfaceVisibility:"hidden",
+                    WebkitBackfaceVisibility:"hidden",
+                  }}>
+                    <div style={{fontSize:14,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",fontWeight:700,marginBottom:10}}>
+                      Scoring fingerprint
+                    </div>
+                    <ScoringFingerprintRadar
+                      datasets={[
+                        ...(leagueAvgFp?[{label:"League avg",color:"rgba(212,168,67,0.75)",fill:"rgba(212,168,67,0.08)",values:leagueAvgFp,dashed:true}]:[]),
+                        {label:golferName,color:"#7dc07d",fill:"rgba(125,200,125,0.18)",values:fp},
+                      ]}
+                      darkMode
+                    />
+                    <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:8,flexWrap:"wrap"}}>
+                      {leagueAvgFp&&(
+                        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:"rgba(255,255,255,0.55)"}}>
+                          <div style={{width:14,height:3,background:"rgba(212,168,67,0.75)",borderRadius:2}}/>
+                          League avg
+                        </div>
+                      )}
+                      <div style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:"rgba(255,255,255,0.6)"}}>
+                        <div style={{width:10,height:10,borderRadius:"50%",background:"#7dc07d"}}/>
+                        {golferName}
+                      </div>
+                    </div>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:6,textAlign:"center"}}>
+                      Avg Stableford pts per hole category · {fp.sampleSize} round{fp.sampleSize===1?"":"s"}
+                    </div>
+                  </div>
+
+                  {/* Back face — Skyler only */}
+                  {isSkyler&&(
+                    <div style={{
+                      position:"absolute",
+                      top:0,left:0,right:0,bottom:0,
+                      background:"var(--green-900)",
+                      borderRadius:"var(--radius-md)",
+                      backfaceVisibility:"hidden",
+                      WebkitBackfaceVisibility:"hidden",
+                      transform:"rotateY(180deg)",
+                      display:"flex",
+                      alignItems:"center",
+                      justifyContent:"center",
+                    }}>
+                      <img
+                        src="/swingtest.gif"
+                        alt="Skyler Riley swing"
+                        style={{maxWidth:"80%",maxHeight:"80%",objectFit:"contain",borderRadius:8}}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:"rgba(255,255,255,0.6)"}}>
-                <div style={{width:10,height:10,borderRadius:"50%",background:"#7dc07d"}}/>
-                {golferName}
               </div>
-            </div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:6,textAlign:"center"}}>
-              Avg Stableford pts per hole category · {fp.sampleSize} round{fp.sampleSize===1?"":"s"}
-            </div>
-          </div>}
+            );
+          })()}
         </>
       )}
 
