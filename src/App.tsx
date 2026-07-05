@@ -1104,7 +1104,7 @@ const CSS = `
 
   /* ── MODAL OVERLAY ── */
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:flex-end;justify-content:center;}
-  .modal-sheet{background:var(--surface);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:28px 24px 40px;width:100%;max-width:360px;}
+  .modal-sheet{background:var(--surface);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:28px 24px calc(78px + 16px);width:100%;max-width:360px;}
   .modal-overlay-center{position:fixed;inset:0;background:rgba(28,20,16,0.55);backdrop-filter:blur(2px);z-index:9999;display:flex;flex-direction:column;justify-content:flex-end;}
 
   /* ── CARD SECTION LABEL ── */

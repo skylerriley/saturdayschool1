@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useLayoutEffect } from "react";
+import { ConsistencyTable } from "./ConsistencyTable";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const MIN_HOLES_PER_SPLIT = 6;
@@ -481,8 +482,17 @@ function CourseView({ courseName, golfers, events, leaderboard, holeScores, cour
 // ── Overview ──────────────────────────────────────────────────────────────────
 type MetricDef = { id: string; label: string; filter: HoleFilter };
 
+// Shared chevron SVG
+function Chevron() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
+  );
+}
+
 // One row per metric: shows the leader in lb-row style
-function OverviewSection({ defs, golfers, events, leaderboard, holeScores, courses, signups, selSeason, onNavigate }: { defs: MetricDef[]; onNavigate: (id: string) => void } & any) {
+function OverviewSection({ defs, golfers, events, leaderboard, holeScores, courses, signups, selSeason, onNavigate, seasonData }: { defs: MetricDef[]; onNavigate: (id: string) => void } & any) {
   const fmtDelta = (d: number) => (d >= 0 ? "+" : "−") + Math.abs(d).toFixed(2);
 
   // Compute all metrics up front — course categories scope by course name
@@ -490,6 +500,69 @@ function OverviewSection({ defs, golfers, events, leaderboard, holeScores, cours
   const allData = defs.map((def: MetricDef) =>
     computeRows(def.filter, golfers, events, leaderboard, holeScores, courses, selSeason, courseFilter[def.id], signups)
   );
+
+  // Compute consistency leader from seasonData
+  const consistencyRows = (seasonData || []).map((d: any) => {
+    if (d.allPts.length < 3) return null;
+    const avg = d.allPts.reduce((a: number, b: number) => a + b, 0) / d.allPts.length;
+    const variance = d.allPts.reduce((s: number, p: number) => s + (p - avg) ** 2, 0) / d.allPts.length;
+    const stdDev = Math.sqrt(variance);
+    return { golfer: d.golfer, stdDev };
+  }).filter(Boolean).sort((a: any, b: any) => a.stdDev - b.stdDev);
+
+  const leagueStdDevAvg = consistencyRows.length > 0
+    ? consistencyRows.reduce((s: number, r: any) => s + r.stdDev, 0) / consistencyRows.length
+    : null;
+  const consistencyLeader = consistencyRows[0] || null;
+  const consistencyDelta = consistencyLeader && leagueStdDevAvg != null
+    ? consistencyLeader.stdDev - leagueStdDevAvg
+    : null;
+
+  const renderMetricRow = (def: MetricDef, i: number) => {
+    const { playerRows } = allData[i];
+    const leader = playerRows[0] || null;
+    return (
+      <div
+        key={def.id}
+        className="lb-row"
+        onClick={() => onNavigate(def.id)}
+        style={{ gridTemplateColumns: "1fr 36px 52px 28px", padding: "11px 14px", cursor: "pointer" }}
+      >
+        <div className="lb-name-cell">
+          <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--green-700)", marginBottom: 3, textAlign: "left" }}>
+            {def.label}
+          </div>
+          {leader ? (
+            <div className="lb-name-main" style={{ fontSize: 15 }}>
+              {leader.golfer.first_name} {leader.golfer.last_name}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No data</div>
+          )}
+        </div>
+        <div className="lb-score-cell">
+          {leader && (
+            <div style={{ fontSize: 13, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: leader.delta >= 0 ? "var(--green-600)" : "var(--red-600)", lineHeight: 1 }}>
+              {fmtDelta(leader.delta)}
+            </div>
+          )}
+        </div>
+        <div className="lb-score-cell">
+          {leader && (
+            <div className="lb-score-big" style={{ fontSize: 17 }}>{leader.avg.toFixed(2)}</div>
+          )}
+        </div>
+        <div style={{ width: 28, display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0, color: "var(--text-muted)" }}>
+          <Chevron />
+        </div>
+      </div>
+    );
+  };
+
+  // Split defs at the back9/strawberry boundary so consistency slots between them
+  const back9Idx = defs.findIndex((d: MetricDef) => d.id === "back9");
+  const beforeConsistency = back9Idx >= 0 ? defs.slice(0, back9Idx + 1) : defs;
+  const afterConsistency  = back9Idx >= 0 ? defs.slice(back9Idx + 1) : [];
 
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12 }}>
@@ -501,56 +574,44 @@ function OverviewSection({ defs, golfers, events, leaderboard, holeScores, cours
         <div className="lb-header-cell"></div>
       </div>
 
-      {defs.map((def: MetricDef, i: number) => {
-        const { playerRows } = allData[i];
-        const leader = playerRows[0] || null;
+      {beforeConsistency.map((def: MetricDef, i: number) => renderMetricRow(def, i))}
 
-        return (
-          <div
-            key={def.id}
-            className="lb-row"
-            onClick={() => onNavigate(def.id)}
-            style={{ gridTemplateColumns: "1fr 36px 52px 28px", padding: "11px 14px", cursor: "pointer" }}
-          >
-            {/* Split label + leader name */}
-            <div className="lb-name-cell">
-              <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--green-700)", marginBottom: 3, textAlign: "left" }}>
-                {def.label}
-              </div>
-              {leader ? (
-                <div className="lb-name-main" style={{ fontSize: 15 }}>
-                  {leader.golfer.first_name} {leader.golfer.last_name}
-                </div>
-              ) : (
-                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No data</div>
-              )}
-            </div>
-
-            {/* Delta */}
-            <div className="lb-score-cell">
-              {leader && (
-                <div style={{ fontSize: 13, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: leader.delta >= 0 ? "var(--green-600)" : "var(--red-600)", lineHeight: 1 }}>
-                  {fmtDelta(leader.delta)}
-                </div>
-              )}
-            </div>
-
-            {/* Avg */}
-            <div className="lb-score-cell">
-              {leader && (
-                <div className="lb-score-big" style={{ fontSize: 17 }}>{leader.avg.toFixed(2)}</div>
-              )}
-            </div>
-
-            {/* Chevron */}
-            <div style={{ width: 28, display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0, color: "var(--text-muted)" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
-            </div>
+      {/* Consistency row — between back9 and strawberry */}
+      <div
+        className="lb-row"
+        onClick={() => onNavigate("consistency")}
+        style={{ gridTemplateColumns: "1fr 36px 52px 28px", padding: "11px 14px", cursor: "pointer" }}
+      >
+        <div className="lb-name-cell">
+          <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--green-700)", marginBottom: 3, textAlign: "left" }}>
+            Consistency
           </div>
-        );
-      })}
+          {consistencyLeader ? (
+            <div className="lb-name-main" style={{ fontSize: 15 }}>
+              {consistencyLeader.golfer.first_name} {consistencyLeader.golfer.last_name}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No data</div>
+          )}
+        </div>
+        <div className="lb-score-cell">
+          {consistencyLeader && consistencyDelta != null && (
+            <div style={{ fontSize: 13, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: consistencyDelta <= 0 ? "var(--green-600)" : "var(--red-600)", lineHeight: 1 }}>
+              {(consistencyDelta >= 0 ? "+" : "−") + Math.abs(consistencyDelta).toFixed(2)}
+            </div>
+          )}
+        </div>
+        <div className="lb-score-cell">
+          {consistencyLeader && (
+            <div className="lb-score-big" style={{ fontSize: 17 }}>{consistencyLeader.stdDev.toFixed(2)}</div>
+          )}
+        </div>
+        <div style={{ width: 28, display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0, color: "var(--text-muted)" }}>
+          <Chevron />
+        </div>
+      </div>
+
+      {afterConsistency.map((def: MetricDef, i: number) => renderMetricRow(def, back9Idx + 1 + i))}
     </div>
   );
 }
@@ -566,6 +627,7 @@ const TOP_TABS = [
   { id: "par5",         label: "PAR 5'S"     },
   { id: "front9",       label: "FRONT 9"     },
   { id: "back9",        label: "BACK 9"      },
+  { id: "consistency",  label: "CONSISTENCY" },
   { id: "strawberry",   label: "STRAWBERRY"  },
   { id: "oakcreek",     label: "OAK CREEK"   },
 ];
@@ -580,7 +642,7 @@ const METRIC_DEFS: MetricDef[] = [
   { id: "oakcreek",    label: "Oak Creek",      filter: () => true },
 ];
 
-export function PointsGained({ golfers, events, leaderboard, holeScores, courses, signups, selSeason, initialTab }: any) {
+export function PointsGained({ golfers, events, leaderboard, holeScores, courses, signups, selSeason, initialTab, seasonData }: any) {
   const [activeTab, setActiveTab] = useState(initialTab || "overview");
   const [slideDir, setSlideDir] = useState<"left"|"right"|"none">("none");
   const [showSkeleton, setShowSkeleton] = useState(false);
@@ -634,7 +696,7 @@ export function PointsGained({ golfers, events, leaderboard, holeScores, courses
             <PGSlide dir={slideDir}>
               {activeTab === "overview" && (
                 <div>
-                  <OverviewSection defs={METRIC_DEFS} {...commonProps} onNavigate={navigateTo} />
+                  <OverviewSection defs={METRIC_DEFS} {...commonProps} onNavigate={navigateTo} seasonData={seasonData} />
                   <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11.5, paddingBottom: 8, lineHeight: 1.5 }}>
                     Season {selSeason} &middot; guests excluded &middot; min {MIN_HOLES_PER_SPLIT} holes per split
                   </div>
@@ -662,6 +724,8 @@ export function PointsGained({ golfers, events, leaderboard, holeScores, courses
                   </div>
                 </>
               )}
+
+              {activeTab === "consistency" && <ConsistencyTable seasonData={seasonData} />}
 
               {activeTab === "strawberry" && <CourseView courseName={STRAWBERRY} {...commonProps} />}
               {activeTab === "oakcreek" && <CourseView courseName={OAK_CREEK} {...commonProps} />}

@@ -2431,9 +2431,9 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                 >
                   View Scorecards{imgs.length>0?" ("+imgs.length+")":""}
                 </button>
-                {showScorecardModal&&(
+                {showScorecardModal&&ReactDOM.createPortal(
                   <div
-                    style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+                    style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
                     onClick={()=>{setShowScorecardModal(false);setLightboxImg(null);}}
                   >
                     <div
@@ -2507,16 +2507,16 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                       <button className="btn btn-outline btn-full" style={{marginTop:8}} onClick={()=>setShowScorecardModal(false)}>Close</button>
                     </div>
                   </div>
-                )}
-                {lightboxImg&&(
+                ,document.body)}
+                {lightboxImg&&ReactDOM.createPortal(
                   <div
-                    style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:9100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+                    style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:310,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                     onClick={()=>setLightboxImg(null)}
                   >
                     <img src={lightboxImg} alt="Scorecard" style={{maxWidth:"100%",maxHeight:"90vh",borderRadius:"var(--radius-md)",objectFit:"contain"}}/>
                     <button onClick={()=>setLightboxImg(null)} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.15)",color:"white",border:"none",borderRadius:"50%",width:36,height:36,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>x</button>
                   </div>
-                )}
+                ,document.body)}
               </div>
             );
           })()}

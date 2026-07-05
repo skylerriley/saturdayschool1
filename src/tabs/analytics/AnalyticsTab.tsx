@@ -4,7 +4,6 @@ import { formatDate, uniqueCourseNames } from "../../lib/formatters";
 import { calcSeasonLeaderData } from "../../lib/seasonStats";
 import { OddsTab } from "../odds/OddsTab";
 import { SeasonOverview } from "./SeasonOverview";
-import { ConsistencyTable } from "./ConsistencyTable";
 import { CourseChart } from "./CourseChart";
 import { ScatterChart } from "./ScatterChart";
 import { ChampionsView } from "./ChampionsView";
@@ -102,7 +101,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
       return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned,won:tied1st.some((r:any)=>r.golfer_id===selG.golfer_id)};
     }).filter(Boolean):[];
 
-  const SUBTABS=[{id:"overview",label:"Overview"},{id:"golfer",label:"By Golfer"},{id:"odds",label:"Odds"},...(selSeason>=2026?[{id:"points-gained",label:"Pts Gained"}]:[]),({id:"course",label:"By Course"}),{id:"scatter",label:"HCP vs Pts"},{id:"consistency",label:"Consistency"},{id:"champions",label:"Champions"}];
+  const SUBTABS=[{id:"overview",label:"Overview"},{id:"golfer",label:"By Golfer"},{id:"odds",label:"Odds"},...(selSeason>=2026?[{id:"points-gained",label:"Pts Gained"}]:[]),({id:"course",label:"By Course"}),{id:"scatter",label:"HCP vs Pts"},{id:"champions",label:"Champions"}];
 
   const switchSubTab=(id:string)=>{
     setSubTab(id);
@@ -185,10 +184,9 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
           switch(id){
             case "overview":return <SeasonOverview seasonData={seasonData} seasonEvents={seasonEvents} season={selSeason} leaderboard={leaderboard} golfers={golfers} events={events} charityDonations={charityDonations}/>;
             case "course":return <CourseChart courseAvgs={courseAvgs} holeScores={holeScores} events={events} courses={courses} leaderboard={leaderboard} golfers={golfers}/>;
-            case "consistency":return <ConsistencyTable seasonData={seasonData}/>;
             case "scatter":return <ScatterChart scatterData={scatterData} flightWinData={flightWinData}/>;
             case "champions":return <ChampionsView golfers={golfers} leaderboard={leaderboard} events={events}/>;
-            case "points-gained":return <PointsGained golfers={golfers} events={events} leaderboard={leaderboard} holeScores={holeScores} courses={courses} signups={signups} selSeason={selSeason} initialTab={initialPtsTab}/>;
+            case "points-gained":return <PointsGained golfers={golfers} events={events} leaderboard={leaderboard} holeScores={holeScores} courses={courses} signups={signups} selSeason={selSeason} initialTab={initialPtsTab} seasonData={seasonData}/>;
             case "golfer":return(
               <>
                 <div className="form-group">
