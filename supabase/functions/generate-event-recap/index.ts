@@ -235,22 +235,24 @@ async function generateRecap(eventId: number, force: boolean): Promise<{ skipped
   const seasonRankMap: Record<number, number> = {};
   seasonStandings.forEach((row, i) => { seasonRankMap[row.golfer_id] = i + 1; });
 
-  // 10. Determine positions for this event with tie detection
-  const sortedEligible = [...eligibleRows].sort(
+  // 10. Determine positions for this event with tie detection — use ALL lbRows so guests
+  // are included in the standings and non-guest positions are accurate.
+  const validLbRows = lbRows.filter((r: any) => golferMap[r.golfer_id]);
+  const sortedAll = [...validLbRows].sort(
     (a: any, b: any) => b.total_stableford_points - a.total_stableford_points
   );
   const eventPositionMap: Record<number, number> = {};
   const eventPositionDisplayMap: Record<number, string> = {};
-  for (let i = 0; i < sortedEligible.length; ) {
-    const pts = sortedEligible[i].total_stableford_points;
+  for (let i = 0; i < sortedAll.length; ) {
+    const pts = sortedAll[i].total_stableford_points;
     let j = i + 1;
-    while (j < sortedEligible.length && sortedEligible[j].total_stableford_points === pts) j++;
+    while (j < sortedAll.length && sortedAll[j].total_stableford_points === pts) j++;
     const rank = i + 1;
     const tied = j - i > 1;
     const display = tied ? `T${rank}` : (rank === 1 ? "1st" : rank === 2 ? "2nd" : rank === 3 ? "3rd" : `${rank}th`);
     for (let k = i; k < j; k++) {
-      eventPositionMap[sortedEligible[k].golfer_id] = rank;
-      eventPositionDisplayMap[sortedEligible[k].golfer_id] = display;
+      eventPositionMap[sortedAll[k].golfer_id] = rank;
+      eventPositionDisplayMap[sortedAll[k].golfer_id] = display;
     }
     i = j;
   }
@@ -392,39 +394,46 @@ async function generateRecap(eventId: number, force: boolean): Promise<{ skipped
     return notable.slice(0, MAX_NOTABLE_HOLES);
   }
 
-  // 14. Build golfer payloads
-  const golferPayloads = eligibleRows.map((row: any) => {
+  // 14. Build golfer payloads — include ALL players (guests too) so positions and
+  // field context are accurate. Guests are flagged write_insight:false so Gemini
+  // knows to use them for context only, not produce an insight for them.
+  const allRows = validLbRows; // already filtered to rows with known golfer records
+  const golferPayloads = allRows.map((row: any) => {
     const gid = row.golfer_id;
     const g = golferMap[gid];
+    const isGuest = g?.is_guest ?? false;
+
     const firstName = g?.first_name ?? "";
-    const isDupe = firstName && eligibleRows.some((other: any) => {
+    const isDupe = firstName && allRows.some((other: any) => {
       const og = golferMap[other.golfer_id];
       return og && og.golfer_id !== gid && og.first_name === firstName;
     });
     const name = g
       ? isDupe ? `${firstName} ${(g.last_name ?? "").charAt(0)}.` : firstName
       : `Golfer ${gid}`;
+
     const seasonRounds = golferSeasonRounds[gid] ?? [];
     const seasonAvg = seasonRounds.length
       ? seasonRounds.reduce((a: number, b: number) => a + b, 0) / seasonRounds.length
       : 0;
 
-    const lbEntry = eligibleRows.find((r: any) => r.golfer_id === gid);
-    const entryType = lbEntry?.entry_type ?? "Total Only";
-    const holeDataAvailable = entryType === "Hole-by-Hole" && (golferHoleScores[gid] ?? []).length > 0;
+    const entryType = row.entry_type ?? "Total Only";
+    const holeDataAvailable = !isGuest && entryType === "Hole-by-Hole" && (golferHoleScores[gid] ?? []).length > 0;
 
     const payload: Record<string, any> = {
       golfer_id: String(gid),
       name,
+      is_guest: isGuest,
+      write_insight: !isGuest,
       points_this_week: row.total_stableford_points,
       position: eventPositionMap[gid] ?? 0,
       position_display: eventPositionDisplayMap[gid] ?? String(eventPositionMap[gid] ?? ""),
-      season_avg_points: Math.round(seasonAvg * 100) / 100,
-      season_position: seasonRankMap[gid] ?? 0,
+      season_avg_points: isGuest ? null : Math.round(seasonAvg * 100) / 100,
+      season_position: isGuest ? null : (seasonRankMap[gid] ?? 0),
       skins_won_this_event: skinsWinners.filter((s) => s.golfer_id === gid).length,
       hole_data_available: holeDataAvailable,
       pairing_note: null,
-      recent_trend: recentTrend(gid),
+      recent_trend: isGuest ? null : recentTrend(gid),
     };
 
     if (holeDataAvailable) {
@@ -460,9 +469,10 @@ async function generateRecap(eventId: number, force: boolean): Promise<{ skipped
 Never invent facts. Only use the data provided.
 
 DATA RULES (read before writing anything):
-- Positions: always use position_display ("1st", "T2", "5th") — never bare numbers.
+- Positions: always use position_display ("1st", "T2", "5th") — never bare numbers. Guest golfers are included in the field for accurate positioning of everyone.
 - Skins: use event.total_skins_awarded for the event total; golfer.skins_won_this_event for per-golfer. Skins are a weekly cash game with no season implications — don't lead with them unless truly nothing else is interesting. Never mention guest skins.
 - Trends: recent_trend is pre-computed from prior events only — weave it naturally, never quote it verbatim. Do NOT infer trends by comparing points_this_week to season_avg_points (season_avg includes this event).
+- Guests: golfers with write_insight:false are guests — include them in your mental model of the field and standings, but do NOT produce an insight for them. Omit their golfer_id from golfer_insights entirely.
 
 ---
 
@@ -568,6 +578,10 @@ ${JSON.stringify(geminiPayload, null, 2)}`;
     if (!golferInsights[key]) {
       console.warn(`Gemini missing insight for golfer_id ${key} -- storing partial result`);
     }
+  }
+  // Strip any guest insights Gemini may have produced anyway
+  for (const gid of Object.keys(golferInsights)) {
+    if (golferMap[Number(gid)]?.is_guest) delete golferInsights[gid];
   }
 
   // 19. Write back to events table
