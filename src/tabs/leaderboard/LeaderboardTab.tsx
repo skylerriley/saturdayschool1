@@ -385,6 +385,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     recapOpenedRef.current=true;
     setFeedOverlayEvent(mostRecent);
     setSelEventId(mostRecent.event_id);
+    setFeedOverlayReady(false);
+    setTimeout(()=>setFeedOverlayReady(true),320);
   },[initialFeedOpen,completedEvents.length]);
 
   const eventEntries=displayEvent
