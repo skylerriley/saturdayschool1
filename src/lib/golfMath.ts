@@ -104,49 +104,51 @@ export function runPairingEngine(
   // pairings with whoever is already in the current group-in-progress.
   let pool: number[];
   if (Object.keys(freq).length > 0) {
-    const remaining = [...seeds];
-    const ordered: number[][] = [];
-    const N = seeds.length;
-    const G = Math.min(Math.ceil(seeds.flat().length / 4), teeTimes.length || Math.ceil(seeds.flat().length / 4));
-    const groupSize = Math.ceil(N / G);
+    // Partition seeds by early-tee status BEFORE greedy grouping, so early requesters
+    // always land in the frontmost groups regardless of how many there are.
+    const earlySeeds = seeds.filter(seed => seed.some(id => earlySet.has(id)));
+    const otherSeeds = seeds.filter(seed => !seed.some(id => earlySet.has(id)));
 
-    while (remaining.length > 0) {
-      const currentGroup: number[] = [];
-      // Fill one group worth of seeds
-      while (currentGroup.length < groupSize && remaining.length > 0) {
-        if (currentGroup.length === 0) {
-          // Pick the seed with the highest total repeat score (most "overdue" to move)
-          // so the players most commonly together get separated first
-          let worstIdx = 0, worstScore = -1;
-          remaining.forEach((seed, i) => {
-            const s = seed.reduce((acc, id) => {
-              return acc + Object.entries(freq).filter(([k]) => k.startsWith(`${id}-`) || k.endsWith(`-${id}`)).reduce((sum, [, v]) => sum + v, 0);
-            }, 0);
-            if (s > worstScore) { worstScore = s; worstIdx = i; }
-          });
-          currentGroup.push(...remaining.splice(worstIdx, 1)[0]);
-        } else {
-          // Pick the seed that adds the fewest new repeat pairings with currentGroup
-          let bestIdx = 0, bestScore = Infinity;
-          remaining.forEach((seed, i) => {
-            const candidate = [...currentGroup, ...seed];
-            const score = groupRepeatScore(candidate, freq);
-            if (score < bestScore) { bestScore = score; bestIdx = i; }
-          });
-          currentGroup.push(...remaining.splice(bestIdx, 1)[0]);
+    const greedyOrder = (seedList: number[][]): number[] => {
+      const remaining = [...seedList];
+      const ordered: number[][] = [];
+      const N = seedList.length;
+      if (N === 0) return [];
+      const G = Math.max(1, Math.min(Math.ceil(seedList.flat().length / 4), teeTimes.length || Math.ceil(seedList.flat().length / 4)));
+      const groupSize = Math.ceil(N / G);
+
+      while (remaining.length > 0) {
+        const currentGroup: number[] = [];
+        // Fill one group worth of seeds
+        while (currentGroup.length < groupSize && remaining.length > 0) {
+          if (currentGroup.length === 0) {
+            // Pick the seed with the highest total repeat score (most "overdue" to move)
+            // so the players most commonly together get separated first
+            let worstIdx = 0, worstScore = -1;
+            remaining.forEach((seed, i) => {
+              const s = seed.reduce((acc, id) => {
+                return acc + Object.entries(freq).filter(([k]) => k.startsWith(`${id}-`) || k.endsWith(`-${id}`)).reduce((sum, [, v]) => sum + v, 0);
+              }, 0);
+              if (s > worstScore) { worstScore = s; worstIdx = i; }
+            });
+            currentGroup.push(...remaining.splice(worstIdx, 1)[0]);
+          } else {
+            // Pick the seed that adds the fewest new repeat pairings with currentGroup
+            let bestIdx = 0, bestScore = Infinity;
+            remaining.forEach((seed, i) => {
+              const candidate = [...currentGroup, ...seed];
+              const score = groupRepeatScore(candidate, freq);
+              if (score < bestScore) { bestScore = score; bestIdx = i; }
+            });
+            currentGroup.push(...remaining.splice(bestIdx, 1)[0]);
+          }
         }
+        ordered.push(currentGroup);
       }
-      ordered.push(currentGroup);
-    }
+      return ordered.flat();
+    };
 
-    // Separate early-tee players to the front group
-    const earlyGroup: number[] = [];
-    const others: number[][] = [];
-    ordered.forEach(grp => {
-      if (grp.some(id => earlySet.has(id))) earlyGroup.push(...grp);
-      else others.push(grp);
-    });
-    pool = earlyGroup.length > 0 ? [...earlyGroup, ...others.flat()] : ordered.flat();
+    pool = [...greedyOrder(earlySeeds), ...greedyOrder(otherSeeds)];
   } else {
     // No history: original random shuffle
     const shuffled = [...seeds].sort(() => Math.random() - 0.5);
