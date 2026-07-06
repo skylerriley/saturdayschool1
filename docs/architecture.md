@@ -24,13 +24,15 @@ No Context API, no Redux. All Supabase subscriptions are in App.tsx. Tabs receiv
 |-------|-------------|---------|
 | `golfers` | id, name, handicap_index, phone | Player roster |
 | `events` | id, date, course_id, status | Scheduled rounds |
-| `signups` | event_id, golfer_id, paid, tee_time, group_num | RSVP + pairings |
+| `signups` | event_id, golfer_id, paid, tee_time, group_num, attending, is_guest_entry, sponsor_golfer_id | RSVP + pairings |
 | `hole_scores` | event_id, golfer_id, hole, gross_score | Per-hole scoring |
 | `leaderboard` | event_id, golfer_id, points, gross, net | Computed results |
 | `courses` | id, name, slope, rating, par, holes[] | Course database |
 | `event_odds` | event_id, golfer_id, win_pct, top3_pct | Pre-computed odds |
 
 Real-time subscriptions: `postgres_changes` on `signups`, `hole_scores`, `leaderboard`.
+
+Guests are not a count field on a member's signup row — each guest gets its own separate `signups` row with `is_guest_entry: true` and `sponsor_golfer_id` set to the sponsoring member's `golfer_id`.
 
 ---
 
