@@ -597,13 +597,6 @@ const CSS = `
   @keyframes winnerShimmer{0%{background-position:200% 0;}100%{background-position:-100% 0;}}
   @media (prefers-reduced-motion: reduce){.lb-row.post-win::after{animation:none;background-position:0 0;}}
 
-  /* ── FOG OF HISTORY (Analytics season pills) ── */
-  /* Older seasons render progressively muted, desaturated, and cooler-toned --
-     the present is vivid and close, the past recedes. */
-  .fog-pill{flex-shrink:0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;border:1.5px solid var(--border-md);background:transparent;color:var(--text-muted);cursor:pointer;transition:opacity 0.2s,filter 0.2s,transform 0.15s;}
-  .fog-pill.active{background:var(--gold-600);border-color:var(--gold-600);color:white;}
-  .fog-pill:active{transform:scale(0.96);}
-
   /* expanded player detail panel */
   .lb-detail{
     background:var(--surface2);
@@ -1121,12 +1114,6 @@ const CSS = `
   .hcp-table tr:nth-child(even) td{background:var(--surface2);}
 
   .guest-tag{font-size:11px;color:var(--gold-700);background:var(--gold-50);border:1px solid #ffeea0;border-radius:4px;padding:2px 6px;margin-left:5px;font-weight:600;}
-
-  /* year pill selector */
-  .year-row{display:flex;gap:7px;margin-bottom:14px;overflow-x:auto;scrollbar-width:none;}
-  .year-row::-webkit-scrollbar{display:none;}
-  .year-pill{flex-shrink:0;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1.5px solid var(--border-md);background:transparent;color:var(--text-muted);cursor:pointer;transition:all 0.15s;}
-  .year-pill.active{background:var(--gold-600);border-color:var(--gold-600);color:white;}
 
   /* multi-golfer score section cards */
   .scorer-card{background:var(--surface);border:1.5px solid var(--border-md);border-radius:var(--radius-lg);padding:14px;margin-bottom:12px;}

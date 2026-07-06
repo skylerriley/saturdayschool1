@@ -139,29 +139,11 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
       <div className="section-title">Analytics</div>
       <div className="section-sub">Performance insights</div>
       <div className="form-group" style={{marginBottom:12}}>
-        <div className="year-row">
-          {allSeasons.map(y=>{
-            // ── Fog of History ──────────────────────────────────
-            // The most recent season is vivid/full-contrast; each season
-            // further back gets progressively lower opacity, reduced
-            // saturation, and a cooler (bluer) hue -- the past recedes.
-            const age=Math.max(0,allSeasons[0]-y);
-            const fog=age===0?{}:{
-              opacity:Math.max(0.45,1-age*0.16),
-              filter:`saturate(${Math.max(0.4,1-age*0.18)}) hue-rotate(${Math.min(24,age*6)}deg) brightness(${Math.max(0.82,1-age*0.05)})`,
-            };
-            return(
-              <button
-                key={y}
-                className={`fog-pill${selSeason===y?" active":""}`}
-                style={selSeason===y?undefined:fog}
-                onClick={()=>setSelSeason(y)}
-              >
-                {y}
-              </button>
-            );
-          })}
-        </div>
+        <GlassPicker
+          value={selSeason}
+          onChange={v=>setSelSeason(v)}
+          options={allSeasons.map(y=>({value:y,label:`${y} Season`}))}
+        />
       </div>
       <div ref={pillSentinelRef} style={{height:1,marginBottom:-1}}/>
       <div ref={pillRowRef} className="tab-sub">
@@ -172,10 +154,8 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
 
       {(()=>{
         // ── Fog of History (content-wide) ──────────────────────────
-        // The same recede-into-the-past treatment used on the year
-        // pills now applies to everything below: older seasons render
-        // with progressively lower contrast and a cooler color
-        // temperature. The current year (age 0) is fully vivid.
+        // Older seasons render with progressively lower contrast and a
+        // cooler color temperature. The current year (age 0) is fully vivid.
         const selAge=Math.max(0,allSeasons[0]-selSeason);
         const fogContentStyle:React.CSSProperties=selAge===0?{}:{
           filter:`saturate(${Math.max(0.9,1-selAge*0.02)}) hue-rotate(${Math.min(4,selAge*0.8)}deg) contrast(${Math.max(0.98,1-selAge*0.004)}) brightness(${Math.max(0.985,1-selAge*0.003)})`,
