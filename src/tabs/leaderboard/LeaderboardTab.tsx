@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
 import { Sparkles } from "lucide-react";
 import ReactDOM from "react-dom";
-import { SeasonScrubber, FlickCarousel, SubTabPanel, ToggleGroup, ScoreSymbol } from "../../components/common";
+import { SeasonScrubber, FlickCarousel, SubTabPanel, ToggleGroup, ScoreSymbol, GlassPicker } from "../../components/common";
 import { golferName, formatDate } from "../../lib/formatters";
 import { calcPlayingHandicap } from "../../lib/golfMath";
 import { supabase } from "../../lib/supabaseClient";
@@ -1329,10 +1329,12 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
       <div className="section-title">Leaderboard</div>
 
       {/* 1) Season dropdown */}
-      <div className="form-group" style={{marginBottom:12}}>
-        <select className="form-select" value={selSeason} onChange={e=>{setSelSeason(parseInt(e.target.value));setSelEventId(null);setExpandedId(null);}}>
-          {allSeasons.map(y=><option key={y} value={y}>{y} Season</option>)}
-        </select>
+      <div style={{marginBottom:12}}>
+        <GlassPicker
+          value={selSeason}
+          onChange={(y:number)=>{setSelSeason(y);setSelEventId(null);setExpandedId(null);}}
+          options={allSeasons.map(y=>({value:y,label:`${y} Season`}))}
+        />
       </div>
 
       <div ref={pillSentinelRef} style={{height:1,marginBottom:-1}}/>

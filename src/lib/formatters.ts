@@ -24,6 +24,14 @@ export function uniqueCourseNames(courses: any[]) {
   return [...new Set(courses.map(c => c.course_name))];
 }
 
+export function shortCourseName(name: string) {
+  return (name || "").replace(" Golf Club", "").replace(" Golf Course", "").replace(" Country Club", "").replace(" GC", "").trim();
+}
+
+export function eventPickerLabel(ev: { date: string; course_name: string }) {
+  return `${formatDate(ev.date)} - ${shortCourseName(ev.course_name)}`;
+}
+
 export function teeBoxesForCourse(courses: any[], name: string) {
   return courses.filter(c => c.course_name === name);
 }

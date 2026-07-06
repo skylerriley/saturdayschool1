@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { scrollMainTop, formatDate, uniqueCourseNames } from "../../lib/formatters";
+import { GlassPicker } from "../../components/common";
 
 export function EventCreator({ courses, events, setEvents, signups, setSignups, golfers, showSuccess }: any) {
   const formTopRef = useRef<HTMLDivElement>(null);
@@ -64,7 +65,7 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
         <input className="form-input" type="date" value={date} onChange={e => setDate(e.target.value)} style={{ cursor: "pointer" }} />
         {date && <div style={{ fontSize: 12, color: "var(--green-700)", marginTop: 4, fontWeight: 500 }}>📅 {formatDate(date)}</div>}
       </div>
-      <div className="form-group"><label className="form-label">Golf Course</label><select className="form-select" value={courseName} onChange={e => setCourseName(e.target.value)}><option value="">Select course…</option>{courseNames.map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+      <div className="form-group"><label className="form-label">Golf Course</label><GlassPicker value={courseName} onChange={v => setCourseName(v)} options={[{ value: "", label: "Select course…" }, ...courseNames.map(n => ({ value: n, label: n }))]} /></div>
       <div className="form-group"><label className="form-label">Tee Times (one per line)</label><textarea className="form-input" rows={4} value={teeTimes} onChange={e => setTeeTimes(e.target.value)} style={{ resize: "vertical" }} /></div>
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSave} disabled={!date || !courseName}>{editId ? "Save Changes" : "Create Event"}</button>
@@ -76,10 +77,12 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <div className="card-title">All Events</div>
-        <select style={{ fontSize: 13, padding: "4px 8px", border: "1.5px solid var(--border-md)", borderRadius: "var(--radius-sm)", fontFamily: "var(--font-sans)" }} value={filterSeason} onChange={e => setFilterSeason(e.target.value === "all" ? "all" : parseInt(e.target.value))}>
-          <option value="all">All Seasons</option>
-          {allSeasonsList.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <GlassPicker<number | "all">
+          value={filterSeason}
+          onChange={v => setFilterSeason(v)}
+          options={[{ value: "all", label: "All Seasons" }, ...allSeasonsList.map(y => ({ value: y, label: String(y) }))]}
+          style={{ fontSize: 13, padding: "4px 8px" }}
+        />
       </div>
       {filteredEvents.map((ev: any) => (
         <div key={ev.event_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: "1px solid var(--border)" }}>

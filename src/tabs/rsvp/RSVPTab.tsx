@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Sun } from "lucide-react";
-import { ToggleGroup } from "../../components/common";
+import { ToggleGroup, GlassPicker } from "../../components/common";
 import { PairingPanel } from "../../components/common/PairingPanel";
-import { golferName, formatDate } from "../../lib/formatters";
+import { golferName, formatDate, eventPickerLabel } from "../../lib/formatters";
 import { supabase, sendPush } from "../../lib/supabaseClient";
 import { assignLateAdd } from "../../lib/golfMath";
 import { useWeather } from "../../hooks/useWeather";
@@ -443,9 +443,11 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
       <div className="form-group">
         <label className="form-label">Select Event</label>
-        <select className="form-select" value={selEventId} onChange={e=>setSelEventId(parseInt(e.target.value))}>
-          {upcomingEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
-        </select>
+        <GlassPicker
+          value={selEventId}
+          onChange={(v)=>setSelEventId(parseInt(String(v)))}
+          options={upcomingEvents.map((ev:any)=>({value:ev.event_id,label:eventPickerLabel(ev)}))}
+        />
       </div>
 
       {/* Event summary card -- status, tee times, and inline weather row */}
@@ -680,10 +682,14 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
           <div className="form-group">
             <label className="form-label">Sponsor (Member bringing guest)</label>
-            <select className="form-select" value={guestSponsor} onChange={e=>setGuestSponsor(e.target.value)}>
-              <option value="">Select member…</option>
-              {golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").map((g:any)=><option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}</option>)}
-            </select>
+            <GlassPicker
+              value={guestSponsor}
+              onChange={(v)=>setGuestSponsor(String(v))}
+              options={[
+                {value:"",label:"Select member…"},
+                ...golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").sort((a:any,b:any)=>a.last_name.localeCompare(b.last_name)).map((g:any)=>({value:String(g.golfer_id),label:`${g.first_name} ${g.last_name}`}))
+              ]}
+            />
           </div>
           <div className="form-group"><label className="form-label">Guest Handicap Index</label><input className="form-input" type="number" step="0.1" min="0" max="54" value={guestHcp} onChange={e=>setGuestHcp(e.target.value)}/></div>
 

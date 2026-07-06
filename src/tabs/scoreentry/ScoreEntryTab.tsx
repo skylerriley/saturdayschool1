@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ScoreSymbol, ToggleGroup } from "../../components/common";
-import { golferName, formatDate, teeBoxesForCourse, scrollMainTop } from "../../lib/formatters";
+import { ScoreSymbol, ToggleGroup, GlassPicker } from "../../components/common";
+import { golferName, teeBoxesForCourse, scrollMainTop, eventPickerLabel } from "../../lib/formatters";
 import { calcPlayingHandicap, calcHoleNetScore, calcStablefordPoints, calcHoleScores } from "../../lib/golfMath";
 import { supabase, SUPABASE_URL, SUPABASE_KEY } from "../../lib/supabaseClient";
 
@@ -513,10 +513,14 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       <div style={{overflow:"hidden",transition:"height 0.25s ease",height:setupCollapsed?"0":"auto"}}>
       <div className="form-group">
             <label className="form-label">Event</label>
-            <select className="form-select" value={selEventId} onChange={e=>{setSelEventId(e.target.value);setScorers([emptyScorer()]);setSelectedGroup("");}}>
-              <option value="">Select event…</option>
-              {activeEvents.map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
-            </select>
+            <GlassPicker
+              value={selEventId}
+              onChange={(v)=>{setSelEventId(v);setScorers([emptyScorer()]);setSelectedGroup("");}}
+              options={[
+                {value:"",label:"Select event…"},
+                ...activeEvents.map((ev:any)=>({value:String(ev.event_id),label:eventPickerLabel(ev)}))
+              ]}
+            />
           </div>
 
           {/* ── Group / tee-time picker (hole-by-hole mode only) ─────── */}
@@ -659,17 +663,25 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               <div className="form-group" style={{marginBottom:0}}>
                 <label className="form-label">Golfer</label>
-                <select className="form-select" value={scorer.golferId} onChange={e=>updateScorer(idx,"golferId",e.target.value)}>
-                  <option value="">Select…</option>
-                  {golfers.filter((g:any)=>g.status==="Active").map((g:any)=><option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}{g.is_guest?" (G)":""}</option>)}
-                </select>
+                <GlassPicker
+                  value={scorer.golferId}
+                  onChange={(v)=>updateScorer(idx,"golferId",v)}
+                  options={[
+                    {value:"",label:"Select…"},
+                    ...golfers.filter((g:any)=>g.status==="Active").map((g:any)=>({value:String(g.golfer_id),label:`${g.first_name} ${g.last_name}${g.is_guest?" (G)":""}`}))
+                  ]}
+                />
               </div>
               <div className="form-group" style={{marginBottom:0}}>
                 <label className="form-label">Tee Box</label>
-                <select className="form-select" value={scorer.courseId} onChange={e=>updateScorer(idx,"courseId",e.target.value)}>
-                  <option value="">Select…</option>
-                  {availableTees.map((t:any)=><option key={t.course_id} value={t.course_id}>{t.tee_box_name}</option>)}
-                </select>
+                <GlassPicker
+                  value={scorer.courseId}
+                  onChange={(v)=>updateScorer(idx,"courseId",v)}
+                  options={[
+                    {value:"",label:"Select…"},
+                    ...availableTees.map((t:any)=>({value:String(t.course_id),label:t.tee_box_name}))
+                  ]}
+                />
               </div>
             </div>
             {g&&course&&(

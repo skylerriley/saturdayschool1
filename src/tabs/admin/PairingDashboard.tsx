@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { formatDate } from "../../lib/formatters";
+import { eventPickerLabel } from "../../lib/formatters";
 import { PairingPanel } from "../../components/common/PairingPanel";
+import { GlassPicker } from "../../components/common";
 
 export function PairingDashboard({ golfers, courses, events, setEvents, signups, setSignups, showSuccess, showError, scrollToTop }: any) {
   const [selEventId, setSelEventId] = useState<number>(
@@ -18,20 +19,19 @@ export function PairingDashboard({ golfers, courses, events, setEvents, signups,
 
       <div className="form-group">
         <label className="form-label">Event</label>
-        <select
-          className="form-select"
+        <GlassPicker
           value={selEventId}
-          onChange={e => setSelEventId(parseInt(e.target.value))}
-        >
-          <option value={0}>Select event…</option>
-          {events
-            .filter((e: any) => e.status !== "Completed")
-            .map((ev: any) => (
-              <option key={ev.event_id} value={ev.event_id}>
-                {formatDate(ev.date)} — {ev.course_name}
-              </option>
-            ))}
-        </select>
+          onChange={v => setSelEventId(v)}
+          options={[
+            { value: 0, label: "Select event…" },
+            ...events
+              .filter((e: any) => e.status !== "Completed")
+              .map((ev: any) => ({
+                value: ev.event_id,
+                label: eventPickerLabel(ev),
+              })),
+          ]}
+        />
       </div>
 
       {selEvent && (

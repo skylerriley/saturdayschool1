@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { ToggleGroup } from "../../components/common";
+import { ToggleGroup, GlassPicker } from "../../components/common";
 import { computeScoringFingerprint } from "../../lib/scoringFingerprint";
 import { ScoringFingerprintRadar } from "../../components/charts/ScoringFingerprintRadar";
-import { formatDate } from "../../lib/formatters";
+import { formatDate, eventPickerLabel } from "../../lib/formatters";
 import {
   MC_TRIALS, VIG,
   buildProfile, calcFieldOdds, toAmericanOdds,
@@ -219,11 +219,14 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
       ) : (
         <div className="form-group">
           <label className="form-label">Event</label>
-          <select className="form-select" value={selEventId} onChange={e => { setSelEventId(e.target.value); setExcludedIds(new Set()); }}>
-            {upcomingEvents.map((ev: any) => (
-              <option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}{ev.status === "In-Progress" ? " 🟢 Live" : ""}</option>
-            ))}
-          </select>
+          <GlassPicker
+            value={selEventId}
+            onChange={(v) => { setSelEventId(v); setExcludedIds(new Set()); }}
+            options={upcomingEvents.map((ev: any) => ({
+              value: String(ev.event_id),
+              label: `${eventPickerLabel(ev)}${ev.status === "In-Progress" ? " 🟢 Live" : ""}`,
+            }))}
+          />
         </div>
       )}
 
@@ -363,21 +366,31 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Golfer A</label>
-              <select className="form-select" value={h2hA} onChange={e => setH2hA(e.target.value)}>
-                <option value="">Select…</option>
-                {members.filter((g: any) => g.golfer_id !== parseInt(h2hB)).map((g: any) => (
-                  <option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}</option>
-                ))}
-              </select>
+              <GlassPicker<string>
+                value={h2hA}
+                onChange={setH2hA}
+                options={[
+                  { value: "", label: "Select…" },
+                  ...members.filter((g: any) => g.golfer_id !== parseInt(h2hB)).map((g: any) => ({
+                    value: String(g.golfer_id),
+                    label: `${g.first_name} ${g.last_name}`,
+                  })),
+                ]}
+              />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Golfer B</label>
-              <select className="form-select" value={h2hB} onChange={e => setH2hB(e.target.value)}>
-                <option value="">Select…</option>
-                {members.filter((g: any) => g.golfer_id !== parseInt(h2hA)).map((g: any) => (
-                  <option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}</option>
-                ))}
-              </select>
+              <GlassPicker<string>
+                value={h2hB}
+                onChange={setH2hB}
+                options={[
+                  { value: "", label: "Select…" },
+                  ...members.filter((g: any) => g.golfer_id !== parseInt(h2hA)).map((g: any) => ({
+                    value: String(g.golfer_id),
+                    label: `${g.first_name} ${g.last_name}`,
+                  })),
+                ]}
+              />
             </div>
           </div>
 

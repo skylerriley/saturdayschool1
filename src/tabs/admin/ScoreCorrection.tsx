@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { calcPlayingHandicap, calcHoleNetScore, calcStablefordPoints, calcHoleScores } from "../../lib/golfMath";
-import { golferName, scrollMainTop, formatDate } from "../../lib/formatters";
+import { golferName, scrollMainTop, formatDate, eventPickerLabel } from "../../lib/formatters";
 import { ToggleGroup } from "../../App";
+import { GlassPicker } from "../../components/common";
 
 // Compute payout/skins implications given the leaderboard for a single event
 function calcEventImplications(eventId: number, lbRows: any[], golfers: any[]) {
@@ -221,10 +222,14 @@ export function ScoreCorrection({ golfers, courses, events, leaderboard, setLead
       />
       {corrType === "hole" && (
         <div className="form-group"><label className="form-label">Tee Box (for recalc)</label>
-          <select className="form-select" value={corrCourseId} onChange={e => setCorrCourseId(e.target.value)}>
-            <option value="">Select tee…</option>
-            {availTees.map((t: any) => <option key={t.course_id} value={t.course_id}>{t.tee_box_name} -- Slope {t.tee_slope}</option>)}
-          </select>
+          <GlassPicker
+            value={corrCourseId}
+            onChange={(v: string) => setCorrCourseId(v)}
+            options={[
+              { value: "", label: "Select tee…" },
+              ...availTees.map((t: any) => ({ value: String(t.course_id), label: `${t.tee_box_name} -- Slope ${t.tee_slope}` })),
+            ]}
+          />
         </div>
       )}
       {corrType === "total" ? (
@@ -260,9 +265,11 @@ export function ScoreCorrection({ golfers, courses, events, leaderboard, setLead
       {/* Year filter */}
       <div className="form-group">
         <label className="form-label">Season</label>
-        <select className="form-select" value={filterYear} onChange={e => { setFilterYear(parseInt(e.target.value)); setSelEventId(""); setSelGolferId(""); setAddingNew(false); }}>
-          {allSeasonsList.map(y => <option key={y} value={y}>{y} Season{y !== allSeasonsList[0] ? " (view only)" : ""}</option>)}
-        </select>
+        <GlassPicker
+          value={filterYear}
+          onChange={(v: number) => { setFilterYear(v); setSelEventId(""); setSelGolferId(""); setAddingNew(false); }}
+          options={allSeasonsList.map(y => ({ value: y, label: `${y} Season${y !== allSeasonsList[0] ? " (view only)" : ""}` }))}
+        />
       </div>
       {filterYear !== allSeasonsList[0] && (
         <div style={{ background: "var(--gold-50)", border: "1.5px solid var(--gold-300)", borderRadius: "var(--radius-md)", padding: "10px 14px", fontSize: 13, color: "var(--gold-800)", marginBottom: 12 }}>
@@ -271,22 +278,30 @@ export function ScoreCorrection({ golfers, courses, events, leaderboard, setLead
       )}
 
       <div className="form-group"><label className="form-label">Event</label>
-        <select className="form-select" value={selEventId} onChange={e => { setSelEventId(e.target.value); setSelGolferId(""); setAddingNew(false); }}>
-          <option value="">Select event…</option>
-          {filteredEvents.map((ev: any) => <option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}{ev.status === "Completed" ? " ✓" : ""}</option>)}
-        </select>
+        <GlassPicker
+          value={selEventId}
+          onChange={(v: string) => { setSelEventId(v); setSelGolferId(""); setAddingNew(false); }}
+          options={[
+            { value: "", label: "Select event…" },
+            ...filteredEvents.map((ev: any) => ({ value: String(ev.event_id), label: `${eventPickerLabel(ev)}${ev.status === "Completed" ? " ✓" : ""}` })),
+          ]}
+        />
       </div>
 
       {selEventId && !addingNew && (
         <>
           <div className="form-group"><label className="form-label">Golfer</label>
-            <select className="form-select" value={selGolferId} onChange={e => setSelGolferId(e.target.value)}>
-              <option value="">Select golfer…</option>
-              {leaderboard.filter((r: any) => r.event_id === parseInt(selEventId)).map((r: any) => {
-                const g = golfers.find((x: any) => x.golfer_id === r.golfer_id);
-                return <option key={r.golfer_id} value={r.golfer_id}>{g ? `${g.first_name} ${g.last_name}` : "Unknown"} -- {r.total_stableford_points} pts ({r.entry_type})</option>;
-              })}
-            </select>
+            <GlassPicker
+              value={selGolferId}
+              onChange={(v: string) => setSelGolferId(v)}
+              options={[
+                { value: "", label: "Select golfer…" },
+                ...leaderboard.filter((r: any) => r.event_id === parseInt(selEventId)).map((r: any) => {
+                  const g = golfers.find((x: any) => x.golfer_id === r.golfer_id);
+                  return { value: String(r.golfer_id), label: `${g ? `${g.first_name} ${g.last_name}` : "Unknown"} -- ${r.total_stableford_points} pts (${r.entry_type})` };
+                }),
+              ]}
+            />
           </div>
           {/* Add missing golfer button for completed events */}
           {isCompletedEvent && availableToAdd.length > 0 && filterYear === allSeasonsList[0] && (
@@ -302,10 +317,14 @@ export function ScoreCorrection({ golfers, courses, events, leaderboard, setLead
         <div className="card" style={{ padding: "14px", marginBottom: 12, borderColor: "var(--green-400)", borderWidth: 2 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--green-700)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Add Missing Golfer</div>
           <div className="form-group"><label className="form-label">Golfer</label>
-            <select className="form-select" value={selGolferId} onChange={e => setSelGolferId(e.target.value)}>
-              <option value="">Select golfer…</option>
-              {availableToAdd.map((g: any) => <option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}</option>)}
-            </select>
+            <GlassPicker
+              value={selGolferId}
+              onChange={(v: string) => setSelGolferId(v)}
+              options={[
+                { value: "", label: "Select golfer…" },
+                ...availableToAdd.map((g: any) => ({ value: String(g.golfer_id), label: `${g.first_name} ${g.last_name}` })),
+              ]}
+            />
           </div>
           {selGolferId && scoreFormJSX(true)}
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>

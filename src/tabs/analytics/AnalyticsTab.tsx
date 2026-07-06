@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { SubTabPanel } from "../../App";
+import { GlassPicker } from "../../components/common";
 import { formatDate, uniqueCourseNames } from "../../lib/formatters";
 import { calcSeasonLeaderData } from "../../lib/seasonStats";
 import { OddsTab } from "../odds/OddsTab";
@@ -191,12 +192,16 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
               <>
                 <div className="form-group">
                   <label className="form-label">Select Golfer</label>
-                  <select className="form-select" value={selGolfer} onChange={e=>setSelGolfer(e.target.value)}>
-                    <option value="">Choose golfer…</option>
-                    {golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").sort((a:any,b:any)=>a.first_name.localeCompare(b.first_name)).map((g:any)=>(
-                      <option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}</option>
-                    ))}
-                  </select>
+                  <GlassPicker
+                    value={selGolfer}
+                    onChange={(v)=>setSelGolfer(v)}
+                    options={[
+                      {value:"",label:"Choose golfer…"},
+                      ...golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").sort((a:any,b:any)=>a.first_name.localeCompare(b.first_name)).map((g:any)=>(
+                        {value:String(g.golfer_id),label:`${g.first_name} ${g.last_name}`}
+                      )),
+                    ]}
+                  />
                 </div>
                 {selG&&golferRounds.length>0&&<GolferHistoryChart golfer={selG} rounds={golferRounds} seasonData={selGData} leaderboard={leaderboard} golfers={golfers} seasonEvents={seasonEvents} holeScores={holeScores} courses={courses} signups={signups} onNavigatePtsGained={(tabId:string)=>{setInitialPtsTab(tabId);switchSubTab("points-gained");}}/>}
                 {selG&&golferRounds.length===0&&<div className="empty-state"><div className="empty-text">No rounds recorded this season</div></div>}

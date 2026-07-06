@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
-import { scrollMainTop, formatDate } from "../../lib/formatters";
+import ReactDOM from "react-dom";
+import { ChevronDown, Check } from "lucide-react";
+import { scrollMainTop, eventPickerLabel } from "../../lib/formatters";
 
 // ============================================================
 // SCORE SYMBOL
@@ -256,6 +258,124 @@ export function ToggleGroup(
 }
 
 // ============================================================
+// GLASS PICKER (Apple-style frosted glass dropdown)
+// ============================================================
+export function GlassPicker<T extends string|number>(
+{options,value,onChange,style}:{options:{value:T;label:React.ReactNode}[];value:T;onChange:(v:T)=>void;style?:React.CSSProperties}){
+  const [open,setOpen]=useState(false);
+  const [closing,setClosing]=useState(false);
+  const btnRef=useRef<HTMLButtonElement>(null);
+  const menuRef=useRef<HTMLDivElement>(null);
+  const [pos,setPos]=useState({top:0,left:0,right:"auto" as number|"auto",width:0,maxHeight:340,openUp:false,alignRight:false});
+
+  const selected=options.find(o=>o.value===value);
+
+  const measure=useCallback(()=>{
+    const el=btnRef.current;if(!el)return;
+    const r=el.getBoundingClientRect();
+    const margin=10;
+    const spaceBelow=window.innerHeight-r.bottom-margin;
+    const spaceAbove=r.top-margin;
+    const openUp=spaceBelow<260&&spaceAbove>spaceBelow;
+    const maxHeight=Math.max(120,Math.min(340,openUp?spaceAbove:spaceBelow));
+    // If the button's own right edge sits closer to the viewport's right edge
+    // than its left edge sits to the viewport's left edge, the button is
+    // right-anchored (e.g. a compact filter at the end of a header row) --
+    // open the menu leftward from the button's right edge instead of
+    // growing rightward off-screen.
+    const alignRight=(window.innerWidth-r.right)<r.left;
+    setPos({
+      top:openUp?r.top-6-maxHeight:r.bottom+6,
+      left:alignRight?0:r.left,
+      right:alignRight?window.innerWidth-r.right:"auto",
+      width:r.width,maxHeight,openUp,alignRight,
+    });
+  },[]);
+
+  const requestClose=useCallback(()=>{
+    setClosing(true);
+    setTimeout(()=>{setOpen(false);setClosing(false);},160);
+  },[]);
+
+  const openMenu=()=>{
+    measure();
+    setOpen(true);
+    setClosing(false);
+  };
+
+  useEffect(()=>{
+    if(!open)return;
+    const onScroll=()=>measure();
+    const onResize=()=>measure();
+    const onDown=(e:MouseEvent|TouchEvent)=>{
+      const t=e.target as Node;
+      if(menuRef.current?.contains(t)||btnRef.current?.contains(t))return;
+      requestClose();
+    };
+    const onKey=(e:KeyboardEvent)=>{if(e.key==="Escape")requestClose();};
+    window.addEventListener("scroll",onScroll,true);
+    window.addEventListener("resize",onResize);
+    document.addEventListener("mousedown",onDown);
+    document.addEventListener("touchstart",onDown);
+    document.addEventListener("keydown",onKey);
+    return()=>{
+      window.removeEventListener("scroll",onScroll,true);
+      window.removeEventListener("resize",onResize);
+      document.removeEventListener("mousedown",onDown);
+      document.removeEventListener("touchstart",onDown);
+      document.removeEventListener("keydown",onKey);
+    };
+  },[open,measure,requestClose]);
+
+  const pick=(v:T)=>{
+    if(typeof navigator!=="undefined"&&"vibrate" in navigator){try{navigator.vibrate(6);}catch{}}
+    onChange(v);
+    requestClose();
+  };
+
+  return(
+    <>
+      <button
+        type="button"
+        ref={btnRef}
+        className={`glass-picker-btn${open?" open":""}`}
+        style={style}
+        onClick={()=>open?requestClose():openMenu()}
+      >
+        <span className="glass-picker-btn-label">{selected?.label}</span>
+        <ChevronDown className="glass-picker-chevron" size={17} strokeWidth={2.5}/>
+      </button>
+      {open&&ReactDOM.createPortal(
+        <div
+          ref={menuRef}
+          className={`glass-picker-menu${closing?" closing":""}`}
+          style={{
+            top:pos.top,
+            left:pos.alignRight?"auto":pos.left,
+            right:pos.alignRight?pos.right:"auto",
+            minWidth:pos.width,maxHeight:pos.maxHeight,
+            transformOrigin:`${pos.openUp?"bottom":"top"} ${pos.alignRight?"right":"left"}`,
+          }}
+        >
+          {options.map(o=>(
+            <button
+              key={String(o.value)}
+              type="button"
+              className={`glass-picker-item${o.value===value?" active":""}`}
+              onClick={()=>pick(o.value)}
+            >
+              <span>{o.label}</span>
+              {o.value===value&&<Check size={16} strokeWidth={2.75}/>}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+// ============================================================
 // FINANCE VIEW
 // ============================================================
 export function FinanceView({golfers,leaderboard,events,charityDonations,setCharityDonations,showSuccess}:any){
@@ -313,10 +433,14 @@ export function FinanceView({golfers,leaderboard,events,charityDonations,setChar
 
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
         <div className="card-title">Charity by Season</div>
-        <select style={{fontSize:13,padding:"4px 8px",border:"1.5px solid var(--border-md)",borderRadius:"var(--radius-sm)",fontFamily:"var(--font-sans)"}} value={donationSeason} onChange={e=>setDonationSeason(e.target.value==="all"?"all":parseInt(e.target.value))}>
-          <option value="all">All Seasons</option>
-          {allSeasonsList.map(y=><option key={y} value={y}>{y}</option>)}
-        </select>
+        <div style={{width:"auto",flexShrink:0}}>
+          <GlassPicker<number|"all">
+            value={donationSeason}
+            onChange={v=>setDonationSeason(v)}
+            options={[{value:"all",label:"All Seasons"},...allSeasonsList.map(y=>({value:y,label:String(y)}))]}
+            style={{fontSize:13,padding:"4px 8px"}}
+          />
+        </div>
       </div>
       <div className="card" style={{padding:"12px 16px",marginBottom:12}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -369,9 +493,11 @@ export function FinanceView({golfers,leaderboard,events,charityDonations,setChar
       <hr className="divider"/>
       <div className="form-group">
         <label className="form-label">Event Breakdown</label>
-        <select className="form-select" value={selEventId||""} onChange={e=>setSelEventId(parseInt(e.target.value))}>
-          {[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime()).map((ev:any)=><option key={ev.event_id} value={ev.event_id}>{formatDate(ev.date)} -- {ev.course_name}</option>)}
-        </select>
+        <GlassPicker
+          value={selEventId||""}
+          onChange={v=>setSelEventId(parseInt(String(v)))}
+          options={[...events].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime()).map((ev:any)=>({value:ev.event_id,label:eventPickerLabel(ev)}))}
+        />
       </div>
       <div className="stat-grid">
         <div className="stat-card"><div className="stat-value">${paidIn*20}</div><div className="stat-label">Stableford Pot</div></div>

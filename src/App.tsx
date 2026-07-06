@@ -356,6 +356,49 @@ const CSS = `
   .form-input:focus,.form-select:focus{border-color:var(--green-500);box-shadow:0 0 0 3px rgba(34,139,80,0.12);}
   textarea.form-input{font-size:15px;}
 
+  /* ── GLASS PICKER (Apple-style frosted dropdown) ── */
+  .glass-picker-btn{
+    display:flex;width:100%;align-items:center;justify-content:space-between;gap:6px;padding:10px 14px;
+    border-radius:var(--radius-md);border:1px solid rgba(255,255,255,0.35);
+    background:linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,255,255,0.28));
+    -webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%);
+    box-shadow:0 1px 2px rgba(28,20,16,0.06),0 6px 16px rgba(28,20,16,0.08),inset 0 1px 0 rgba(255,255,255,0.6);
+    font-family:var(--font-sans);font-size:17px;font-weight:500;color:var(--text-primary);
+    cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;
+    box-sizing:border-box;
+  }
+  .glass-picker-btn:active{transform:scale(0.97);}
+  .glass-picker-btn.open .glass-picker-chevron{transform:rotate(180deg);}
+  .glass-picker-chevron{color:var(--text-muted);transition:transform 0.2s ease;flex-shrink:0;}
+  .glass-picker-btn-label{white-space:nowrap;}
+  .glass-picker-menu{
+    position:fixed;z-index:9999;padding:6px;border-radius:var(--radius-lg);
+    background:linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.55));
+    -webkit-backdrop-filter:blur(24px) saturate(190%);backdrop-filter:blur(24px) saturate(190%);
+    border:1px solid rgba(255,255,255,0.45);
+    box-shadow:0 10px 30px rgba(28,20,16,0.18),0 2px 8px rgba(28,20,16,0.08),inset 0 1px 0 rgba(255,255,255,0.7);
+    display:flex;flex-direction:column;gap:2px;
+    max-height:340px;overflow-y:auto;overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    transform-origin:top left;
+    animation:glassPickerIn 0.22s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .glass-picker-menu.closing{animation:glassPickerOut 0.16s ease-in forwards;}
+  @keyframes glassPickerIn{from{opacity:0;transform:scale(0.92) translateY(-6px);}to{opacity:1;transform:scale(1) translateY(0);}}
+  @keyframes glassPickerOut{from{opacity:1;transform:scale(1) translateY(0);}to{opacity:0;transform:scale(0.94) translateY(-4px);}}
+  .glass-picker-item{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+    padding:10px 12px;border:none;border-radius:var(--radius-sm);background:transparent;
+    font-family:var(--font-sans);font-size:17px;font-weight:500;color:var(--text-primary);
+    cursor:pointer;transition:background 0.12s;text-align:left;white-space:nowrap;
+  }
+  .glass-picker-item:hover,.glass-picker-item:active{background:rgba(28,20,16,0.06);}
+  .glass-picker-item.active{color:var(--gold-700);font-weight:600;}
+  .glass-picker-item svg{color:var(--gold-600);flex-shrink:0;}
+  @media (prefers-reduced-motion: reduce){
+    .glass-picker-menu,.glass-picker-menu.closing{animation:none;}
+  }
+
   /* ── PILLS ── */
   .pill{display:inline-block;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;}
   .pill-green{background:var(--green-100);color:var(--green-700);}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { calcPlayingHandicap } from "../../lib/golfMath";
 import { uniqueCourseNames, teeBoxesForCourse } from "../../lib/formatters";
+import { GlassPicker } from "../../components/common";
 
 export function CourseHcpSheet({ golfers, courses, showSuccess }: any) {
   const courseNames = uniqueCourseNames(courses);
@@ -57,7 +58,7 @@ export function CourseHcpSheet({ golfers, courses, showSuccess }: any) {
     <div>
       <div className="card-title" style={{ marginBottom: 8 }}>Course Handicap Sheet</div>
       <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 14 }}>Playing handicap for every member across all tee boxes.</p>
-      <div className="form-group"><label className="form-label">Golf Course</label><select className="form-select" value={selCourseName} onChange={e => setSelCourseName(e.target.value)}>{courseNames.map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+      <div className="form-group"><label className="form-label">Golf Course</label><GlassPicker value={selCourseName} onChange={v => setSelCourseName(v)} options={courseNames.map(n => ({ value: n, label: n }))} /></div>
       {tees.length > 0 && (
         <>
           <div style={{ overflowX: "auto" }}>
