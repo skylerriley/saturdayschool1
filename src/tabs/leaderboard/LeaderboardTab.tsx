@@ -1036,7 +1036,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                           {stats.seconds>0&&<span className="drawer-badge-pod">&#129352; {stats.seconds}x 2nd</span>}
                         </div>
                       )}
-                      <div className="drawer-card-section-label" style={{textAlign:"center"}}>HANDICAP TREND</div>
+                      <div className="drawer-card-section-label" style={{textAlign:"center"}}>COURSE HANDICAP TREND</div>
                       
                       <svg viewBox={`0 0 ${spW} ${spH}`} width="100%" height={spH} style={{overflow:"visible",display:"block"}}>
                         <defs>
