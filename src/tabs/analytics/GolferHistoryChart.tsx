@@ -868,7 +868,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                       <img
                         src={isSkyler?"/swingtest.gif":"/gregswing.gif"}
                         alt={isSkyler?"Skyler Riley swing":"Greg Levy swing"}
-                        style={{maxWidth:"80%",maxHeight:"80%",objectFit:"contain",borderRadius:8}}
+                        style={{maxWidth:isGreg?"100%":"80%",maxHeight:isGreg?"100%":"80%",objectFit:"contain",borderRadius:8}}
                       />
                     </div>
                   )}
