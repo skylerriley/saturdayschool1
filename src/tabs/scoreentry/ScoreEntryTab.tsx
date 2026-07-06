@@ -6,7 +6,7 @@ import { supabase, SUPABASE_URL, SUPABASE_KEY } from "../../lib/supabaseClient";
 
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false,started:false,summaryId:null as number|null});
 
-export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,dbUpsertHoleScore,scoreMode,setScoreMode,scoreEventId,setScoreEventId,scorers,setScorers,showSuccess,showScoreMsg,scoreMsg}:any){
+export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,dbUpsertHoleScore,dbDeleteHoleScore,scoreMode,setScoreMode,scoreEventId,setScoreEventId,scorers,setScorers,showSuccess,showScoreMsg,scoreMsg}:any){
   // State is lifted to App so it survives tab navigation
   const mode=scoreMode;
   const setMode=setScoreMode;
@@ -64,6 +64,16 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       offlineQueue.current.push({row,retries:0});
     }
   },[dbUpsertHoleScore]);
+
+  // Clearing a hole must delete its row in the DB, not just skip the upsert --
+  // otherwise the stale gross/net/points values stay in hole_scores forever.
+  // Drop any queued upsert for the same hole so it can't race the delete.
+  const queueHoleClear=useCallback((summary_id:number,hole_number:number)=>{
+    offlineQueue.current=offlineQueue.current.filter(
+      q=>!(q.row.summary_id===summary_id&&q.row.hole_number===hole_number)
+    );
+    dbDeleteHoleScore(summary_id,hole_number).catch(()=>{});
+  },[dbDeleteHoleScore]);
 
   // Connection status indicator shown during score entry
   const [isOnline,setIsOnline]=useState(()=>navigator.onLine);
@@ -348,6 +358,11 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       }
     } else if(!val){
       setHoleScores((hs:any)=>hs.filter((h:any)=>!(h.summary_id===tempSid&&h.hole_number===hole+1)));
+      // If we already have a real DB row, delete the hole -- upsert is never called
+      // with an empty value, so nothing else will clear it from the DB.
+      if(existing?.summary_id&&existing.summary_id<1e12){
+        queueHoleClear(existing.summary_id,hole+1);
+      }
     }
 
     // -- Step 3: update leaderboard running total state --

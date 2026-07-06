@@ -4,7 +4,7 @@ import { scrollMainTop, formatDate } from "../../lib/formatters";
 // ============================================================
 // SCORE SYMBOL
 // ============================================================
-export function ScoreSymbol({gross,par}:{gross:number,par:number}){
+export function ScoreSymbol({gross,par,className}:{gross:number,par:number,className?:string}){
   const diff=gross-par;
   let cls="sc-par";
   if(diff<=-2)cls="sc-eagle";
@@ -12,7 +12,7 @@ export function ScoreSymbol({gross,par}:{gross:number,par:number}){
   else if(diff===1)cls="sc-bogey";
   else if(diff===2)cls="sc-dbl";
   else if(diff>=3)cls="sc-triple";
-  return <span className={`sc-score ${cls}`}>{gross}</span>;
+  return <span className={`sc-score ${cls}${className?` ${className}`:""}`}>{gross}</span>;
 }
 
 // ============================================================

@@ -683,6 +683,9 @@ const CSS = `
   .score-btn-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;}
   .score-pick-btn{display:flex;align-items:center;justify-content:center;height:54px;border-radius:var(--radius-md);border:1.5px solid var(--border-md);background:var(--surface);font-size:20px;font-weight:700;cursor:pointer;color:var(--text-primary);}
   .score-pick-btn .sc-score{font-size:20px;width:36px;height:36px;}
+  /* Skin-reveal winner badge -- larger scale to match the golfer name beside it. */
+  .skin-reveal-score{font-size:26px;width:40px;height:40px;}
+  .skin-reveal-score.sc-par{border:2px solid transparent;border-radius:50%;}
   .score-pick-btn:active{background:var(--green-50);}
   .pts-par{}
   .pts-bogey{}
@@ -1995,6 +1998,12 @@ export default function App(){
     catch(e:any){showError(`Delete failed: ${e.message}`);}
   },[showError]);
 
+  // Deletes a single hole's row -- used when a score is cleared during live entry.
+  const dbDeleteHoleScore=useCallback(async(summary_id:number,hole_number:number)=>{
+    try{await supabase.from("hole_scores").delete({summary_id,hole_number});}
+    catch(e:any){showError(`Live hole clear failed: ${e.message}`);}
+  },[showError]);
+
   const dbUpsertCharity=useCallback(async(donation:any)=>{
     const prev=charityDonations;
     try{
@@ -2306,7 +2315,7 @@ export default function App(){
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
-          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
+          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} dbDeleteHoleScore={dbDeleteHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
           {activeTab==="settings"&&<SettingsTab/>}

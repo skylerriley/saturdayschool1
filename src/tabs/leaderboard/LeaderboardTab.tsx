@@ -253,6 +253,19 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
   const validSubTabs=["live","upcoming","season","top15","weekly"];
   const [subTab,setSubTab]=useState(validSubTabs.includes(restoreSubTab||"")?restoreSubTab:validSubTabs.includes(initialSubTab||"")?initialSubTab:"weekly");
+
+  // While a round is actively being scored, App.tsx's 5-minute background poll
+  // is too slow -- players expect the Live tab (leaderboard + player drawer
+  // scorecards) to track hole-by-hole entries as they happen. Poll fast here,
+  // scoped to only when the Live tab is actually open and visible.
+  useEffect(()=>{
+    if(subTab!=="live"||!refreshLiveData)return;
+    const LIVE_REFRESH_MS=15000;
+    const id=window.setInterval(()=>{
+      if(!document.hidden)refreshLiveData();
+    },LIVE_REFRESH_MS);
+    return()=>window.clearInterval(id);
+  },[subTab,refreshLiveData]);
   const [selEventId,setSelEventId]=useState<number|null>(null);
   const [expandedId,setExpandedId]=useState<number|null>(null);
   // Switching tabs and collapsing an expanded row used to happen in the
@@ -1797,10 +1810,23 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                       const winnerName=isGold
                         ?(()=>{const g=golfers.find((x:any)=>x.golfer_id===state);return g?g.first_name+" "+g.last_name:"?";})()
                         :null;
+                      const winnerEntry=isGold?skinsPaid.find((e:any)=>e.golfer_id===state):null;
+                      const winnerHole=winnerEntry?holeScores.find((h:any)=>h.summary_id===winnerEntry.summary_id&&h.hole_number===revealedHole):null;
+                      const par=liveCourse?.hole_pars?.[revealedHole-1];
                       return winnerName?(
                         <div style={{marginTop:10,padding:"8px 12px",borderRadius:"var(--radius-sm)",background:"var(--gold-50,#fffaf0)",border:"1px solid var(--gold-300)",textAlign:"center"}}>
-                          <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Hole {revealedHole} · Skin</span>
-                          <div style={{fontSize:22,fontWeight:700,color:"var(--gold-600)",marginTop:2}}>{winnerName}</div>
+                          <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Hole {revealedHole}{par!=null?` · Par ${par}`:""}</span>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginTop:6}}>
+                            <div style={{fontSize:24,fontWeight:700,color:"var(--gold-600)"}}>{winnerName}</div>
+                            {winnerHole?.gross_score!=null&&par!=null&&(
+                              <div style={{position:"relative",display:"inline-flex"}}>
+                                <ScoreSymbol gross={winnerHole.gross_score} par={par} className="skin-reveal-score"/>
+                                {winnerHole.stableford_points!=null&&(
+                                  <span style={{position:"absolute",top:-9,right:-13,fontSize:14,fontWeight:800,color:"var(--gold-700)",lineHeight:1}}>{winnerHole.stableford_points}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ):null;
                     })()}
@@ -2174,7 +2200,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                         {!isTied&&tied2nd.length>0&&(
                           <div className="event-hero-slot">
                             <div className="event-hero-medal">🥈</div>
-                            <div className="event-hero-name">{tied2nd.length>1?"Tied 2nd":golferName(golfers,tied2nd[0].golfer_id).split(" ")[0]}</div>
+                            <div className="event-hero-name">{tied2nd.length>1?tied2nd.map((e:any)=>golferName(golfers,e.golfer_id).split(" ")[0]).join(" & "):golferName(golfers,tied2nd[0].golfer_id).split(" ")[0]}</div>
                             <div className="event-hero-card">
                               <div className="event-hero-pts event-hero-pts--other">{tied2nd[0].total_stableford_points}</div>
                               <div className="event-hero-pts-label">pts</div>
@@ -2263,6 +2289,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     <div className="skins-warning"><span>⚠</span><span>Mixed entry -- skins cannot be calculated until all players have hole-by-hole scores.</span></div>
                   )}
           {skinsEligible&&hasLiveSkins&&(()=>{
+            const weeklyCourse=courses.find((c:any)=>c.course_name===displayEvent?.course_name);
             // Build playerHoleMap for all skins-paid entries
             const skinsPaidEntries=eventEntries.filter((e:any)=>e.skins_paid);
             const wPlayerHoleMap:Record<number,Record<number,number>>={};
@@ -2323,10 +2350,23 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     const winnerName=isGold
                       ?(()=>{const g=golfers.find((x:any)=>x.golfer_id===state);return g?g.first_name+" "+g.last_name:"?";})()
                       :null;
+                    const winnerEntry=isGold?skinsPaidEntries.find((e:any)=>e.golfer_id===state):null;
+                    const winnerHole=winnerEntry?holeScores.find((h:any)=>h.summary_id===winnerEntry.summary_id&&h.hole_number===weeklySkinsRevealedHole):null;
+                    const par=weeklyCourse?.hole_pars?.[weeklySkinsRevealedHole-1];
                     return winnerName?(
                       <div style={{marginTop:10,padding:"8px 12px",borderRadius:"var(--radius-sm)",background:"var(--gold-50,#fffaf0)",border:"1px solid var(--gold-300)",textAlign:"center"}}>
-                        <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Hole {weeklySkinsRevealedHole} · Skin</span>
-                        <div style={{fontSize:22,fontWeight:700,color:"var(--gold-600)",marginTop:2}}>{winnerName}</div>
+                        <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Hole {weeklySkinsRevealedHole}{par!=null?` · Par ${par}`:""}</span>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginTop:6}}>
+                          <div style={{fontSize:24,fontWeight:700,color:"var(--gold-600)"}}>{winnerName}</div>
+                          {winnerHole?.gross_score!=null&&par!=null&&(
+                            <div style={{position:"relative",display:"inline-flex"}}>
+                              <ScoreSymbol gross={winnerHole.gross_score} par={par} className="skin-reveal-score"/>
+                              {winnerHole.stableford_points!=null&&(
+                                <span style={{position:"absolute",top:-9,right:-13,fontSize:14,fontWeight:800,color:"var(--gold-700)",lineHeight:1}}>{winnerHole.stableford_points}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ):null;
                   })()}
