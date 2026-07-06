@@ -798,13 +798,15 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
           {/* Scoring Fingerprint — only for 2026+ seasons where hole-by-hole data exists */}
           {season>=2026&&(()=>{
             const isSkyler=golfer.first_name==="Skyler"&&golfer.last_name==="Riley";
+            const isGreg=golfer.first_name==="Greg"&&golfer.last_name==="Levy";
+            const hasSwingGif=isSkyler||isGreg;
             return(
               <div
-                onClick={isSkyler?()=>setFingerprintFlipped(f=>!f):undefined}
+                onClick={hasSwingGif?()=>setFingerprintFlipped(f=>!f):undefined}
                 style={{
                   perspective:1200,
                   marginBottom:16,
-                  cursor:isSkyler?"pointer":undefined,
+                  cursor:hasSwingGif?"pointer":undefined,
                 }}
               >
                 <div style={{
@@ -849,8 +851,8 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                     </div>
                   </div>
 
-                  {/* Back face — Skyler only */}
-                  {isSkyler&&(
+                  {/* Back face — Skyler & Greg only */}
+                  {hasSwingGif&&(
                     <div style={{
                       position:"absolute",
                       top:0,left:0,right:0,bottom:0,
@@ -864,8 +866,8 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                       justifyContent:"center",
                     }}>
                       <img
-                        src="/swingtest.gif"
-                        alt="Skyler Riley swing"
+                        src={isSkyler?"/swingtest.gif":"/gregswing.gif"}
+                        alt={isSkyler?"Skyler Riley swing":"Greg Levy swing"}
                         style={{maxWidth:"80%",maxHeight:"80%",objectFit:"contain",borderRadius:8}}
                       />
                     </div>
