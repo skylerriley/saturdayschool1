@@ -3,6 +3,7 @@ import { useState, useRef, useLayoutEffect, useEffect, useCallback } from "react
 import { computeScoringFingerprint } from "../../lib/scoringFingerprint";
 import { computeRows } from "./PointsGained";
 import { ScoringFingerprintRadar } from "../../components/charts/ScoringFingerprintRadar";
+import { SaturdayHandicapChart } from "../../components/SaturdayHandicapChart";
 import { CountUp, ScoreSymbol } from "../../App";
 import { ChartCanvas } from "./ChartCanvas";
 import { PairingHistory } from "../../components/analytics/PairingHistory";
@@ -239,7 +240,7 @@ function GolferSubNav({view,setView}:{view:string;setView:(v:string)=>void}){
   );
 }
 
-export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEvents,holeScores,courses,signups,onNavigatePtsGained}:any){
+export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEvents,events,holeScores,courses,signups,onNavigatePtsGained}:any){
   const [expandedRound,setExpandedRound]=useState<number|null>(null);
   const [golferSubTab,setGolferSubTab]=useState("overview");
   const [donutKey,setDonutKey]=useState(0);
@@ -876,6 +877,16 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
               </div>
             );
           })()}
+
+          {/* Saturday Handicap — all-time WHS index from competitive gross scores */}
+          <SaturdayHandicapChart
+            golfer={golfer}
+            leaderboard={leaderboard}
+            holeScores={holeScores}
+            courses={courses}
+            signups={signups}
+            events={events}
+          />
         </>
       )}
 

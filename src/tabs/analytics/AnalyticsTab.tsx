@@ -183,7 +183,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
                     ]}
                   />
                 </div>
-                {selG&&golferRounds.length>0&&<GolferHistoryChart golfer={selG} rounds={golferRounds} seasonData={selGData} leaderboard={leaderboard} golfers={golfers} seasonEvents={seasonEvents} holeScores={holeScores} courses={courses} signups={signups} onNavigatePtsGained={(tabId:string)=>{setInitialPtsTab(tabId);switchSubTab("points-gained");}}/>}
+                {selG&&golferRounds.length>0&&<GolferHistoryChart golfer={selG} rounds={golferRounds} seasonData={selGData} leaderboard={leaderboard} golfers={golfers} seasonEvents={seasonEvents} events={events} holeScores={holeScores} courses={courses} signups={signups} onNavigatePtsGained={(tabId:string)=>{setInitialPtsTab(tabId);switchSubTab("points-gained");}}/>}
                 {selG&&golferRounds.length===0&&<div className="empty-state"><div className="empty-text">No rounds recorded this season</div></div>}
               </>
             );
