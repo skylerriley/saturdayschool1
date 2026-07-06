@@ -111,7 +111,7 @@ export function EventAlertBanner({
   if (!upcomingEvent) return null;
 
   const yesCount = signups.filter(
-    (s: any) => s.event_id === upcomingEvent.event_id && s.attending === "Yes" && !s.is_guest_entry
+    (s: any) => s.event_id === upcomingEvent.event_id && s.attending === "Yes"
   ).length;
 
   const teeTimes: string[] = upcomingEvent.tee_times || [];
