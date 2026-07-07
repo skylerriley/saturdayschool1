@@ -237,6 +237,15 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   const [guestSponsor,setGuestSponsor]=useState("");
   const [guestHcp,setGuestHcp]=useState("18");
   const [guestSelectedId,setGuestSelectedId]=useState<number|null>(null); // null = create new; number = reuse existing
+  const [guestSaving,setGuestSaving]=useState(false); // blocks double-taps while the insert is in flight
+
+  // Re-validate the selection if the chosen event disappears (e.g. finalized
+  // while this tab is open) — a stale selEvent crashed downstream renders.
+  useEffect(()=>{
+    if(upcomingEvents.length&&!upcomingEvents.some((e:any)=>e.event_id===selEventId)){
+      setSelEventId(upcomingEvents[0].event_id);
+    }
+  },[events,selEventId]);
 
   const cardRef=useRef<HTMLDivElement>(null);
   const [cardHeight,setCardHeight]=useState(340);
@@ -303,6 +312,9 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
   const addGuest=async()=>{
     if(!guestName.trim()||!guestSponsor)return;
+    if(guestSaving)return; // double-tap creates duplicate golfer + signup rows
+    setGuestSaving(true);
+    try{
     const [fn,...rest]=guestName.trim().split(" ");
     const ln=rest.join(" ")||"Guest";
     const hcp=parseFloat(guestHcp)||18;
@@ -393,6 +405,9 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
     setGuestName(""); setGuestSponsor(""); setGuestHcp("18"); setGuestSelectedId(null);
     showSuccess(`Guest ${fn} ${ln} added`);
     scrollToTop();
+    }finally{
+      setGuestSaving(false);
+    }
   };
 
   const buildReminderBody=()=>{
@@ -414,10 +429,11 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
     return`Reminder to sign up for ${formatDate(selEvent.date)} @ ${selEvent.course_name}\nTee times: ${selEvent.tee_times.join(", ")}\n\n✅ Going (${going.length}):\n${going.map((n:string)=>`  * ${n}`).join("\n")}\n\n❓ No response yet (${unconf.length}):\n${unconf.map((n:string)=>`  * ${n}`).join("\n")}\n\n❌ Not attending (${out.length}):\n${out.map((n:string)=>`  * ${n}`).join("\n")}\n\nSign up in the app: https://saturdayschool.vercel.app/?tab=rsvp`;
   };
 
-  const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.email_address).map((g:any)=>g.email_address);
-  const mailtoLink=`mailto:?cc=${allEmails.join(",")}&subject=Reminder ${selEvent.course_name} ${selEvent.tee_times.join(", ")}&body=${encodeURIComponent(buildReminderBody())}`;
-
   if(upcomingEvents.length===0)return<div className="empty-state"><div className="empty-text">No upcoming events</div></div>;
+
+  const allEmails=golfers.filter((g:any)=>!g.is_guest&&g.email_address).map((g:any)=>g.email_address);
+  // selEvent can still be briefly undefined while the re-validation effect runs
+  const mailtoLink=selEvent?`mailto:?cc=${allEmails.join(",")}&subject=Reminder ${selEvent.course_name} ${(selEvent.tee_times||[]).join(", ")}&body=${encodeURIComponent(buildReminderBody())}`:"";
   const wxBg = getWeatherCardBg(forecastWx?.code);
 
   const isJuly4 = selEvent?.date ? selEvent.date.slice(5) === "07-04" : false;
@@ -706,10 +722,10 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             };
             const hasStrongUnpicked=guestSelectedId===null&&query.length>=2&&
               namedGuests.some((g:any)=>fuzzyScore(query,`${g.first_name} ${g.last_name}`)>=0.65);
-            const canSubmit=query&&guestSponsor&&!hasStrongUnpicked;
+            const canSubmit=query&&guestSponsor&&!hasStrongUnpicked&&!guestSaving;
             return(
               <button className="btn btn-gold btn-full" disabled={!canSubmit} onClick={addGuest}>
-                {guestSelectedId!==null?"+ Add Guest to Event (existing record)":"+ Add Guest to Event"}
+                {guestSaving?"Adding…":guestSelectedId!==null?"+ Add Guest to Event (existing record)":"+ Add Guest to Event"}
               </button>
             );
           })()}

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { CountUp } from "../../App";
+import { CountUp } from "../common";
 
 interface TrailDot {
   eventId: number;

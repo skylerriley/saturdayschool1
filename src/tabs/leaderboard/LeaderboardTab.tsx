@@ -5,7 +5,7 @@ import { SeasonScrubber, FlickCarousel, SubTabPanel, ToggleGroup, ScoreSymbol, G
 import { golferName, formatDate } from "../../lib/formatters";
 import { calcPlayingHandicap } from "../../lib/golfMath";
 import { supabase } from "../../lib/supabaseClient";
-import { buildSeasonRounds, golferStats } from "../../lib/seasonStats";
+import { buildSeasonRounds, golferStats, dedupeLeaderboard } from "../../lib/seasonStats";
 import { useLiveWeather } from "../../hooks/useLiveWeather";
 import { WindParticles } from "../../components/weather/WindParticles";
 import { WeatherModal } from "../../components/weather/WeatherModal";
@@ -34,7 +34,7 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
   useEffect(()=>{ setImgLoaded(false); },[imgUrl]);
 
   // Leaderboard entries for this event, sorted by points desc
-  const entries=[...leaderboard.filter((r:any)=>r.event_id===event.event_id)]
+  const entries=dedupeLeaderboard(leaderboard.filter((r:any)=>r.event_id===event.event_id))
     .sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
   const paidEntries=entries.filter((r:any)=>r.buy_in_paid);
 
@@ -403,7 +403,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   },[initialFeedOpen,completedEvents.length]);
 
   const eventEntries=displayEvent
-    ?[...leaderboard.filter((e:any)=>e.event_id===displayEvent.event_id)].sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)
+    ?dedupeLeaderboard(leaderboard.filter((e:any)=>e.event_id===displayEvent.event_id)).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)
     :[];
 
   const paidEntries=[...eventEntries.filter((e:any)=>e.buy_in_paid)].sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
@@ -510,7 +510,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   // below can be a normal hook.
   const livePosMap=useMemo(()=>{
     if(!liveEvent)return{} as Record<number,number>;
-    const liveEntries=[...leaderboard.filter((r:any)=>r.event_id===liveEvent.event_id)]
+    const liveEntries=dedupeLeaderboard(leaderboard.filter((r:any)=>r.event_id===liveEvent.event_id))
       .sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
     let cp=1;
     const map:Record<number,number>={};
@@ -526,7 +526,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   },[liveEvent,leaderboard]);
   const liveOrderedIds=useMemo(()=>{
     if(!liveEvent)return[] as number[];
-    return[...leaderboard.filter((r:any)=>r.event_id===liveEvent.event_id)]
+    return dedupeLeaderboard(leaderboard.filter((r:any)=>r.event_id===liveEvent.event_id))
       .sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)
       .map((r:any)=>r.golfer_id);
   },[liveEvent,leaderboard]);
@@ -1357,7 +1357,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
       <SubTabPanel tabs={tabs} value={subTab} onChange={switchSubTab}>
       {subTab==="live"&&liveEvent&&(()=>{
-        const liveEntries=[...leaderboard.filter((r:any)=>r.event_id===liveEvent.event_id)]
+        const liveEntries=dedupeLeaderboard(leaderboard.filter((r:any)=>r.event_id===liveEvent.event_id))
           .sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
         const liveCourse=courses.find((c:any)=>c.course_name===liveEvent.course_name);
 
@@ -2124,8 +2124,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
             // Status badge
             const evStatus=displayEvent.status;
-            const showBadge=evStatus==="In Progress"||evStatus==="Completed";
-            const badgeLabel=evStatus==="In Progress"?"Live":"Final";
+            const showBadge=evStatus==="In-Progress"||evStatus==="Completed";
+            const badgeLabel=evStatus==="In-Progress"?"Live":"Final";
 
             // Stats pills
             const heroPlayerCount=paidEntries.length;
@@ -2144,7 +2144,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
             // Pot values
             const heroPot=totalPot;
-            const heroSkinsPot=(evStatus==="In Progress"||skinsEligible)?eventEntries.filter((e:any)=>e.skins_paid).length*10:0;
+            const heroSkinsPot=(evStatus==="In-Progress"||skinsEligible)?eventEntries.filter((e:any)=>e.skins_paid).length*10:0;
 
             return(
               <>
@@ -2162,8 +2162,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
                   {/* Status badge */}
                   {showBadge&&(
-                    <div className={"event-hero-badge"+(evStatus==="In Progress"?" event-hero-badge--live":"")}>
-                      {evStatus==="In Progress"&&<span className="event-hero-badge-dot"/>}{badgeLabel}
+                    <div className={"event-hero-badge"+(evStatus==="In-Progress"?" event-hero-badge--live":"")}>
+                      {evStatus==="In-Progress"&&<span className="event-hero-badge-dot"/>}{badgeLabel}
                     </div>
                   )}
 

@@ -1,4 +1,6 @@
 // -- Season Overview Dashboard ---------------------------------
+import { dedupeLeaderboard } from "../../lib/seasonStats";
+
 // ── Champions View ────────────────────────────────────────────────────────────
 export function ChampionsView({golfers,leaderboard,events}:any){
   const currentYear=new Date().getFullYear();
@@ -19,8 +21,7 @@ export function ChampionsView({golfers,leaderboard,events}:any){
       events.filter((e:any)=>e.season===season&&e.status==="Completed").map((e:any)=>e.event_id)
     );
     const byG:Record<number,number[]>={};
-    leaderboard.forEach((r:any)=>{
-      if(!completedIds.has(r.event_id))return;
+    dedupeLeaderboard(leaderboard.filter((r:any)=>completedIds.has(r.event_id))).forEach((r:any)=>{
       const g=golfers.find((gl:any)=>gl.golfer_id===r.golfer_id);
       if(!g||g.is_guest)return;
       if(!byG[r.golfer_id])byG[r.golfer_id]=[];

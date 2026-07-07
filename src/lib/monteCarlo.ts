@@ -45,7 +45,7 @@
 //
 // 8. HOUSE EDGE (3% vigorish)
 //    The sum of all raw win probs = 1.0 (zero-sum).
-//    We apply vig by scaling: adjProb_i = rawWinProb_i / (1 + VIG)
+//    We apply vig by scaling: adjProb_i = rawWinProb_i * (1 + VIG)
 //    This creates a ~3% book margin.
 //
 // 9. AMERICAN ODDS from probability p
@@ -249,8 +249,9 @@ export function calcFieldOdds(profiles: any[]) {
     winIdx.forEach(i => { wins[i] += 1 / winIdx.length; });
   }
   const rawProbs = wins.map(w => w / MC_TRIALS);
-  // Apply vig
-  const adjProbs = rawProbs.map(p => p / (1 + VIG));
+  // Apply vig: inflate implied probabilities so they sum > 1 (house margin
+  // shortens the payout). Dividing would lengthen odds and pay MORE than fair.
+  const adjProbs = rawProbs.map(p => Math.min(0.99, p * (1 + VIG)));
   return adjProbs;
 }
 
@@ -396,8 +397,8 @@ export function pickBestH2H(
   const shared = h2hHistory(leaderboard, events, a.golfer.golfer_id, b.golfer.golfer_id);
   const finalProbA = profA && profB ? h2hWinProb(shared, rawH2hProbA) : 0.5;
   const finalProbB = 1 - finalProbA;
-  const adjA = finalProbA / (1 + VIG);
-  const adjB = finalProbB / (1 + VIG);
+  const adjA = Math.min(0.99, finalProbA * (1 + VIG));
+  const adjB = Math.min(0.99, finalProbB * (1 + VIG));
 
   const spreadVal = profA && profB ? parseFloat((profA.proj - profB.proj).toFixed(1)) : 0;
   const spreadStr = Math.abs(spreadVal) < 0.3 ? "Pick'em" :

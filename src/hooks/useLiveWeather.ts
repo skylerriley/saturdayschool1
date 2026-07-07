@@ -7,6 +7,9 @@ export function useLiveWeather(courseName: string) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
+    // Staleness guard: a late response for a previous course must not
+    // overwrite the current course's conditions.
+    let cancelled = false;
     if (!courseName) return;
     const coords = COURSE_COORDS[courseName] || FALLBACK_COORDS;
     setLoading(true);
@@ -61,10 +64,12 @@ export function useLiveWeather(courseName: string) {
             precip: get("precipitation_probability", idx),
           };
         });
+        if (cancelled) return;
         setData({ current, hourly });
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [courseName]);
   return { data, loading };
 }

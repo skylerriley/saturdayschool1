@@ -3,37 +3,37 @@
 // All rounds now come from Supabase via the leaderboard state.
 // EXTRA_ROUNDS_BY_GOLFER is no longer needed.
 // ============================================================
+
+// League-wide dedupe policy: one leaderboard row per (event_id, golfer_id),
+// keeping the row with the highest total_stableford_points. EVERY payout, pot,
+// tie, or aggregate computation must run on deduped rows — duplicate rows
+// (e.g. from a double-fired insert) otherwise inflate pots and fabricate ties.
+export function dedupeLeaderboard(rows: any[]): any[] {
+  const byKey = new Map<string, any>();
+  (rows || []).forEach((r: any) => {
+    const key = `${r.event_id}|${r.golfer_id}`;
+    const ex = byKey.get(key);
+    if (!ex || r.total_stableford_points > ex.total_stableford_points) byKey.set(key, r);
+  });
+  return [...byKey.values()];
+}
+
 export function buildSeasonRounds(golfers: any[], leaderboard: any[], season: number) {
-  const byG: Record<number, { pts: number, eid: number, sid: number }[]> = {};
-  leaderboard.forEach((r: any) => {
-    if (r.season !== season) return;
+  const result: Record<number, number[]> = {};
+  dedupeLeaderboard(leaderboard.filter((r: any) => r.season === season)).forEach((r: any) => {
     const g = golfers.find((x: any) => x.golfer_id === r.golfer_id);
     if (!g || g.is_guest) return;
-    if (!byG[r.golfer_id]) byG[r.golfer_id] = [];
-    // Deduplicate: one entry per event per golfer (keep highest score if dupes exist)
-    const existing = byG[r.golfer_id].find((x: any) => x.eid === r.event_id);
-    if (existing) {
-      if (r.total_stableford_points > existing.pts) { existing.pts = r.total_stableford_points; existing.sid = r.summary_id; }
-    } else {
-      byG[r.golfer_id].push({ pts: r.total_stableford_points, eid: r.event_id, sid: r.summary_id });
-    }
+    if (!result[r.golfer_id]) result[r.golfer_id] = [];
+    result[r.golfer_id].push(r.total_stableford_points);
   });
-  // Return as simple number arrays for backward compat
-  const result: Record<number, number[]> = {};
-  Object.entries(byG).forEach(([gid, arr]) => { result[parseInt(gid)] = arr.map((x: any) => x.pts); });
   return result;
 }
 
 export function golferStats(golfers: any[], leaderboard: any[], gid: number, season: number) {
-  // Deduplicate: one entry per event per golfer (keep highest score to match buildSeasonRounds)
-  const rawEntries = leaderboard.filter((r: any) => r.golfer_id === gid && r.season === season);
-  const deduped: any[] = [];
-  rawEntries.forEach((r: any) => {
-    const ex = deduped.find((x: any) => x.event_id === r.event_id);
-    if (ex) { if (r.total_stableford_points > ex.total_stableford_points) Object.assign(ex, r); }
-    else deduped.push({ ...r });
-  });
-  const entries = deduped;
+  // Dedupe the whole season ONCE so both the golfer's own entries and the
+  // per-event payout fields below run on the same duplicate-free rows.
+  const seasonRows = dedupeLeaderboard(leaderboard.filter((r: any) => r.season === season));
+  const entries = seasonRows.filter((r: any) => r.golfer_id === gid);
   const allPts = entries.map((r: any) => r.total_stableford_points);
   // Derive wins/seconds and stableford earnings from score rankings.
   // Payout rules:
@@ -42,7 +42,7 @@ export function golferStats(golfers: any[], leaderboard: any[], gid: number, sea
   let wins = 0, seconds = 0, stablefordEarned = 0;
   const eventIds = [...new Set(entries.map((r: any) => r.event_id))];
   eventIds.forEach((eid: any) => {
-    const evEntries = [...leaderboard.filter((x: any) => x.event_id === eid && x.buy_in_paid)]
+    const evEntries = [...seasonRows.filter((x: any) => x.event_id === eid && x.buy_in_paid)]
       .sort((a: any, b: any) => b.total_stableford_points - a.total_stableford_points);
     if (!evEntries.length) return;
     const pot = evEntries.length * 20;
@@ -76,12 +76,7 @@ export function calcSeasonLeaderData(golfers: any[], leaderboard: any[], events:
   const memberGolfers = golfers.filter((g: any) => !g.is_guest && g.status === "Active");
 
   // Deduplicate leaderboard entries: one per golfer per event
-  const deduped: any[] = [];
-  leaderboard.filter((r: any) => seasonEventIds.has(r.event_id)).forEach((r: any) => {
-    const ex = deduped.find((x: any) => x.event_id === r.event_id && x.golfer_id === r.golfer_id);
-    if (ex) { if (r.total_stableford_points > ex.total_stableford_points) Object.assign(ex, r); }
-    else deduped.push({ ...r });
-  });
+  const deduped = dedupeLeaderboard(leaderboard.filter((r: any) => seasonEventIds.has(r.event_id)));
 
   const stats: Record<number, { rounds: number, totalPts: number, wins: number, seconds: number, earned: number, best: number, worst: number, allPts: number[] }> = {};
   memberGolfers.forEach(g => {

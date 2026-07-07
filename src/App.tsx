@@ -24,7 +24,6 @@ import { AdminTab } from "./tabs/admin/AdminTab";
 
 // Shared common components (no circular deps)
 import { SubTabPanel, ToggleGroup, CountUp, ScoreSymbol, FinanceView, SeasonScrubber, FlickCarousel } from "./components/common";
-export { SubTabPanel, ToggleGroup, CountUp, ScoreSymbol, FinanceView, SeasonScrubber, FlickCarousel };
 
 // Leaderboard cluster
 import { LeaderboardTab } from "./tabs/leaderboard/LeaderboardTab";
@@ -1536,23 +1535,22 @@ export default function App(){
 
         (async()=>{
           try{
+            // Direct REST fetches — the hand-rolled client has no `.in()` builder
+            // and no {data,error} envelope; the previous supabase-js-style calls
+            // threw on every boot and the backfill never ran.
+            const restHeaders={"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY};
+            const eidList=completedEids.join(",");
+
             // 1. Which event IDs already have calibration records?
-            const {data:calRowsRaw,error:calErr}=await (supabase
-              .from("model_calibration_log")
-              .select("event_id") as any)
-              .in("event_id",[...completedEids]);
-            if(calErr) throw calErr;
-            const calRows=calRowsRaw??[];
+            const calRes=await fetch(`${SUPABASE_URL}/rest/v1/model_calibration_log?select=event_id&event_id=in.(${eidList})`,{headers:restHeaders});
+            if(!calRes.ok) throw new Error(`calibration log fetch HTTP ${calRes.status}`);
+            const calRows:any[]=await calRes.json();
             const calibratedEids=new Set(calRows.map((r:any)=>r.event_id));
 
             // 2. Which completed events have frozen snapshots (odds were actually run)?
-            const {data:snapRowsRaw,error:snapErr}=await (supabase
-              .from("event_odds")
-              .select("event_id") as any)
-              .in("event_id",[...completedEids])
-              .in("snapshot_hole",[0,6,12]);
-            if(snapErr) throw snapErr;
-            const snapRows=snapRowsRaw??[];
+            const snapRes=await fetch(`${SUPABASE_URL}/rest/v1/event_odds?select=event_id&event_id=in.(${eidList})&snapshot_hole=in.(0,6,12)`,{headers:restHeaders});
+            if(!snapRes.ok) throw new Error(`event_odds snapshot fetch HTTP ${snapRes.status}`);
+            const snapRows:any[]=await snapRes.json();
             const snappedEids=new Set(snapRows.map((r:any)=>r.event_id));
 
             // 3. Backfill any completed event that has snapshots but no calibration entry
@@ -1752,16 +1750,30 @@ export default function App(){
   // (scores, signups, event status) show up without a full reload.
   const refreshLiveData=useCallback(async()=>{
     try{
-      const [su,lb,hs,ev]=await Promise.all([
+      const [su,lb,ev]=await Promise.all([
         supabase.from("event_signups").select(),
         supabase.from("event_leaderboard").select(),
-        supabase.from("hole_scores").select(),
         supabase.from("events").select(),
       ]);
       setSignups(su.map((r:any)=>({...r,signup_id:r.signup_id})));
       setLeaderboard(lb.map((r:any)=>({...r,summary_id:r.summary_id})));
-      setHoleScores(hs);
       setEvents(ev.map((r:any)=>({...r,event_id:r.event_id,tee_times:r.tee_times||[]})));
+      // hole_scores grows with league history and this refetch runs every 15s
+      // over cellular while the Live subtab is open — during a live round,
+      // fetch only the live event's rows and merge them; the historical rows
+      // already in state are immutable. Full refetch only when nothing is live.
+      const liveEv=ev.find((e:any)=>e.status==="In-Progress");
+      if(liveEv){
+        const liveSids=lb.filter((r:any)=>r.event_id===liveEv.event_id).map((r:any)=>r.summary_id).filter((id:any)=>id!=null);
+        if(liveSids.length){
+          const hs=await supabase.from("hole_scores").select("*",`&summary_id=in.(${liveSids.join(",")})`);
+          const sidSet=new Set(liveSids);
+          setHoleScores((prev:any)=>[...prev.filter((h:any)=>!sidSet.has(h.summary_id)),...hs]);
+        }
+      }else{
+        const hs=await supabase.from("hole_scores").select();
+        setHoleScores(hs);
+      }
     }catch(e:any){console.warn("[refresh] live data:",e);}
   },[]);
 
@@ -2046,6 +2058,19 @@ export default function App(){
   // -- wrapped setters that also write to DB ------------------
   // These are passed to child components exactly like the old setState functions
   // but they also trigger a DB sync.
+  //
+  // StrictMode double-invokes updater functions in dev, so any INSERT fired
+  // from inside an updater runs twice and creates duplicate DB rows (the same
+  // hazard setEventsDB already guards with pendingEventInsert). guardInsert
+  // dedupes inserts by temp id and defers them out of the updater.
+  const pendingRowInserts=useRef<Set<string>>(new Set());
+  const guardInsert=useCallback((key:string,fn:()=>Promise<any>|void)=>{
+    if(pendingRowInserts.current.has(key))return;
+    pendingRowInserts.current.add(key);
+    setTimeout(async()=>{
+      try{await fn();}finally{pendingRowInserts.current.delete(key);}
+    },0);
+  },[]);
 
   const setGolfersDB=useCallback((updater:any)=>{
     setGolfers(prev=>{
@@ -2056,11 +2081,14 @@ export default function App(){
         return !old||JSON.stringify(old)!==JSON.stringify(n);
       });
       const removed=prev.filter((o:any)=>!next.find((n:any)=>n.golfer_id===o.golfer_id));
-      changed.forEach((g:any)=>dbUpsertGolfer(g));
+      changed.forEach((g:any)=>{
+        if(!g.golfer_id||g.golfer_id>1e12)guardInsert(`golfer:${g.golfer_id}`,()=>dbUpsertGolfer(g));
+        else dbUpsertGolfer(g);
+      });
       removed.forEach((g:any)=>{ if(g.golfer_id&&g.golfer_id<1e12) dbDeleteGolfer(g.golfer_id); });
       return next;
     });
-  },[dbUpsertGolfer,dbDeleteGolfer]);
+  },[dbUpsertGolfer,dbDeleteGolfer,guardInsert]);
 
   const setCoursesDB=useCallback((updater:any)=>{
     setCourses(prev=>{
@@ -2070,11 +2098,14 @@ export default function App(){
         return !old||JSON.stringify(old)!==JSON.stringify(n);
       });
       const removed=prev.filter((o:any)=>!next.find((n:any)=>n.course_id===o.course_id));
-      changed.forEach((c:any)=>dbUpsertCourse(c));
+      changed.forEach((c:any)=>{
+        if(!c.course_id||c.course_id>1e12)guardInsert(`course:${c.course_id}`,()=>dbUpsertCourse(c));
+        else dbUpsertCourse(c);
+      });
       removed.forEach((c:any)=>{ if(c.course_id&&c.course_id<1e12) dbDeleteCourse(c.course_id); });
       return next;
     });
-  },[dbUpsertCourse,dbDeleteCourse]);
+  },[dbUpsertCourse,dbDeleteCourse,guardInsert]);
 
   // Ref to track event inserts in-flight -- prevents double-insert from
   // React Strict Mode double-invoking updaters.
@@ -2174,11 +2205,14 @@ export default function App(){
         return !old||JSON.stringify(old)!==JSON.stringify(n);
       });
       const removed=prev.filter((o:any)=>!next.find((n:any)=>n.summary_id===o.summary_id));
-      changed.forEach((r:any)=>dbUpsertLeaderboard(r));
+      changed.forEach((r:any)=>{
+        if(!r.summary_id||r.summary_id>1e12)guardInsert(`lb:${r.summary_id}`,()=>dbUpsertLeaderboard(r));
+        else dbUpsertLeaderboard(r);
+      });
       removed.forEach((r:any)=>{ if(r.summary_id&&r.summary_id<1e12) dbDeleteLeaderboard(r.summary_id); });
       return next;
     });
-  },[dbUpsertLeaderboard,dbDeleteLeaderboard]);
+  },[dbUpsertLeaderboard,dbDeleteLeaderboard,guardInsert]);
 
   const setHoleScoresDB=useCallback((updater:any)=>{
     setHoleScores(prev=>{
@@ -2201,7 +2235,16 @@ export default function App(){
         return old.gross_score!==n.gross_score||old.net_score!==n.net_score||old.stableford_points!==n.stableford_points;
       });
 
-      if(brandNew.length>0) dbInsertHoleScores(brandNew.map(({score_id:_,...r}:any)=>r));
+      // Guarded per temp score_id — StrictMode double-invokes updaters in dev
+      // and an unguarded insert creates duplicate hole rows.
+      const insertable=brandNew.filter((n:any)=>!pendingRowInserts.current.has(`hole:${n.score_id}`));
+      if(insertable.length>0){
+        insertable.forEach((n:any)=>pendingRowInserts.current.add(`hole:${n.score_id}`));
+        setTimeout(async()=>{
+          try{await dbInsertHoleScores(insertable.map(({score_id:_,...r}:any)=>r));}
+          finally{insertable.forEach((n:any)=>pendingRowInserts.current.delete(`hole:${n.score_id}`));}
+        },0);
+      }
 
       // Real new rows and changed rows both go through upsert
       const toUpsert=[...realNew,...changed];
@@ -2211,18 +2254,28 @@ export default function App(){
           supabase.from("hole_scores").upsert(payload,"summary_id,hole_number").catch(()=>{});
         });
       }
+
+      // Removal path: a hole cleared in a score correction must delete its DB
+      // row, otherwise the stale hole resurrects on the next refresh. Skip rows
+      // whose (summary_id, hole_number) still exists under a different score_id
+      // — that's a replace, and deleting would race the upsert above.
+      const removedRows=prev.filter((o:any)=>o.score_id<1e12
+        &&!next.find((n:any)=>n.score_id===o.score_id)
+        &&!next.find((n:any)=>n.summary_id===o.summary_id&&n.hole_number===o.hole_number));
+      removedRows.forEach((r:any)=>setTimeout(()=>dbDeleteHoleScore(r.summary_id,r.hole_number),0));
+
       return next;
     });
-  },[dbInsertHoleScores]);
+  },[dbInsertHoleScores,dbDeleteHoleScore]);
 
   const setCharityDB=useCallback((updater:any)=>{
     setCharityDonations(prev=>{
       const next=typeof updater==="function"?updater(prev):updater;
       const added=next.filter((n:any)=>!prev.find((o:any)=>o.id===n.id));
-      added.forEach((d:any)=>dbUpsertCharity(d));
+      added.forEach((d:any)=>guardInsert(`charity:${d.id}`,()=>dbUpsertCharity(d)));
       return next;
     });
-  },[dbUpsertCharity]);
+  },[dbUpsertCharity,guardInsert]);
 
   // -- loading / error screens ---------------------------------
 
@@ -2345,7 +2398,7 @@ export default function App(){
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
-          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} dbDeleteHoleScore={dbDeleteHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
+          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} setLeaderboardLocal={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} dbDeleteHoleScore={dbDeleteHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
           {activeTab==="settings"&&<SettingsTab/>}

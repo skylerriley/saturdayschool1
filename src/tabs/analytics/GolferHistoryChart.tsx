@@ -4,7 +4,7 @@ import { computeScoringFingerprint } from "../../lib/scoringFingerprint";
 import { computeRows } from "./PointsGained";
 import { ScoringFingerprintRadar } from "../../components/charts/ScoringFingerprintRadar";
 import { SaturdayHandicapChart } from "../../components/SaturdayHandicapChart";
-import { CountUp, ScoreSymbol } from "../../App";
+import { CountUp, ScoreSymbol } from "../../components/common";
 import { ChartCanvas } from "./ChartCanvas";
 import { PairingHistory } from "../../components/analytics/PairingHistory";
 import { Chart as ChartJS } from "chart.js";
@@ -442,14 +442,14 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
     rounds.forEach((r:any)=>{
       if(!map2[r.course])map2[r.course]={pts:[],ranks:[],players:[]};
       map2[r.course].pts.push(r.pts);
-      map2[r.course].ranks.push(r.rank);
+      if(r.rank!=null)map2[r.course].ranks.push(r.rank);
       map2[r.course].players.push(r.players);
     });
     return Object.entries(map2).map(([course,d])=>({
       course:course.replace(" Golf Club","").replace("Golf Course",""),
       rounds:d.pts.length,
       avgPts:d.pts.reduce((a:number,b:number)=>a+b,0)/d.pts.length,
-      avgRank:d.ranks.reduce((a:number,b:number)=>a+b,0)/d.ranks.length,
+      avgRank:d.ranks.length?d.ranks.reduce((a:number,b:number)=>a+b,0)/d.ranks.length:null,
       avgField:d.players.reduce((a:number,b:number)=>a+b,0)/d.players.length,
     })).sort((a,b)=>b.avgPts-a.avgPts);
   })();
@@ -480,14 +480,14 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
   })();
 
   // ── Scoring fingerprint (computed once, used in OVERVIEW tab) ──
-  const fp=computeScoringFingerprint(golfer.golfer_id,seasonEvents,leaderboard,holeScores,courses);
+  const fp=computeScoringFingerprint(golfer.golfer_id,seasonEvents,leaderboard,holeScores,courses,signups);
   const leagueGolferIds=[...new Set(
     leaderboard
       .filter((r:any)=>seasonEvents.some((e:any)=>e.event_id===r.event_id))
       .map((r:any)=>r.golfer_id)
   )].filter((gid:any)=>!golfers.find((g:any)=>g.golfer_id===gid)?.is_guest);
   const leagueFingerprints=leagueGolferIds
-    .map((gid:any)=>computeScoringFingerprint(gid,seasonEvents,leaderboard,holeScores,courses))
+    .map((gid:any)=>computeScoringFingerprint(gid,seasonEvents,leaderboard,holeScores,courses,signups))
     .filter((f:any)=>f.sampleSize>=1);
   const leagueAvgFp=leagueFingerprints.length?{
     par3:leagueFingerprints.reduce((s:number,f:any)=>s+f.par3,0)/leagueFingerprints.length,
@@ -1537,7 +1537,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                     <div style={{textAlign:"center",fontSize:14,color:"var(--text-muted)"}}>{c.rounds}</div>
                     <div style={{textAlign:"center",fontWeight:700,fontSize:16,color:"var(--green-700)"}}>{c.avgPts.toFixed(1)}</div>
                     <div style={{textAlign:"center",fontSize:14}}>
-                      {c.avgRank.toFixed(1)}<span style={{fontSize:11,color:"var(--text-muted)"}}>/{c.avgField.toFixed(0)}</span>
+                      {c.avgRank!=null?c.avgRank.toFixed(1):"--"}<span style={{fontSize:11,color:"var(--text-muted)"}}>/{c.avgField.toFixed(0)}</span>
                     </div>
                   </div>
                 ))}
@@ -1562,7 +1562,12 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
               const hasHbh=lbEntry?.entry_type==="Hole-by-Hole";
               const isExpanded=expandedRound===r.eid;
               const hbhScores=hasHbh?holeScores.filter((hs:any)=>hs.summary_id===lbEntry.summary_id).sort((a:any,b:any)=>a.hole_number-b.hole_number):[];
-              const course=courses.find((c:any)=>c.course_name===r.course);
+              // Resolve the tee actually played (signup pins a specific tee row);
+              // name-only lookup grabs an arbitrary tee for multi-tee courses
+              const rowSignup=signups.find((s:any)=>s.event_id===r.eid&&s.golfer_id===golfer.golfer_id);
+              const course=(rowSignup?.tee_box_course_id
+                ?courses.find((c:any)=>c.course_id===rowSignup.tee_box_course_id)
+                :null)||courses.find((c:any)=>c.course_name===r.course);
               const front9=hbhScores.slice(0,9);
               const back9=hbhScores.slice(9,18);
               const front9Gross=front9.reduce((s:number,h:any)=>s+(h.gross_score||0),0);
@@ -1589,7 +1594,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                       <div style={{fontSize:13,color:"var(--text-muted)",marginTop:1}}>{courseShort}</div>
                     </div>
                     <div style={{textAlign:"center",fontWeight:700,color:"var(--green-700)",fontSize:18}}>{r.pts}</div>
-                    <div style={{textAlign:"center",fontSize:14,color:"var(--text-muted)"}}>{r.rank}<span style={{fontSize:11}}>/{r.players}</span></div>
+                    <div style={{textAlign:"center",fontSize:14,color:"var(--text-muted)"}}>{r.rank!=null?`${r.rankTied?"T":""}${r.rank}`:"--"}<span style={{fontSize:11}}>/{r.players}</span></div>
                     <div style={{textAlign:"right",fontWeight:700,fontSize:15,color:r.earned>0?"var(--gold-600)":"var(--text-muted)"}}>{r.earned>0?`$${r.earned.toFixed(0)}`:"--"}</div>
                   </div>
                   {isExpanded&&hbhScores.length>0&&course&&(

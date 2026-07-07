@@ -3,18 +3,27 @@
 ## Data Flow
 
 ```
-Supabase PostgreSQL
+Supabase PostgreSQL (via PostgREST HTTP — hand-rolled client in src/lib/supabaseClient.ts)
   │
-  ├─(real-time WS)──> App.tsx useEffect subscriptions
+  ├─(polling)──> App.tsx refresh loops
+  │     • initial load: Promise.all over all tables on mount
+  │     • background: 5-minute interval + refetch on visibilitychange
+  │     • live rounds: 15-second poll while the Leaderboard "Live" subtab is open
+  │     • manual: pull-to-refresh gesture
   │                       │
   │                       └─> useState (golfers, events, signups, leaderboard, holeScores, courses)
   │                               │
-  │                               └─(props)──> Tab components ──(callbacks)──> Supabase upsert/insert
-  │
-  └─(one-time fetch)──> initial data load on mount
+  │                               └─(props)──> Tab components ──(callbacks)──> REST upsert/insert
 ```
 
-No Context API, no Redux. All Supabase subscriptions are in App.tsx. Tabs receive data + setter callbacks as props.
+**There are NO Supabase real-time WebSocket subscriptions.** Data freshness is
+entirely polling-based. The app does NOT use `@supabase/supabase-js`; every
+module imports the hand-rolled REST wrapper `src/lib/supabaseClient.ts`, which
+returns plain `Promise<any[]>` (no `{ data, error }` envelope, no query-builder
+methods like `.in()`/`.eq()` chaining beyond what the wrapper implements —
+check the wrapper before writing queries).
+
+No Context API, no Redux. Tabs receive data + setter callbacks as props.
 
 ---
 
@@ -30,7 +39,7 @@ No Context API, no Redux. All Supabase subscriptions are in App.tsx. Tabs receiv
 | `courses` | id, name, slope, rating, par, holes[] | Course database |
 | `event_odds` | event_id, golfer_id, win_pct, top3_pct | Pre-computed odds |
 
-Real-time subscriptions: `postgres_changes` on `signups`, `hole_scores`, `leaderboard`.
+Freshness: polling only (see Data Flow above) — no `postgres_changes` subscriptions exist.
 
 Guests are not a count field on a member's signup row — each guest gets its own separate `signups` row with `is_guest_entry: true` and `sponsor_golfer_id` set to the sponsoring member's `golfer_id`.
 
@@ -40,10 +49,13 @@ Guests are not a count field on a member's signup row — each guest gets its ow
 
 ### App.tsx
 - Owns all global state
-- Manages Supabase subscriptions and initial data fetches
+- Manages polling refresh loops and initial data fetches
 - Renders the shell: `AppHeader` + `BottomNav` + tab content
 - Handles admin PIN validation
-- Applies `.golden-hour` class based on time
+
+Note: the `.golden-hour` class is applied inside `LeaderboardTab.tsx` (Fri/Sat
+4–8pm via `Intl` in `America/Los_Angeles`), not in App.tsx — it only tints the
+leaderboard subtree today.
 
 ### BottomNav (components/nav/)
 - 6-tab navigation with floating green-ball indicator
@@ -69,7 +81,7 @@ Guests are not a count field on a member's signup row — each guest gets its ow
 ### AnalyticsTab (tabs/analytics/)
 - Season overview: avg points, best round, earnings
 - `ScatterChart` — handicap vs points scatter
-- `ScoringFingerprintRadar` — per-player performance radar
+- `ScoringFingerprintRadar` — per-player performance radar (pure SVG, not Chart.js)
 - `ChampionsView` — historical event winners
 
 ### OddsTab (tabs/odds/)
@@ -157,7 +169,10 @@ No CSS framework (no Tailwind, no Bootstrap).
 ## PWA & Mobile
 
 - `public/manifest.json` — standalone display mode, theme-color green
-- `public/sw.js` — minimal service worker (cache-first for static assets)
+- `public/sw.js` — push-notification-only service worker (`push` + `notificationclick`
+  handlers). It has NO fetch handler and NO precache — **the app does not work
+  offline**, and the SW is only registered when a user opts into notifications
+  in Settings.
 - `public/apple-touch-icon.png` — iOS home screen
 - `index.html` — inline script detects `standalone` mode → adds `is-pwa` class to `<html>`
 - Safe area insets handled via CSS env() vars

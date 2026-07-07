@@ -7,7 +7,9 @@
 // (4 stableford points per hole = par, the natural "ceiling" for the
 // per-hole axes).
 // ============================================================
-export function computeScoringFingerprint(gid: number, seasonEvents: any[], leaderboard: any[], holeScores: any[], courses: any[]): {
+import { dedupeLeaderboard } from "./seasonStats";
+
+export function computeScoringFingerprint(gid: number, seasonEvents: any[], leaderboard: any[], holeScores: any[], courses: any[], signups: any[] = []): {
   par3: number, par4: number, par5: number, front9: number, back9: number, consistency: number, sampleSize: number
 } {
   const parBuckets: Record<3 | 4 | 5, number[]> = { 3: [], 4: [], 5: [] };
@@ -15,10 +17,18 @@ export function computeScoringFingerprint(gid: number, seasonEvents: any[], lead
   const backPts: number[] = [];
   const roundTotals: number[] = [];
 
+  // League dedupe policy: one row per event, keep-highest
+  const myRows = dedupeLeaderboard(leaderboard.filter((r: any) => r.golfer_id === gid));
+
   seasonEvents.forEach((ev: any) => {
-    const entry = leaderboard.find((r: any) => r.golfer_id === gid && r.event_id === ev.event_id);
+    const entry = myRows.find((r: any) => r.event_id === ev.event_id);
     if (!entry) return;
-    const course = courses.find((c: any) => c.course_name === ev.course_name);
+    // Prefer the tee the golfer's signup pins; name-only lookup grabs an
+    // arbitrary tee row for multi-tee courses
+    const signup = signups.find((s: any) => s.event_id === ev.event_id && s.golfer_id === gid);
+    const course = (signup?.tee_box_course_id
+      ? courses.find((c: any) => c.course_id === signup.tee_box_course_id)
+      : null) || courses.find((c: any) => c.course_name === ev.course_name);
     const pars: number[] = course?.hole_pars || [];
     const hs = holeScores.filter((h: any) => h.summary_id === entry.summary_id);
     if (hs.length === 0) return;

@@ -31,16 +31,19 @@ export function useWeather(courseName: string, eventDate: string, teeTime?: stri
   const [wx, setWx] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
-    if (!eventDate || !courseName) { setWx(null); return; }
+    // Staleness guard: deps can change while a fetch is in flight (fast event
+    // switching); without it a late response overwrites the newer event's data.
+    let cancelled = false;
+    if (!eventDate || !courseName) { setWx(null); setLoading(false); return; }
     const msPerDay = 86400000;
     const msUntilEvent = new Date(eventDate + "T12:00:00").getTime() - Date.now();
     const daysOut = Math.round(msUntilEvent / msPerDay);
-    if (daysOut < 0 || daysOut > 15) { setWx(null); return; }
+    if (daysOut < 0 || daysOut > 15) { setWx(null); setLoading(false); return; }
 
     const cacheKey = wxCacheKey(courseName, eventDate, teeTime);
     const ttl = wxCacheTtl(msUntilEvent);
     const cached = readWxCache(cacheKey, ttl);
-    if (cached) { setWx(cached); return; }
+    if (cached) { setWx(cached); setLoading(false); return; }
 
     const coords = COURSE_COORDS[courseName] || FALLBACK_COORDS;
     const teeHour = teeTime ? parseInt(teeTime.slice(0, 2), 10) : 8;
@@ -59,18 +62,20 @@ export function useWeather(courseName: string, eventDate: string, teeTime?: stri
         if (idx < 0) {
           const morning = times.map((t: string, i: number) => ({ t, i }))
             .filter(({ t }: any) => t.startsWith(eventDate) && parseInt(t.slice(11, 13)) >= 6 && parseInt(t.slice(11, 13)) <= 12);
-          if (!morning.length) { setWx(null); setLoading(false); return; }
+          if (!morning.length) { if (!cancelled) { setWx(null); setLoading(false); } return; }
           idx = morning.reduce((best: any, cur: any) => {
             return Math.abs(parseInt(cur.t.slice(11, 13)) - teeHour) < Math.abs(parseInt(best.t.slice(11, 13)) - teeHour) ? cur : best;
           }).i;
         }
         const get = (k: string) => { const v = data.hourly[k]?.[idx]; return v != null ? Math.round(v) : 0; };
         const result = { temp: get("temperature_2m"), wind: get("windspeed_10m"), windDeg: get("winddirection_10m"), code: data.hourly.weathercode[idx] };
-        writeWxCache(cacheKey, result);
+        writeWxCache(cacheKey, result); // cache key is closure-scoped, safe even if stale
+        if (cancelled) return;
         setWx(result);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [eventDate, courseName, teeTime]);
   return { wx, loading };
 }

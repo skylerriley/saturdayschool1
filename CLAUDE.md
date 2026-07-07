@@ -6,7 +6,7 @@
 
 ## Project Overview
 
-Saturday School is a mobile-first PWA for managing a Stableford golf league. It handles events, RSVPs, tee-time pairings, live score entry, leaderboards, season analytics, and pre-event odds. Real-time data via Supabase; designed to run on golfers' phones as an installed PWA.
+Saturday School is a mobile-first PWA for managing a Stableford golf league. It handles events, RSVPs, tee-time pairings, live score entry, leaderboards, season analytics, and pre-event odds. Data lives in Supabase (PostgreSQL) accessed over PostgREST HTTP with polling for freshness; designed to run on golfers' phones as an installed PWA.
 
 ---
 
@@ -16,7 +16,7 @@ Saturday School is a mobile-first PWA for managing a Stableford golf league. It 
 |-------|-----------|
 | Framework | React 19 + TypeScript |
 | Build | Vite 8 (Oxc transforms) |
-| Backend/DB | Supabase (PostgreSQL + real-time WebSockets) |
+| Backend/DB | Supabase (PostgreSQL via PostgREST; hand-rolled REST client, polling — no realtime WS) |
 | Charts | Chart.js 4 |
 | Icons | lucide-react |
 | Styling | Pure CSS (CSS vars, no CSS-in-JS library) |
@@ -30,16 +30,15 @@ Saturday School is a mobile-first PWA for managing a Stableford golf league. It 
 
 ```
 src/
-  App.tsx               # 2000-line monolith: global state, Supabase subs, tab routing
+  App.tsx               # 2000-line monolith: global state, polling refresh, tab routing
   main.tsx              # React 19 createRoot entry point
-  supabaseClient.ts     # Supabase client init (URL + anon key from .env)
   useEventOdds.ts       # Hook: polls event_odds table for pre-computed odds
   index.css / App.css   # All styles — CSS vars, animations, theming
   assets/               # Static images (logos, backgrounds)
 
   components/
     common/             # SubTabPanel, ToggleGroup, CountUp, etc.
-    charts/             # ScoringFingerprintRadar (Chart.js radar)
+    charts/             # ScoringFingerprintRadar (pure SVG radar)
     nav/                # AppHeader, BottomNav (6-tab floating ball nav)
     weather/            # WeatherModal, WindParticles, weatherUtils
     EventAlertBanner.tsx
@@ -83,7 +82,7 @@ npm run preview   # Serve dist/ locally
 npm run lint      # ESLint check
 ```
 
-Deploy: static `dist/` to any CDN (Vercel/Netlify/S3). Service worker (`public/sw.js`) enables offline mode.
+Deploy: static `dist/` to any CDN (Vercel/Netlify/S3). Service worker (`public/sw.js`) handles Web Push only — there is no offline caching; it's registered only when a user opts into notifications in Settings.
 
 ---
 
@@ -93,9 +92,10 @@ Deploy: static `dist/` to any CDN (Vercel/Netlify/S3). Service worker (`public/s
 - **No global state library.** All state lives in App.tsx and is passed as props. No Redux/Zustand/Context.
 - **TypeScript is loose** (`strict: false`, `noImplicitAny: false`). Don't add aggressive type assertions.
 - **Admin access** is PIN-gated via `VITE_ADMIN_PINS` env var (currently `0602`). Not OAuth.
-- **Golden Hour Mode:** CSS class `.golden-hour` applied Fri/Sat 4–8pm PST for color shift. Time-based in App.tsx.
+- **Golden Hour Mode:** CSS class `.golden-hour` applied Fri/Sat 4–8pm PST for color shift. Time-based, applied inside `LeaderboardTab.tsx` (tints the leaderboard subtree only).
 - **.env is committed** with real keys (Supabase, Gemini, VAPID). Don't flag as a security issue — intentional for this project.
-- **Supabase real-time** subscriptions are set up in App.tsx `useEffect`. DB changes auto-refresh state.
+- **No realtime subscriptions.** Data freshness is polling in App.tsx: 5-min background interval + `visibilitychange` refetch, 15s poll on the Live leaderboard subtab, and pull-to-refresh.
+- **DB access goes through `src/lib/supabaseClient.ts`** — a hand-rolled PostgREST wrapper, NOT `@supabase/supabase-js`. It returns plain `Promise<any[]>` (no `{ data, error }` envelope, no supabase-js query builder). Check the wrapper's API before writing queries.
 - **Payout logic:** $20/golfer buy-in. 1st solo = 2/3 pot; 1st tied = full pot split; 2nd only paid when 1st is solo (1/3 pot).
 - **Stableford scoring:** 2 pts = par, 3 = birdie, 4 = eagle, 1 = bogey, 0 = double bogey or worse.
 - **App.tsx is ~2000 lines** — normal for this project. Don't refactor it unless specifically asked.

@@ -1,4 +1,4 @@
-import { useState, useRef, useLayoutEffect, useEffect } from "react";
+import { useState, useRef, useLayoutEffect, useEffect, useMemo } from "react";
 import { buildProfile, calcFieldOdds, toAmericanOdds, h2hHistory, h2hWinProb, MC_TRIALS, VIG, randNorm } from "../../lib/monteCarlo";
 import { TonyInsight } from "./TonyInsight";
 
@@ -76,7 +76,7 @@ function GroupsView({ signups, golfers, event, ranked }: any) {
         const groupOddsMap: Record<number, string> = {};
         memberGolfers.forEach((g: any, i: number) => {
           const normalized = totalProb > 0 ? (groupProbs[i] as number) / totalProb : 1 / memberGolfers.length;
-          groupOddsMap[g.golfer_id as number] = toAmericanOdds(normalized / (1 + VIG));
+          groupOddsMap[g.golfer_id as number] = toAmericanOdds(Math.min(0.99, normalized * (1 + VIG)));
         });
         // Sort group members by descending normalized prob
         const sortedMembers = [...memberGolfers].sort((a: any, b: any) => {
@@ -165,7 +165,7 @@ function MatchupsView({ ranked, golfers, leaderboard, events, signups, courseNam
       const rawProbA = winsA / MC_TRIALS;
       const shared = h2hHistory(leaderboard, events, gidA, gidB);
       const finalProbA = h2hWinProb(shared, rawProbA);
-      const adjA = finalProbA / (1 + VIG);
+      const adjA = Math.min(0.99, finalProbA * (1 + VIG));
       result[gidB] = toAmericanOdds(adjA);
     });
     return result;
@@ -328,22 +328,27 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
   const playingField = allFieldIds.size > 0 ? golfers.filter((g: any) => allFieldIds.has(g.golfer_id)) : members;
   const playingIds = new Set<number>(playingField.map((g: any) => g.golfer_id as number));
 
-  const profiles = playingField
-    .map((g: any) => buildProfile(g, leaderboard, events, signups, courseName, playingIds, playingField))
-    .filter(Boolean) as any[];
+  // Memoized: profile building + the Monte Carlo below are too heavy to re-run
+  // on every parent re-render (this module lives inside the Upcoming tab).
+  const allProfiles = useMemo(() => {
+    const profiles = playingField
+      .map((g: any) => buildProfile(g, leaderboard, events, signups, courseName, playingIds, playingField))
+      .filter(Boolean) as any[];
 
-  // Only use eventOdds to surface extra golfers when no confirmed field exists.
-  // When signups/leaderboard define the field, eventOdds may belong to a different
-  // event (App.tsx loads odds for the soonest event only) and must not add players.
-  const lateAddGolferIds = allFieldIds.size === 0
-    ? (eventOdds ?? []).map((o: any) => o.golfer_id).filter((gid: number) => !playingIds.has(gid))
-    : [];
-  const lateAddProfiles = lateAddGolferIds
-    .map((gid: number) => golfers.find((g: any) => g.golfer_id === gid))
-    .filter(Boolean)
-    .map((g: any) => buildProfile(g, leaderboard, events, signups, courseName, playingIds, playingField))
-    .filter(Boolean) as any[];
-  const allProfiles = [...profiles, ...lateAddProfiles];
+    // Only use eventOdds to surface extra golfers when no confirmed field exists.
+    // When signups/leaderboard define the field, eventOdds may belong to a different
+    // event (App.tsx loads odds for the soonest event only) and must not add players.
+    const lateAddGolferIds = allFieldIds.size === 0
+      ? (eventOdds ?? []).map((o: any) => o.golfer_id).filter((gid: number) => !playingIds.has(gid))
+      : [];
+    const lateAddProfiles = lateAddGolferIds
+      .map((gid: number) => golfers.find((g: any) => g.golfer_id === gid))
+      .filter(Boolean)
+      .map((g: any) => buildProfile(g, leaderboard, events, signups, courseName, playingIds, playingField))
+      .filter(Boolean) as any[];
+    return [...profiles, ...lateAddProfiles];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [golfers, leaderboard, events, signups, eventOdds, event?.event_id, courseName]);
 
   const backendMap: Record<number, any> = {};
   (eventOdds ?? []).forEach((o: any) => {
@@ -358,7 +363,9 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
   const fieldConfirmed = event?.status === "Pairings Set" || event?.status === "In-Progress";
   const hasBackend = fieldConfirmed && allProfiles.some((p: any) => backendMap[p.golfer.golfer_id]);
 
-  const ranked = (() => {
+  // Memoized: 5,000-trial MC per run — unmemoized it re-simulates (and visibly
+  // jitters) on every parent re-render.
+  const ranked = useMemo(() => {
     if (hasBackend) {
       const allMcProbs = allProfiles.length >= 2 ? calcFieldOdds(allProfiles) : allProfiles.map(() => 1 / allProfiles.length);
       return [...allProfiles.map((p: any, i: number) => {
@@ -373,7 +380,8 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
     }
     const adjProbs = allProfiles.length >= 2 ? calcFieldOdds(allProfiles) : allProfiles.map(() => 1 / allProfiles.length);
     return [...allProfiles.map((p: any, i: number) => ({ ...p, prob: adjProbs[i], oddsAmerican: toAmericanOdds(adjProbs[i]), oddsSource: "client" }))].sort((a: any, b: any) => b.prob - a.prob);
-  })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allProfiles, eventOdds, hasBackend]);
 
   if (allProfiles.length < 2) return null;
 

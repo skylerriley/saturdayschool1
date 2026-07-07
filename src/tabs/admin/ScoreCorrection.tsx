@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { calcPlayingHandicap, calcHoleNetScore, calcStablefordPoints, calcHoleScores } from "../../lib/golfMath";
 import { golferName, scrollMainTop, formatDate, eventPickerLabel } from "../../lib/formatters";
-import { ToggleGroup } from "../../App";
-import { GlassPicker } from "../../components/common";
+import { ToggleGroup, GlassPicker } from "../../components/common";
 
 // Compute payout/skins implications given the leaderboard for a single event
 function calcEventImplications(eventId: number, lbRows: any[], golfers: any[]) {

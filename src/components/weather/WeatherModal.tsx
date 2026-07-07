@@ -19,6 +19,9 @@ function useEventForecast(courseName: string, eventDate: string, firstTeeHour: n
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
+    // Staleness guard: switching between events quickly can let an older
+    // fetch resolve last and overwrite the newer event's forecast.
+    let cancelled = false;
     if (!courseName || !eventDate) return;
     const coords = COURSE_COORDS[courseName] || FALLBACK_COORDS;
     setLoading(true);
@@ -68,10 +71,12 @@ function useEventForecast(courseName: string, eventDate: string, firstTeeHour: n
             precip: get("precipitation_probability", idx),
           });
         }
+        if (cancelled) return;
         setData({ current: cur, hourly });
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [courseName, eventDate, firstTeeHour]);
   return { data, loading };
 }

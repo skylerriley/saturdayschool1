@@ -6,7 +6,7 @@ import { supabase, SUPABASE_URL, SUPABASE_KEY } from "../../lib/supabaseClient";
 
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false,started:false,summaryId:null as number|null});
 
-export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,holeScores,setHoleScores,setEvents,dbUpsertHoleScore,dbDeleteHoleScore,scoreMode,setScoreMode,scoreEventId,setScoreEventId,scorers,setScorers,showSuccess,showScoreMsg,scoreMsg}:any){
+export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,setLeaderboardLocal,holeScores,setHoleScores,setEvents,dbUpsertHoleScore,dbDeleteHoleScore,scoreMode,setScoreMode,scoreEventId,setScoreEventId,scorers,setScorers,showSuccess,showScoreMsg,scoreMsg}:any){
   // State is lifted to App so it survives tab navigation
   const mode=scoreMode;
   const setMode=setScoreMode;
@@ -19,15 +19,32 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   const pendingLbInsert=useRef<Record<string,Array<(id:number)=>void>>>({});
 
   // ── Offline write queue ──────────────────────────────────────
-  // Stores hole-score upserts that failed or couldn't be sent
-  // due to no connectivity. Flushed automatically when online.
+  // Stores writes that failed or couldn't be sent due to no connectivity,
+  // flushed automatically when online. Three op kinds share the flush:
+  //   holes   — per-hole upserts (offlineQueue)
+  //   clears  — per-hole deletes (offlineClearQueue)
+  //   totals  — leaderboard running-total updates (offlineLbQueue, latest per row)
   const offlineQueue=useRef<Array<{row:any,retries:number}>>([]);
+  const offlineClearQueue=useRef<Array<{summary_id:number,hole_number:number,retries:number}>>([]);
+  const offlineLbQueue=useRef<Record<number,any>>({}); // summary_id -> latest body
   const flushingRef=useRef(false);
 
+  const pendingWriteCount=()=>offlineQueue.current.length+offlineClearQueue.current.length+Object.keys(offlineLbQueue.current).length;
+
   const flushOfflineQueue=useCallback(async()=>{
-    if(flushingRef.current||offlineQueue.current.length===0)return;
+    if(flushingRef.current||pendingWriteCount()===0)return;
     if(!navigator.onLine)return;
     flushingRef.current=true;
+    // Clears first: a clear queued before a re-entered score must land first
+    const pendingClears=[...offlineClearQueue.current];
+    offlineClearQueue.current=[];
+    for(const item of pendingClears){
+      try{
+        await supabase.from("hole_scores").delete({summary_id:item.summary_id,hole_number:item.hole_number});
+      }catch{
+        if(item.retries<5) offlineClearQueue.current.push({...item,retries:item.retries+1});
+      }
+    }
     const pending=[...offlineQueue.current];
     offlineQueue.current=[];
     for(const item of pending){
@@ -36,6 +53,15 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       }catch{
         // re-queue if still failing (up to 5 retries)
         if(item.retries<5) offlineQueue.current.push({row:item.row,retries:item.retries+1});
+      }
+    }
+    const pendingLb=Object.entries(offlineLbQueue.current);
+    offlineLbQueue.current={};
+    for(const [sid,body] of pendingLb){
+      try{
+        await supabase.from("event_leaderboard").update(body,{summary_id:Number(sid)});
+      }catch{
+        offlineLbQueue.current[Number(sid)]=body;
       }
     }
     flushingRef.current=false;
@@ -67,19 +93,41 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
 
   // Clearing a hole must delete its row in the DB, not just skip the upsert --
   // otherwise the stale gross/net/points values stay in hole_scores forever.
-  // Drop any queued upsert for the same hole so it can't race the delete.
+  // Drop any queued upsert for the same hole so it can't race the delete, and
+  // queue the delete itself when offline (a lost clear resurrects the hole).
   const queueHoleClear=useCallback((summary_id:number,hole_number:number)=>{
     offlineQueue.current=offlineQueue.current.filter(
       q=>!(q.row.summary_id===summary_id&&q.row.hole_number===hole_number)
     );
-    dbDeleteHoleScore(summary_id,hole_number).catch(()=>{});
+    if(navigator.onLine){
+      dbDeleteHoleScore(summary_id,hole_number).catch(()=>{
+        offlineClearQueue.current.push({summary_id,hole_number,retries:0});
+      });
+    }else{
+      offlineClearQueue.current=offlineClearQueue.current.filter(
+        q=>!(q.summary_id===summary_id&&q.hole_number===hole_number)
+      );
+      offlineClearQueue.current.push({summary_id,hole_number,retries:0});
+    }
   },[dbDeleteHoleScore]);
+
+  // Leaderboard running-total write, offline-aware. Only the latest body per
+  // summary_id is kept — intermediate totals are superseded anyway.
+  const queueLbTotalWrite=useCallback((summary_id:number,body:any)=>{
+    if(navigator.onLine){
+      supabase.from("event_leaderboard").update(body,{summary_id}).catch(()=>{
+        offlineLbQueue.current[summary_id]=body;
+      });
+    }else{
+      offlineLbQueue.current[summary_id]=body;
+    }
+  },[]);
 
   // Connection status indicator shown during score entry
   const [isOnline,setIsOnline]=useState(()=>navigator.onLine);
   const [queuedCount,setQueuedCount]=useState(0);
   useEffect(()=>{
-    const up=()=>{setIsOnline(true);flushOfflineQueue().then(()=>setQueuedCount(offlineQueue.current.length));};
+    const up=()=>{setIsOnline(true);flushOfflineQueue().then(()=>setQueuedCount(pendingWriteCount()));};
     const down=()=>setIsOnline(false);
     window.addEventListener("online",up);
     window.addEventListener("offline",down);
@@ -87,7 +135,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   },[flushOfflineQueue]);
   // Keep queuedCount in sync after flushes
   useEffect(()=>{
-    const id=setInterval(()=>setQueuedCount(offlineQueue.current.length),2000);
+    const id=setInterval(()=>setQueuedCount(pendingWriteCount()),2000);
     return()=>clearInterval(id);
   },[]);
 
@@ -128,8 +176,13 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   const slideFinalizeRef=useRef<HTMLDivElement|null>(null);
   const slidingSubmit=useRef(false);
   const slidingFinalize=useRef(false);
-  const SLIDE_THRESHOLD=280;
-  const SLIDE_FINALIZE_THRESHOLD=320;
+  // Threshold is a fraction of the measured track — absolute pixel values made
+  // the finalize slider physically unreachable on small phones (an iPhone
+  // SE-class track maxes out around 319px of travel vs the old 320px value).
+  const slideThresholdFor=(ref:{current:HTMLDivElement|null})=>{
+    const w=ref.current?.getBoundingClientRect().width;
+    return w?Math.max(80,(w-60)*0.85):240;
+  };
   const [showFinalizeConfirm,setShowFinalizeConfirm]=useState(false);
 
   // ── Score entry modal (hole-by-hole "+" tap) ────────────────────
@@ -354,7 +407,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       // If we already have a real DB row, write via the queue (handles offline).
       if(existing?.summary_id&&existing.summary_id<1e12){
         queueHoleWrite({...holeRow,summary_id:existing.summary_id,score_id:existing.summary_id*100+hole});
-        setQueuedCount(offlineQueue.current.length);
+        setQueuedCount(pendingWriteCount());
       }
     } else if(!val){
       setHoleScores((hs:any)=>hs.filter((h:any)=>!(h.summary_id===tempSid&&h.hole_number===hole+1)));
@@ -373,7 +426,11 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       buy_in_paid:true,skins_paid:true,charity_paid:true,
       weekly_payout_won:0,skins_payout_won:0
     };
-    setLeaderboard((prev:any)=>[
+    // Local-only state update: the DB write goes through queueLbTotalWrite below.
+    // Using the DB-wrapped setter here fired dbUpsertLeaderboard per keystroke,
+    // which offline rolled the whole leaderboard back to a stale snapshot and
+    // spammed an error toast per hole entered.
+    setLeaderboardLocal((prev:any)=>[
       ...prev.filter((r:any)=>!(r.event_id===eid&&r.golfer_id===gid)),
       liveEntry
     ]);
@@ -394,7 +451,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       setHoleScores((hs:any)=>[...hs.filter((h:any)=>!(h.summary_id===realSid&&h.hole_number===hole+1)),holeRow]);
       // Write via queue — handles offline gracefully
       queueHoleWrite(payload);
-      setQueuedCount(offlineQueue.current.length);
+      setQueuedCount(pendingWriteCount());
     };
 
     const doSignupWrite=(realSid:number)=>{
@@ -427,7 +484,8 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
     // Strip summary_id and created_at from body — summary_id goes only
     // in the WHERE clause. Sending PK in PATCH body causes a 400.
     const {summary_id:_sid,created_at:_ca,...lbRest}=liveEntry;
-    supabase.from("event_leaderboard").update(lbRest,{summary_id:realSid}).catch(()=>{});
+    queueLbTotalWrite(realSid,lbRest);
+    setQueuedCount(pendingWriteCount());
     doHoleWrite(realSid);
     doSignupWrite(realSid);
   };
@@ -463,9 +521,10 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
           weekly_payout_won:existing?.weekly_payout_won||0,
           skins_payout_won:existing?.skins_payout_won||0
         };
-        setLeaderboard((p:any)=>[...p.filter((r:any)=>r.summary_id!==realSid),updatedEntry]);
+        setLeaderboardLocal((p:any)=>[...p.filter((r:any)=>r.summary_id!==realSid),updatedEntry]);
         const {summary_id:_sid2,created_at:_ca2,...lbRest2}=updatedEntry;
-        supabase.from("event_leaderboard").update(lbRest2,{summary_id:realSid}).catch(()=>{});
+        queueLbTotalWrite(realSid,lbRest2);
+        setQueuedCount(pendingWriteCount());
         count++;
       }else{
         // Total-only mode
@@ -905,7 +964,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         const label=canSubmit
           ?`Slide to Submit (${readyToSubmitCount})`
           :"Slide to Submit";
-        const pct=Math.min(slideSubmitX/SLIDE_THRESHOLD,1);
+        const pct=Math.min(slideSubmitX/slideThresholdFor(slideSubmitRef),1);
         const confirmed=pct>=1;
         const thumbSize=44+pct*16;
         return(
@@ -927,7 +986,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
             onPointerUp={()=>{
               if(!slidingSubmit.current)return;
               slidingSubmit.current=false;
-              if(slideSubmitX>=SLIDE_THRESHOLD){
+              if(slideSubmitX>=slideThresholdFor(slideSubmitRef)){
                 handleSubmitAll();
               }
               setSlideSubmitX(0);
@@ -1018,7 +1077,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
           </p>
           {/* ── Slide-to-Finalize ── */}
           {(()=>{
-            const pct=Math.min(slideFinalizeX/SLIDE_FINALIZE_THRESHOLD,1);
+            const pct=Math.min(slideFinalizeX/slideThresholdFor(slideFinalizeRef),1);
             const confirmed=pct>=1;
             return(
               <div
@@ -1038,7 +1097,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                 onPointerUp={()=>{
                   if(!slidingFinalize.current)return;
                   slidingFinalize.current=false;
-                  if(slideFinalizeX>=SLIDE_FINALIZE_THRESHOLD){
+                  if(slideFinalizeX>=slideThresholdFor(slideFinalizeRef)){
                     setShowFinalizeConfirm(true);
                   }
                   setSlideFinalizeX(0);

@@ -1,6 +1,6 @@
 # Working Context
 
-_Last updated: 2026-06-18. Update this file when starting/finishing features or discovering bugs._
+_Last updated: 2026-07-07. Update this file when starting/finishing features or discovering bugs._
 
 ---
 
@@ -8,20 +8,24 @@ _Last updated: 2026-06-18. Update this file when starting/finishing features or 
 
 | Commit | Summary |
 |--------|---------|
-| `1996dd0` | Upcoming leaderboard formatting and fixes |
-| `0d8f284` | Nav fix |
-| `793209c` | Nav fix leaderboard bug |
-| `807f9be` | Nav alignment |
-| `247f2e2` | Splash screen bug |
+| `673dd57` | bug fix |
+| `b82c470` | saturday handicap (WHS engine: lib/saturdayHandicap.ts + adapter + chart) |
+| `806878c` | analytics dropdown |
+| `e4eab39` | course handicap trend |
+| `c47ec7d` | updated gif |
 
-Active focus: leaderboard display, navigation chrome, splash screen behavior.
+Active focus: 2026-07-06 full-app audit → bug-fix batch (payouts/dedupe, offline score entry, RSVP crash, odds vig/staleness/memoization, weather races, StrictMode double-inserts, dead-code removal).
 
 ---
 
 ## Known Issues / Bugs
 
 - Nav indicator alignment was recently fixed (3 commits) — treat nav layout as potentially fragile
-- Leaderboard formatting was actively changed in last commit — verify display before touching
+- 2026-07-06 audit found ~90 issues; the highest-priority batch is being fixed now. Notable
+  still-open items (deliberately deferred): modals paint under the bottom nav
+  (`.tab-pane` `will-change: opacity` stacking context vs nav z-index 200 — portal modals to body),
+  NaN guard missing in saturdayHandicap.ts adjustedGross, front/back-nine split by array index in
+  LeaderboardTab/GolferHistoryChart, no offline support (sw.js is push-only), 6.2s forced splash.
 
 ---
 

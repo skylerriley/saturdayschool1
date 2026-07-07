@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ToggleGroup, GlassPicker } from "../../components/common";
 import { computeScoringFingerprint } from "../../lib/scoringFingerprint";
 import { ScoringFingerprintRadar } from "../../components/charts/ScoringFingerprintRadar";
@@ -50,30 +50,34 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
 
   const courseName = selEvent?.course_name || "";
 
-  // Build profiles for all playing golfers (pass full field so guests can use league-avg)
-  const profiles = playingField
-    .map((g: any) => buildProfile(g, leaderboard, events, signups, courseName, playingIds, playingField))
-    .filter(Boolean) as any[];
+  // Build profiles for all playing golfers (pass full field so guests can use league-avg).
+  // Memoized: profile building walks the whole leaderboard per golfer, and this
+  // component re-renders on every poll/tick from App.
+  const { profiles, allProfiles } = useMemo(() => {
+    const profiles = playingField
+      .map((g: any) => buildProfile(g, leaderboard, events, signups, courseName, playingIds, playingField))
+      .filter(Boolean) as any[];
+
+    // Late-add golfers: only surface them when there is no confirmed signup field
+    // (allFieldIds empty = event hasn't opened signups yet, so odds covers all members).
+    // When a field IS confirmed, don't let eventOdds inject extra golfers — those rows
+    // may belong to a different event (App.tsx loads odds for the soonest event only).
+    const lateAddGolferIds = allFieldIds.size === 0
+      ? (eventOdds ?? [])
+          .map((o: any) => o.golfer_id)
+          .filter((gid: number) => !playingIds.has(gid))
+      : [];
+    const lateAddProfiles = lateAddGolferIds
+      .map((gid: number) => golfers.find((g: any) => g.golfer_id === gid))
+      .filter(Boolean)
+      .map((g: any) => buildProfile(g, leaderboard, events, signups, courseName, playingIds, playingField))
+      .filter(Boolean) as any[];
+    return { profiles, allProfiles: [...profiles, ...lateAddProfiles] };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [golfers, leaderboard, events, signups, eventOdds, selEventId, excludedIds, courseName]);
 
   // Golfers in the field who have no history (can't model them)
   const noHistoryGolfers = playingField.filter((g: any) => !profiles.find((p: any) => p.golfer.golfer_id === g.golfer_id));
-  // Note: lateAddProfiles are built above and merged into allProfiles
-
-  // Late-add golfers: only surface them when there is no confirmed signup field
-  // (allFieldIds empty = event hasn't opened signups yet, so odds covers all members).
-  // When a field IS confirmed, don't let eventOdds inject extra golfers — those rows
-  // may belong to a different event (App.tsx loads odds for the soonest event only).
-  const lateAddGolferIds = allFieldIds.size === 0
-    ? (eventOdds ?? [])
-        .map((o: any) => o.golfer_id)
-        .filter((gid: number) => !playingIds.has(gid))
-    : [];
-  const lateAddProfiles = lateAddGolferIds
-    .map((gid: number) => golfers.find((g: any) => g.golfer_id === gid))
-    .filter(Boolean)
-    .map((g: any) => buildProfile(g, leaderboard, events, signups, courseName, playingIds, playingField))
-    .filter(Boolean) as any[];
-  const allProfiles = [...profiles, ...lateAddProfiles];
 
   // Build backend odds lookup — prefer live over pre_round, newest first
   const backendMap: Record<number, any> = {};
@@ -92,7 +96,9 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
   const fieldConfirmed = selEvent?.status === "Pairings Set" || selEvent?.status === "In-Progress";
   const hasBackend = fieldConfirmed && allProfiles.some((p: any) => backendMap[p.golfer.golfer_id]);
 
-  const ranked = (() => {
+  // Memoized: calcFieldOdds runs a 5,000-trial Monte Carlo. Re-running it on
+  // every render also made displayed win % visibly jitter (the sim is random).
+  const ranked = useMemo(() => {
     if (hasBackend) {
       // Backend model odds (Pairings Set / In-Progress).
       // Guests (and any late-add without a backendMap entry) won't have backend
@@ -146,7 +152,8 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
       oddsAmerican: toAmericanOdds(adjProbs[i]),
       oddsSource: "client",
     }))].sort((a: any, b: any) => b.prob - a.prob);
-  })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allProfiles, eventOdds, hasBackend]);
 
   // Toggle exclude
   const toggleExclude = (gid: number) => {
@@ -156,8 +163,11 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
   // H2H computation
   const gA = golfers.find((g: any) => g.golfer_id === parseInt(h2hA));
   const gB = golfers.find((g: any) => g.golfer_id === parseInt(h2hB));
-  const profA = gA ? buildProfile(gA, leaderboard, events, signups, courseName, new Set<number>([gA?.golfer_id, gB?.golfer_id].filter(Boolean) as number[])) : null;
-  const profB = gB ? buildProfile(gB, leaderboard, events, signups, courseName, new Set<number>([gA?.golfer_id, gB?.golfer_id].filter(Boolean) as number[])) : null;
+  const { profA, profB } = useMemo(() => ({
+    profA: gA ? buildProfile(gA, leaderboard, events, signups, courseName, new Set<number>([gA?.golfer_id, gB?.golfer_id].filter(Boolean) as number[])) : null,
+    profB: gB ? buildProfile(gB, leaderboard, events, signups, courseName, new Set<number>([gA?.golfer_id, gB?.golfer_id].filter(Boolean) as number[])) : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [h2hA, h2hB, golfers, leaderboard, events, signups, courseName]);
 
   const h2hShared = gA && gB ? h2hHistory(leaderboard, events, gA.golfer_id, gB.golfer_id) : [];
 
@@ -178,9 +188,9 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
   // Find the course for the selected event to get par info
   const h2hCourse = selEvent ? courses.find((c: any) => c.course_name === selEvent.course_name) : null;
 
-  // H2H Monte Carlo (1v1)
-  let rawH2hProbA = 0.5;
-  if (profA && profB) {
+  // H2H Monte Carlo (1v1) — memoized for the same jitter/perf reasons as `ranked`
+  const rawH2hProbA = useMemo(() => {
+    if (!profA || !profB) return 0.5;
     let winsA = 0;
     for (let t = 0; t < MC_TRIALS; t++) {
       const dA = randNorm(profA.proj, profA.sd);
@@ -188,13 +198,13 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
       if (dA > dB) winsA++;
       else if (dA === dB) winsA += 0.5;
     }
-    rawH2hProbA = winsA / MC_TRIALS;
-  }
+    return winsA / MC_TRIALS;
+  }, [profA, profB]);
   const finalProbA = profA && profB ? h2hWinProb(h2hShared, rawH2hProbA) : 0.5;
   const finalProbB = 1 - finalProbA;
-  // Vig on H2H
-  const h2hAdjA = finalProbA / (1 + VIG);
-  const h2hAdjB = finalProbB / (1 + VIG);
+  // Vig on H2H: inflate implied probs (house margin); dividing pays more than fair
+  const h2hAdjA = Math.min(0.99, finalProbA * (1 + VIG));
+  const h2hAdjB = Math.min(0.99, finalProbB * (1 + VIG));
 
   // Spread
   const spread = profA && profB ? Math.round((profA.proj - profB.proj) * 10) / 10 : 0;
@@ -528,8 +538,8 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                 {/* Scoring Fingerprint overlay -- tactical matchup shape */}
                 {(() => {
                   const h2hSeasonEvents = events.filter((e: any) => e.season === season && e.status === "Completed");
-                  const fpA = computeScoringFingerprint(gA.golfer_id, h2hSeasonEvents, leaderboard, holeScores || [], courses);
-                  const fpB = computeScoringFingerprint(gB.golfer_id, h2hSeasonEvents, leaderboard, holeScores || [], courses);
+                  const fpA = computeScoringFingerprint(gA.golfer_id, h2hSeasonEvents, leaderboard, holeScores || [], courses, signups);
+                  const fpB = computeScoringFingerprint(gB.golfer_id, h2hSeasonEvents, leaderboard, holeScores || [], courses, signups);
                   return (
                     <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", padding: 16, marginBottom: 16 }}>
                       <div style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", fontWeight: 700, marginBottom: 10 }}>

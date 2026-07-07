@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { SubTabPanel } from "../../App";
-import { GlassPicker } from "../../components/common";
+import { SubTabPanel, GlassPicker } from "../../components/common";
 import { formatDate, uniqueCourseNames } from "../../lib/formatters";
-import { calcSeasonLeaderData } from "../../lib/seasonStats";
+import { calcSeasonLeaderData, dedupeLeaderboard } from "../../lib/seasonStats";
 import { OddsTab } from "../odds/OddsTab";
 import { SeasonOverview } from "./SeasonOverview";
 import { CourseChart } from "./CourseChart";
@@ -32,17 +31,19 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
 
   const seasonData=calcSeasonLeaderData(golfers,leaderboard,events,selSeason);
   const seasonEvents=events.filter((e:any)=>e.season===selSeason&&e.status==="Completed");
+  // One deduped row per (event, golfer) — every aggregate below reads from this
+  const seasonRows=dedupeLeaderboard(leaderboard.filter((r:any)=>r.season===selSeason));
 
   const courseNames=uniqueCourseNames(courses);
   const courseAvgs=courseNames.map(name=>{
     const evIds=events.filter((e:any)=>e.course_name===name&&e.season===selSeason).map((e:any)=>e.event_id);
-    const entries=leaderboard.filter((r:any)=>evIds.includes(r.event_id)&&!golfers.find((g:any)=>g.golfer_id===r.golfer_id)?.is_guest);
+    const entries=seasonRows.filter((r:any)=>evIds.includes(r.event_id)&&!golfers.find((g:any)=>g.golfer_id===r.golfer_id)?.is_guest);
     const avg=entries.length?entries.reduce((s:number,r:any)=>s+r.total_stableford_points,0)/entries.length:0;
     return{name,avg,count:entries.length};
   }).filter((c:any)=>c.count>0);
 
   const scatterData=golfers.filter((g:any)=>!g.is_guest&&g.status==="Active").map((g:any)=>{
-    const rounds=leaderboard.filter((r:any)=>r.golfer_id===g.golfer_id&&r.season===selSeason).map((r:any)=>r.total_stableford_points);
+    const rounds=seasonRows.filter((r:any)=>r.golfer_id===g.golfer_id).map((r:any)=>r.total_stableford_points);
     if(!rounds.length)return null;
     return{golfer:g,hcp:g.current_handicap_index,avg:rounds.reduce((a:number,b:number)=>a+b,0)/rounds.length,rounds:rounds.length};
   }).filter(Boolean);
@@ -53,7 +54,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
   const flightWinData=flightBands.map(band=>{
     let appearances=0,wins=0;
     completedSeasonEvents.forEach((ev:any)=>{
-      const paid=[...leaderboard.filter((r:any)=>r.event_id===ev.event_id&&r.buy_in_paid)].sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
+      const paid=[...seasonRows.filter((r:any)=>r.event_id===ev.event_id&&r.buy_in_paid)].sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
       if(!paid.length)return;
       const topPts=paid[0].total_stableford_points;
       const tied1st=paid.filter((r:any)=>r.total_stableford_points===topPts);
@@ -79,11 +80,14 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
   const golferRounds=selG?seasonEvents
     .sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime())
     .map((ev:any)=>{
-      const entry=leaderboard.filter((r:any)=>r.golfer_id===selG.golfer_id&&r.event_id===ev.event_id).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)[0];
+      const entry=seasonRows.find((r:any)=>r.golfer_id===selG.golfer_id&&r.event_id===ev.event_id);
       if(!entry)return null;
-      // Calc rank for this event
-      const paidEv=leaderboard.filter((r:any)=>r.event_id===ev.event_id&&r.buy_in_paid).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
-      const rank=paidEv.findIndex((r:any)=>r.golfer_id===selG.golfer_id)+1;
+      // Calc rank for this event — competition ranking so ties share a position
+      // (rank = 1 + players strictly ahead); null when not in the paid field
+      const paidEv=seasonRows.filter((r:any)=>r.event_id===ev.event_id&&r.buy_in_paid).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
+      const myRow=paidEv.find((r:any)=>r.golfer_id===selG.golfer_id);
+      const rank=myRow?paidEv.filter((r:any)=>r.total_stableford_points>myRow.total_stableford_points).length+1:null;
+      const rankTied=myRow?paidEv.filter((r:any)=>r.total_stableford_points===myRow.total_stableford_points).length>1:false;
       const pot=paidEv.length*20;
       const topPts=paidEv[0]?.total_stableford_points;
       const tied1st=paidEv.filter((r:any)=>r.total_stableford_points===topPts);
@@ -99,7 +103,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
         // 2nd place: 1/3 of pot (only reachable when solo 1st exists)
         roundEarned=(pot*(1/3))/tied2nd.length;
       }
-      return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,players:paidEv.length,earned:roundEarned,won:tied1st.some((r:any)=>r.golfer_id===selG.golfer_id)};
+      return{pts:entry.total_stableford_points,eid:ev.event_id,date:ev.date,course:ev.course_name,rank,rankTied,players:paidEv.length,earned:roundEarned,won:tied1st.some((r:any)=>r.golfer_id===selG.golfer_id)};
     }).filter(Boolean):[];
 
   const SUBTABS=[{id:"overview",label:"Overview"},{id:"golfer",label:"By Golfer"},{id:"odds",label:"Odds"},...(selSeason>=2026?[{id:"points-gained",label:"Pts Gained"}]:[]),({id:"course",label:"By Course"}),{id:"scatter",label:"HCP vs Pts"},{id:"champions",label:"Champions"}];

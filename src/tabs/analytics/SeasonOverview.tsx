@@ -1,7 +1,8 @@
 import { useState as useStateOv, useRef, useEffect, useCallback } from "react";
 import { Trophy, Banknote, Star } from "lucide-react";
-import { CountUp } from "../../App";
+import { CountUp } from "../../components/common";
 import { formatDate } from "../../lib/formatters";
+import { dedupeLeaderboard } from "../../lib/seasonStats";
 import { ChartCanvas } from "./ChartCanvas";
 import {
   Chart as ChartJS,
@@ -59,12 +60,14 @@ function FormHeatmap({seasonEvents,leaderboard,golfers,season}:any){
   };
 
   const sortedEvents=[...seasonEvents].sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
+  const heatmapEvIds=new Set(sortedEvents.map((e:any)=>e.event_id));
+  const heatmapRows=dedupeLeaderboard(leaderboard.filter((r:any)=>heatmapEvIds.has(r.event_id)));
 
   type PlayerRow={golfer:any;avg:number;rounds:{[eid:number]:number}};
   const allRows:PlayerRow[]=[];
   const eligibleGolfers=golfers.filter((g:any)=>!g.is_guest);
   for(const g of eligibleGolfers){
-    const myEntries=leaderboard.filter((r:any)=>r.golfer_id===g.golfer_id&&sortedEvents.some((e:any)=>e.event_id===r.event_id));
+    const myEntries=heatmapRows.filter((r:any)=>r.golfer_id===g.golfer_id);
     if(myEntries.length<3)continue;
     const roundMap:{[eid:number]:number}={};
     for(const e of myEntries){roundMap[e.event_id]=e.total_stableford_points;}
@@ -801,9 +804,10 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
     if(!winLeader||!winLeader.wins)return[];
     const sorted=[...seasonEvents].sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
     return sorted.map((ev:any,idx:number)=>{
-      const entry=leaderboard.filter((r:any)=>r.event_id===ev.event_id&&r.golfer_id===winLeader.golfer.golfer_id);
+      const evRows=dedupeLeaderboard(leaderboard.filter((r:any)=>r.event_id===ev.event_id));
+      const entry=evRows.filter((r:any)=>r.golfer_id===winLeader.golfer.golfer_id);
       if(!entry.length)return null;
-      const allPaid=leaderboard.filter((r:any)=>r.event_id===ev.event_id&&r.buy_in_paid).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
+      const allPaid=evRows.filter((r:any)=>r.buy_in_paid).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
       const topPts=allPaid[0]?.total_stableford_points;
       const won=entry[0].total_stableford_points===topPts;
       return{round:idx+1,won,played:true};

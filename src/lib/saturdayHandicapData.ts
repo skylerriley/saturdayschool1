@@ -52,9 +52,13 @@ function selectionCount(nScores: number): number {
   return counts[nScores] ?? 0;
 }
 
-// Resolve the tee actually played for a round. Prefer the signup's explicit
-// tee_box_course_id (which pins a specific tee row); fall back to matching the
-// course by name. Returns null if we cannot find complete rating data.
+// Resolve the tee actually played for a round. Layered, most-specific first:
+//   1. the golfer's own signup tee_box_course_id (pins a specific tee row)
+//   2. the tee most other signups at the same event used (groups share tees)
+//   3. name match, but ONLY when every tee row for the course carries
+//      identical ratings -- a bare name lookup would grab an arbitrary tee
+//      for multi-tee courses and silently corrupt the differential.
+// Returns null (round skipped) when the tee cannot be determined.
 function resolveTee(
   eid: any,
   gid: any,
@@ -65,9 +69,39 @@ function resolveTee(
   const signup = signups.find(
     (s: any) => s.event_id === eid && s.golfer_id === gid
   );
-  const course = signup?.tee_box_course_id
+  let course = signup?.tee_box_course_id
     ? courses.find((c: any) => c.course_id === signup.tee_box_course_id)
-    : courses.find((c: any) => c.course_name === courseName);
+    : null;
+
+  if (!course) {
+    const counts = new Map<any, number>();
+    (signups || []).forEach((s: any) => {
+      if (s.event_id === eid && s.tee_box_course_id != null) {
+        counts.set(s.tee_box_course_id, (counts.get(s.tee_box_course_id) || 0) + 1);
+      }
+    });
+    let bestId: any = null, bestN = 0;
+    counts.forEach((n, id) => { if (n > bestN) { bestN = n; bestId = id; } });
+    if (bestId != null) {
+      course = courses.find(
+        (c: any) => c.course_id === bestId && (courseName == null || c.course_name === courseName)
+      );
+    }
+  }
+
+  if (!course && courseName != null) {
+    const named = courses.filter((c: any) => c.course_name === courseName);
+    const first = named[0];
+    const identical = named.length > 0 && named.every((c: any) =>
+      c.tee_rating === first.tee_rating &&
+      c.tee_slope === first.tee_slope &&
+      c.par === first.par &&
+      JSON.stringify(c.hole_pars) === JSON.stringify(first.hole_pars) &&
+      JSON.stringify(c.hole_stroke_indices) === JSON.stringify(first.hole_stroke_indices)
+    );
+    if (identical) course = first;
+  }
+
   if (!course) return null;
 
   const courseRating = course.tee_rating;

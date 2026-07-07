@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { SubTabPanel, FinanceView } from "../../App";
+import { SubTabPanel, FinanceView } from "../../components/common";
 import { EventCreator } from "./EventCreator";
 import { PairingDashboard } from "./PairingDashboard";
 import { HandicapManager } from "./HandicapManager";
