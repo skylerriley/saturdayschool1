@@ -11,6 +11,12 @@
     <meta name="apple-mobile-web-app-title" content="Saturday School" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Saturday School - Stableford Golf League</title>
+    <!-- Fonts load from the document head (not a runtime @import inside a
+         React-injected style tag) so they start downloading before JS boots
+         and get runtime-cached by the service worker for offline use. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <script>
       (function(){
         var STORAGE_KEY='pwa-last-standalone';

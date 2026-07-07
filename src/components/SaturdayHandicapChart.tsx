@@ -28,6 +28,11 @@ const TEXT_MUTED_DARK = "rgba(255,255,255,0.5)";
 
 const BAR_H = 120; // matches the Hole Streaks chart
 
+// Default view shows the most recent 20 rounds — the WHS most-recent-20
+// window, which is also exactly the set the gold "counts" bars live in.
+// Past ~25 bars the one-row flex layout crams labels into unreadability.
+const BAR_WINDOW = 20;
+
 // Match the Hole Streaks date formatting exactly.
 const fmtDate = (d: string) =>
   new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -53,7 +58,8 @@ export function SaturdayHandicapChart({
   signups: any[];
   events: any[];
 }) {
-  const [selectedBar, setSelectedBar] = useState<number | null>(null);
+  const [selectedBar, setSelectedBar] = useState<number | null>(null); // index into `trace`
+  const [showAllRounds, setShowAllRounds] = useState(false);
 
   // Compute once per golfer / data change. Top-level hook (never inside JSX).
   const { state, trace } = useMemo(
@@ -70,10 +76,15 @@ export function SaturdayHandicapChart({
   );
 
   // Reset selection when the golfer changes.
-  useEffect(() => { setSelectedBar(null); }, [golfer?.golfer_id]);
+  useEffect(() => { setSelectedBar(null); setShowAllRounds(false); }, [golfer?.golfer_id]);
 
   const nRounds = trace.length;
   const idx = state.handicapIndex;
+
+  // Windowed view: last BAR_WINDOW rounds unless expanded.
+  const windowed = !showAllRounds && nRounds > BAR_WINDOW;
+  const traceOffset = windowed ? nRounds - BAR_WINDOW : 0;
+  const displayTrace = windowed ? trace.slice(traceOffset) : trace;
 
   // -- Header metric + sub-label ----------------------------------------------
   let metric: string;
@@ -87,7 +98,8 @@ export function SaturdayHandicapChart({
   }
 
   // Baseline near the lowest gross (not zero) so scores spread visually.
-  const grosses = trace.map((t) => t.gross);
+  // Scaled to the displayed window so windowing doesn't flatten the bars.
+  const grosses = displayTrace.map((t) => t.gross);
   const minGross = grosses.length ? Math.min(...grosses) : 0;
   const maxGross = grosses.length ? Math.max(...grosses) : 0;
   const floor = Math.max(0, minGross - 3);
@@ -126,8 +138,9 @@ export function SaturdayHandicapChart({
       ) : (
         <>
           {/* Bars */}
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: BAR_H }}>
-            {trace.map((t, i) => {
+          <div style={{ display: "flex", alignItems: "flex-end", gap: showAllRounds && nRounds > BAR_WINDOW ? 2 : 4, height: BAR_H }}>
+            {displayTrace.map((t, di) => {
+              const i = traceOffset + di; // index into full trace
               const heightPx = Math.max(6, Math.round(((t.gross - floor) / span) * BAR_H));
               const isSelected = selectedBar === i;
               const color = t.contributes ? GOLD : GREEN;
@@ -138,7 +151,8 @@ export function SaturdayHandicapChart({
                   style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: BAR_H, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
                 >
                   <div style={{ fontSize: 12, fontWeight: 700, color: isSelected ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.55)", marginBottom: 3, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
-                    {t.gross}
+                    {/* labels overlap past ~28 bars in view-all mode; tap still reveals */}
+                    {showAllRounds && nRounds > 28 && !isSelected ? "" : t.gross}
                   </div>
                   <div style={{
                     width: "80%", height: heightPx,
@@ -160,6 +174,14 @@ export function SaturdayHandicapChart({
               <div style={{ width: 12, height: 12, borderRadius: 2, background: GOLD }} />
               Counts toward handicap
             </div>
+            {nRounds > BAR_WINDOW && (
+              <button
+                onClick={() => { setShowAllRounds(v => !v); setSelectedBar(null); }}
+                style={{ marginLeft: "auto", background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 12, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.7)", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+              >
+                {showAllRounds ? `Last ${BAR_WINDOW}` : `View all ${nRounds} rounds`}
+              </button>
+            )}
           </div>
 
           {/* Selected-bar review panel (same style as Hole Streaks) */}

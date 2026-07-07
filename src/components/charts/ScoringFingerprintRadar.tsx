@@ -10,11 +10,14 @@ export function ScoringFingerprintRadar({datasets,size=240,maxValue=4,darkMode=f
   maxValue?:number,
   darkMode?:boolean,
 }){
-  const [drawn,setDrawn]=useState(false);
+  // Reduced motion: skip the scale-in entrance entirely (start fully drawn)
+  const reduceMotion=typeof window!=="undefined"&&window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const [drawn,setDrawn]=useState(reduceMotion);
   useEffect(()=>{
+    if(reduceMotion)return;
     const id=requestAnimationFrame(()=>requestAnimationFrame(()=>setDrawn(true)));
     return()=>cancelAnimationFrame(id);
-  },[]);
+  },[reduceMotion]);
 
   const axes=[
     {key:"par3",label:"Par 3"},

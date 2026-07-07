@@ -14,7 +14,9 @@ _Last updated: 2026-07-07. Update this file when starting/finishing features or 
 | `e4eab39` | course handicap trend |
 | `c47ec7d` | updated gif |
 
-Active focus: 2026-07-06 full-app audit → bug-fix batch (payouts/dedupe, offline score entry, RSVP crash, odds vig/staleness/memoization, weather races, StrictMode double-inserts, dead-code removal).
+Active focus: 2026-07-06 full-app audit → two fix batches (2026-07-07):
+(1) payouts/dedupe, offline score entry, RSVP crash, odds vig/staleness/memoization, weather races, StrictMode double-inserts, dead-code removal;
+(2) offline-first PWA (vite-plugin-pwa precache + IndexedDB write outbox + sync pill), silent-catch sweep → reportWriteError, fonts to index.html, reduced-motion support, WindParticles DPR/pause, Saturday Handicap chart windowing.
 
 ---
 

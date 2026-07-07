@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { runPairingEngine, buildPairingFrequencyMap } from "../../lib/golfMath";
 import { golferName, formatDate } from "../../lib/formatters";
-import { supabase, sendPush } from "../../lib/supabaseClient";
+import { supabase, sendPush, reportWriteError } from "../../lib/supabaseClient";
 
 interface PairingPanelProps {
   golfers: any[];
@@ -114,7 +114,7 @@ export function PairingPanel({
       )
     );
     if (signup_id < 1e12)
-      supabase.from("event_signups").update({ assigned_tee_time: null, in_waiting_room: true }, { signup_id }).catch(() => {});
+      supabase.from("event_signups").update({ assigned_tee_time: null, in_waiting_room: true }, { signup_id }).catch(reportWriteError("Pairing update"));
     setMoving(null);
     setRemoving(null);
     setPairingsChanged(true);
@@ -126,10 +126,10 @@ export function PairingPanel({
       p.map((e: any) => e.event_id === selEvent.event_id ? { ...e, status: "Pairings Set" } : e)
     );
     if (selEvent.event_id < 1e12)
-      supabase.from("events").update({ status: "Pairings Set" }, { event_id: selEvent.event_id }).catch(() => {});
+      supabase.from("events").update({ status: "Pairings Set" }, { event_id: selEvent.event_id }).catch(reportWriteError("Event status save"));
     eventSignups.filter((s: any) => s.assigned_tee_time).forEach((s: any) => {
       if (s.signup_id < 1e12)
-        supabase.from("event_signups").update({ assigned_tee_time: s.assigned_tee_time }, { signup_id: s.signup_id }).catch(() => {});
+        supabase.from("event_signups").update({ assigned_tee_time: s.assigned_tee_time }, { signup_id: s.signup_id }).catch(reportWriteError("Pairing save"));
     });
     setPairingsConfirmed(true);
     setPairingsChanged(false);
@@ -148,10 +148,10 @@ export function PairingPanel({
     );
     eventSignups.forEach((s: any) => {
       if (s.signup_id < 1e12)
-        supabase.from("event_signups").update({ assigned_tee_time: null }, { signup_id: s.signup_id }).catch(() => {});
+        supabase.from("event_signups").update({ assigned_tee_time: null }, { signup_id: s.signup_id }).catch(reportWriteError("Pairing clear"));
     });
     if (selEvent.event_id < 1e12)
-      supabase.from("events").update({ status: "Upcoming" }, { event_id: selEvent.event_id }).catch(() => {});
+      supabase.from("events").update({ status: "Upcoming" }, { event_id: selEvent.event_id }).catch(reportWriteError("Event status save"));
     setPairingsConfirmed(false);
     setPairingsChanged(false);
     setMoving(null);
@@ -345,7 +345,7 @@ export function PairingPanel({
                             )
                           );
                           if (su.signup_id < 1e12)
-                            supabase.from("event_signups").update({ assigned_tee_time: grp.teeTime, in_waiting_room: false }, { signup_id: su.signup_id }).catch(() => {});
+                            supabase.from("event_signups").update({ assigned_tee_time: grp.teeTime, in_waiting_room: false }, { signup_id: su.signup_id }).catch(reportWriteError("Pairing save"));
                           setPairingsChanged(true);
                         }}
                       >

@@ -22,6 +22,9 @@ export function ensureShimmer() {
       animation: wx-shimmer 1.6s ease infinite;
       border-radius: 6px;
     }
+    @media (prefers-reduced-motion: reduce) {
+      .wx-skel { animation: none; }
+    }
   `;
   document.head.appendChild(s);
 }

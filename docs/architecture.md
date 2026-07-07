@@ -169,10 +169,18 @@ No CSS framework (no Tailwind, no Bootstrap).
 ## PWA & Mobile
 
 - `public/manifest.json` — standalone display mode, theme-color green
-- `public/sw.js` — push-notification-only service worker (`push` + `notificationclick`
-  handlers). It has NO fetch handler and NO precache — **the app does not work
-  offline**, and the SW is only registered when a user opts into notifications
-  in Settings.
+- Service worker: generated at build time by `vite-plugin-pwa` (Workbox
+  `generateSW`, `registerType: autoUpdate`, auto-registered on every load).
+  Precaches the app shell; runtime caches: Supabase `/rest/v1` GETs
+  (NetworkFirst), Supabase Storage images (CacheFirst), Google Fonts
+  (CacheFirst), Open-Meteo (NetworkFirst). Push handlers live in
+  `public/push-handlers.js` and are merged in via `importScripts`.
+- Offline writes: `src/lib/writeOutbox.ts` is an IndexedDB outbox. The REST
+  wrapper queues idempotent writes (PATCH / DELETE / upsert) on network
+  failure and replays FIFO on `online`/`visibilitychange`/30s interval/boot.
+  Inserts are NOT queued (callers need the returned id) — they fail fast and
+  surface via `reportWriteError` → App's error toast. A pending-sync pill in
+  the App shell shows the queued count / offline state.
 - `public/apple-touch-icon.png` — iOS home screen
 - `index.html` — inline script detects `standalone` mode → adds `is-pwa` class to `<html>`
 - Safe area insets handled via CSS env() vars

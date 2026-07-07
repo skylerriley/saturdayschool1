@@ -3,7 +3,7 @@ import { Sun } from "lucide-react";
 import { ToggleGroup, GlassPicker } from "../../components/common";
 import { PairingPanel } from "../../components/common/PairingPanel";
 import { golferName, formatDate, eventPickerLabel } from "../../lib/formatters";
-import { supabase, sendPush } from "../../lib/supabaseClient";
+import { supabase, sendPush, reportWriteError } from "../../lib/supabaseClient";
 import { assignLateAdd } from "../../lib/golfMath";
 import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
@@ -283,15 +283,15 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
         if(tee){
           updated.assigned_tee_time=tee;updated.in_waiting_room=false;
           if(canWrite)
-            supabase.from("event_signups").update({attending:next,assigned_tee_time:tee,in_waiting_room:false,rsvp_updated_at:now},{signup_id:s.signup_id}).catch(()=>{});
+            supabase.from("event_signups").update({attending:next,assigned_tee_time:tee,in_waiting_room:false,rsvp_updated_at:now},{signup_id:s.signup_id}).catch(reportWriteError("RSVP save"));
         }else{
           updated.in_waiting_room=true;
           if(canWrite)
-            supabase.from("event_signups").update({attending:next,in_waiting_room:true,rsvp_updated_at:now},{signup_id:s.signup_id}).catch(()=>{});
+            supabase.from("event_signups").update({attending:next,in_waiting_room:true,rsvp_updated_at:now},{signup_id:s.signup_id}).catch(reportWriteError("RSVP save"));
         }
       } else {
         if(canWrite)
-          supabase.from("event_signups").update({attending:next,rsvp_updated_at:now,...(clearEarly?{early_tee_request:false}:{})},{signup_id:s.signup_id}).catch(()=>{});
+          supabase.from("event_signups").update({attending:next,rsvp_updated_at:now,...(clearEarly?{early_tee_request:false}:{})},{signup_id:s.signup_id}).catch(reportWriteError("RSVP save"));
       }
       return updated;
     }));
@@ -305,7 +305,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
       const next=!s.early_tee_request;
       const canWrite=s.signup_id<1e12&&!(s.event_id>=1e12);
       if(canWrite)
-        supabase.from("event_signups").update({early_tee_request:next},{signup_id:s.signup_id}).catch(()=>{});
+        supabase.from("event_signups").update({early_tee_request:next},{signup_id:s.signup_id}).catch(reportWriteError("Early tee request save"));
       return{...s,early_tee_request:next};
     }));
   };
@@ -326,7 +326,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
       realGolferId=guestSelectedId;
       const existing=golfers.find((g:any)=>g.golfer_id===guestSelectedId);
       if(existing&&existing.current_handicap_index!==hcp){
-        supabase.from("golfers").update({current_handicap_index:hcp},{golfer_id:guestSelectedId}).catch(()=>{});
+        supabase.from("golfers").update({current_handicap_index:hcp},{golfer_id:guestSelectedId}).catch(reportWriteError("Guest handicap save"));
         setGolfers((p:any)=>p.map((g:any)=>g.golfer_id===guestSelectedId?{...g,current_handicap_index:hcp}:g));
       }
     }else{
@@ -371,7 +371,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
               // Move that player to the next available spot
               setSignups((p:any)=>p.map((s:any)=>s.signup_id===toMove.signup_id?{...s,assigned_tee_time:newTee}:s));
               if(toMove.signup_id<1e12&&!(toMove.event_id>=1e12))
-                supabase.from("event_signups").update({assigned_tee_time:newTee},{signup_id:toMove.signup_id}).catch(()=>{});
+                supabase.from("event_signups").update({assigned_tee_time:newTee},{signup_id:toMove.signup_id}).catch(reportWriteError("Tee time move"));
             }
           }
           assignedTee=sponsorTee;

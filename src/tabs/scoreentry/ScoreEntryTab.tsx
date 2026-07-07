@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { ScoreSymbol, ToggleGroup, GlassPicker } from "../../components/common";
 import { golferName, teeBoxesForCourse, scrollMainTop, eventPickerLabel } from "../../lib/formatters";
 import { calcPlayingHandicap, calcHoleNetScore, calcStablefordPoints, calcHoleScores } from "../../lib/golfMath";
-import { supabase, SUPABASE_URL, SUPABASE_KEY } from "../../lib/supabaseClient";
+import { supabase, SUPABASE_URL, SUPABASE_KEY, reportWriteError, pendingWriteCount as outboxPendingCount, subscribeOutbox } from "../../lib/supabaseClient";
 
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false,started:false,summaryId:null as number|null});
 
@@ -18,125 +18,40 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   // Prevents duplicate INSERT when user types quickly on first hole.
   const pendingLbInsert=useRef<Record<string,Array<(id:number)=>void>>>({});
 
-  // ── Offline write queue ──────────────────────────────────────
-  // Stores writes that failed or couldn't be sent due to no connectivity,
-  // flushed automatically when online. Three op kinds share the flush:
-  //   holes   — per-hole upserts (offlineQueue)
-  //   clears  — per-hole deletes (offlineClearQueue)
-  //   totals  — leaderboard running-total updates (offlineLbQueue, latest per row)
-  const offlineQueue=useRef<Array<{row:any,retries:number}>>([]);
-  const offlineClearQueue=useRef<Array<{summary_id:number,hole_number:number,retries:number}>>([]);
-  const offlineLbQueue=useRef<Record<number,any>>({}); // summary_id -> latest body
-  const flushingRef=useRef(false);
-
-  const pendingWriteCount=()=>offlineQueue.current.length+offlineClearQueue.current.length+Object.keys(offlineLbQueue.current).length;
-
-  const flushOfflineQueue=useCallback(async()=>{
-    if(flushingRef.current||pendingWriteCount()===0)return;
-    if(!navigator.onLine)return;
-    flushingRef.current=true;
-    // Clears first: a clear queued before a re-entered score must land first
-    const pendingClears=[...offlineClearQueue.current];
-    offlineClearQueue.current=[];
-    for(const item of pendingClears){
-      try{
-        await supabase.from("hole_scores").delete({summary_id:item.summary_id,hole_number:item.hole_number});
-      }catch{
-        if(item.retries<5) offlineClearQueue.current.push({...item,retries:item.retries+1});
-      }
-    }
-    const pending=[...offlineQueue.current];
-    offlineQueue.current=[];
-    for(const item of pending){
-      try{
-        await dbUpsertHoleScore(item.row);
-      }catch{
-        // re-queue if still failing (up to 5 retries)
-        if(item.retries<5) offlineQueue.current.push({row:item.row,retries:item.retries+1});
-      }
-    }
-    const pendingLb=Object.entries(offlineLbQueue.current);
-    offlineLbQueue.current={};
-    for(const [sid,body] of pendingLb){
-      try{
-        await supabase.from("event_leaderboard").update(body,{summary_id:Number(sid)});
-      }catch{
-        offlineLbQueue.current[Number(sid)]=body;
-      }
-    }
-    flushingRef.current=false;
-  },[dbUpsertHoleScore]);
-
-  // Auto-flush when the browser regains connectivity
-  useEffect(()=>{
-    const handler=()=>{
-      if(offlineQueue.current.length>0) flushOfflineQueue();
-    };
-    window.addEventListener("online",handler);
-    return()=>window.removeEventListener("online",handler);
-  },[flushOfflineQueue]);
-
-  // Queued write: writes immediately if online, queues if offline
+  // ── Offline writes ────────────────────────────────────────────
+  // All queueing lives in the REST wrapper's IndexedDB outbox now
+  // (lib/supabaseClient.ts + lib/writeOutbox.ts): network-failed upserts,
+  // deletes, and PATCHes are persisted and replayed automatically — they
+  // survive the PWA being closed mid-round. These helpers are now thin
+  // pass-throughs kept for their call-site names.
   const queueHoleWrite=useCallback((row:any)=>{
-    if(navigator.onLine){
-      dbUpsertHoleScore(row).catch(()=>{
-        offlineQueue.current.push({row,retries:0});
-      });
-    }else{
-      // Replace any existing queued entry for same summary_id+hole
-      offlineQueue.current=offlineQueue.current.filter(
-        q=>!(q.row.summary_id===row.summary_id&&q.row.hole_number===row.hole_number)
-      );
-      offlineQueue.current.push({row,retries:0});
-    }
+    dbUpsertHoleScore(row); // wrapper queues on network failure; server errors toast
   },[dbUpsertHoleScore]);
 
-  // Clearing a hole must delete its row in the DB, not just skip the upsert --
-  // otherwise the stale gross/net/points values stay in hole_scores forever.
-  // Drop any queued upsert for the same hole so it can't race the delete, and
-  // queue the delete itself when offline (a lost clear resurrects the hole).
+  // Clearing a hole must delete its row in the DB, not just skip the upsert.
+  // The outbox reconciles a queued upsert vs delete for the same hole.
   const queueHoleClear=useCallback((summary_id:number,hole_number:number)=>{
-    offlineQueue.current=offlineQueue.current.filter(
-      q=>!(q.row.summary_id===summary_id&&q.row.hole_number===hole_number)
-    );
-    if(navigator.onLine){
-      dbDeleteHoleScore(summary_id,hole_number).catch(()=>{
-        offlineClearQueue.current.push({summary_id,hole_number,retries:0});
-      });
-    }else{
-      offlineClearQueue.current=offlineClearQueue.current.filter(
-        q=>!(q.summary_id===summary_id&&q.hole_number===hole_number)
-      );
-      offlineClearQueue.current.push({summary_id,hole_number,retries:0});
-    }
+    dbDeleteHoleScore(summary_id,hole_number);
   },[dbDeleteHoleScore]);
 
-  // Leaderboard running-total write, offline-aware. Only the latest body per
-  // summary_id is kept — intermediate totals are superseded anyway.
+  // Leaderboard running-total write. The outbox dedupes PATCHes to the same
+  // row, so offline only the latest total is kept and replayed.
   const queueLbTotalWrite=useCallback((summary_id:number,body:any)=>{
-    if(navigator.onLine){
-      supabase.from("event_leaderboard").update(body,{summary_id}).catch(()=>{
-        offlineLbQueue.current[summary_id]=body;
-      });
-    }else{
-      offlineLbQueue.current[summary_id]=body;
-    }
+    supabase.from("event_leaderboard").update(body,{summary_id}).catch(reportWriteError("Score total save"));
   },[]);
 
-  // Connection status indicator shown during score entry
+  // Connection status indicator shown during score entry (reads the shared outbox)
   const [isOnline,setIsOnline]=useState(()=>navigator.onLine);
   const [queuedCount,setQueuedCount]=useState(0);
   useEffect(()=>{
-    const up=()=>{setIsOnline(true);flushOfflineQueue().then(()=>setQueuedCount(pendingWriteCount()));};
+    const refresh=()=>{outboxPendingCount().then(setQueuedCount);};
+    refresh();
+    const unsub=subscribeOutbox(refresh);
+    const up=()=>setIsOnline(true);
     const down=()=>setIsOnline(false);
     window.addEventListener("online",up);
     window.addEventListener("offline",down);
-    return()=>{window.removeEventListener("online",up);window.removeEventListener("offline",down);};
-  },[flushOfflineQueue]);
-  // Keep queuedCount in sync after flushes
-  useEffect(()=>{
-    const id=setInterval(()=>setQueuedCount(pendingWriteCount()),2000);
-    return()=>clearInterval(id);
+    return()=>{unsub();window.removeEventListener("online",up);window.removeEventListener("offline",down);};
   },[]);
 
 
@@ -273,7 +188,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         const su2=su.map((s:any)=>s.event_id===eid&&s.golfer_id===gid?{...s,tee_box_course_id:parseInt(scorer.courseId),playing_handicap:phcp}:s);
         const mySu=su2.find((s:any)=>s.event_id===eid&&s.golfer_id===gid);
         if(mySu?.signup_id&&mySu.signup_id<1e12)
-          supabase.from("event_signups").update({tee_box_course_id:parseInt(scorer.courseId),playing_handicap:phcp},{signup_id:mySu.signup_id}).catch(()=>{});
+          supabase.from("event_signups").update({tee_box_course_id:parseInt(scorer.courseId),playing_handicap:phcp},{signup_id:mySu.signup_id}).catch(reportWriteError("Tee box save"));
         return su2;
       });
       // Flip event to In-Progress if needed
@@ -303,7 +218,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         const su2=su.map((s:any)=>s.event_id===eid&&s.golfer_id===gid?{...s,tee_box_course_id:parseInt(scorer.courseId),playing_handicap:phcp}:s);
         const mySu=su2.find((s:any)=>s.event_id===eid&&s.golfer_id===gid);
         if(mySu?.signup_id&&mySu.signup_id<1e12)
-          supabase.from("event_signups").update({tee_box_course_id:parseInt(scorer.courseId),playing_handicap:phcp},{signup_id:mySu.signup_id}).catch(()=>{});
+          supabase.from("event_signups").update({tee_box_course_id:parseInt(scorer.courseId),playing_handicap:phcp},{signup_id:mySu.signup_id}).catch(reportWriteError("Tee box save"));
         return su2;
       });
       // Flip event to In-Progress
@@ -363,7 +278,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
           const su2=su.map((s:any)=>s.event_id===eid&&s.golfer_id===gid?{...s,tee_box_course_id:parseInt(val),playing_handicap:phcp}:s);
           const mySu=su2.find((s:any)=>s.event_id===eid&&s.golfer_id===gid);
           if(mySu?.signup_id&&mySu.signup_id<1e12)
-            supabase.from("event_signups").update({tee_box_course_id:parseInt(val),playing_handicap:phcp},{signup_id:mySu.signup_id}).catch(()=>{});
+            supabase.from("event_signups").update({tee_box_course_id:parseInt(val),playing_handicap:phcp},{signup_id:mySu.signup_id}).catch(reportWriteError("Tee box save"));
           return su2;
         });
       }
@@ -407,7 +322,6 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       // If we already have a real DB row, write via the queue (handles offline).
       if(existing?.summary_id&&existing.summary_id<1e12){
         queueHoleWrite({...holeRow,summary_id:existing.summary_id,score_id:existing.summary_id*100+hole});
-        setQueuedCount(pendingWriteCount());
       }
     } else if(!val){
       setHoleScores((hs:any)=>hs.filter((h:any)=>!(h.summary_id===tempSid&&h.hole_number===hole+1)));
@@ -451,7 +365,6 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
       setHoleScores((hs:any)=>[...hs.filter((h:any)=>!(h.summary_id===realSid&&h.hole_number===hole+1)),holeRow]);
       // Write via queue — handles offline gracefully
       queueHoleWrite(payload);
-      setQueuedCount(pendingWriteCount());
     };
 
     const doSignupWrite=(realSid:number)=>{
@@ -467,7 +380,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
           supabase.from("event_signups").update(
             {tee_box_course_id:parseInt(updatedScorer.courseId),playing_handicap:phcp},
             {signup_id:mySu.signup_id}
-          ).catch(()=>{});
+          ).catch(reportWriteError("Tee box save"));
         }
         return su2;
       });
@@ -485,7 +398,6 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
     // in the WHERE clause. Sending PK in PATCH body causes a 400.
     const {summary_id:_sid,created_at:_ca,...lbRest}=liveEntry;
     queueLbTotalWrite(realSid,lbRest);
-    setQueuedCount(pendingWriteCount());
     doHoleWrite(realSid);
     doSignupWrite(realSid);
   };
@@ -524,7 +436,6 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         setLeaderboardLocal((p:any)=>[...p.filter((r:any)=>r.summary_id!==realSid),updatedEntry]);
         const {summary_id:_sid2,created_at:_ca2,...lbRest2}=updatedEntry;
         queueLbTotalWrite(realSid,lbRest2);
-        setQueuedCount(pendingWriteCount());
         count++;
       }else{
         // Total-only mode

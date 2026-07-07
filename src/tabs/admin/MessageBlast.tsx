@@ -16,7 +16,7 @@ export function MessageBlast({ golfers, showSuccess }: any) {
     }).then(r => {
       const ct = r.headers.get("Content-Range");
       if (ct) { const m = ct.match(/\/(\d+)/); if (m) setSubCount(parseInt(m[1])); }
-    }).catch(() => {});
+    }).catch((e) => console.warn("[push] subscriber count:", e));
   }, []);
 
   const activeMembers = golfers.filter((g: any) => !g.is_guest);

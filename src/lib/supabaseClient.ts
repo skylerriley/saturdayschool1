@@ -3,6 +3,10 @@
 // Paste your project URL and anon key here (or use env vars).
 // Get these from: Supabase dashboard -> Settings -> API
 // ============================================================
+import { outboxAdd, outboxAll, outboxRemove, outboxRemoveWhere, outboxCount, subscribeOutbox, notifyOutbox, type OutboxOp } from "./writeOutbox";
+
+export { outboxCount as pendingWriteCount, subscribeOutbox };
+
 export const SUPABASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL) || "https://YOUR_PROJECT_ID.supabase.co";
 export const SUPABASE_KEY = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_ANON_KEY) || "YOUR_ANON_KEY_HERE";
 export const VAPID_PUBLIC_KEY = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_VAPID_PUBLIC_KEY) || "";
@@ -20,25 +24,134 @@ export async function sendPush(title: string, body: string, url = "/") {
   });
 }
 
-// Minimal Supabase REST client (no npm install needed for Claude artifact preview)
-// In your real Netlify project, replace this with: import { createClient } from '@supabase/supabase-js'
-export const supabase = (() => {
-  const headers = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": `Bearer ${SUPABASE_KEY}`,
-    "Content-Type": "application/json",
-    "Prefer": "return=representation",
-  };
+// ── Write-error reporting ───────────────────────────────────
+// App.tsx registers its showError toast here at boot so genuine server
+// rejections surface to the user instead of dying in a silent .catch.
+let writeErrorReporter: (msg: string) => void = (msg) => console.warn("[db]", msg);
+export function setWriteErrorReporter(fn: (msg: string) => void) { writeErrorReporter = fn; }
+// Catch handler for fire-and-forget writes: `.catch(reportWriteError("RSVP save"))`
+export const reportWriteError = (context: string) => (e: any) => {
+  writeErrorReporter(`${context} failed: ${e?.message || String(e)}`);
+};
 
-  const rpc = async (table: string, method: string, body?: any, query = "") => {
-    const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
-    const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || `${method} ${table} failed (${res.status})`);
+// A fetch() that rejects with TypeError (or while offline) never reached the
+// server — safe to queue and replay. An HTTP error response is a real
+// rejection and must surface instead.
+const isNetworkFailure = (e: any) =>
+  (typeof navigator !== "undefined" && !navigator.onLine) || e instanceof TypeError;
+
+// Dedupe key so repeated writes to the same target keep only the newest op.
+function opDedupeKey(op: Omit<OutboxOp, "ts">): string | undefined {
+  if (op.kind === "PATCH" || op.kind === "DELETE") return `${op.table}|${op.kind}|${op.query}`;
+  if (op.kind === "UPSERT" && op.table === "hole_scores" && !Array.isArray(op.body)) {
+    return `hole_scores|UPSERT|${op.body.summary_id}|${op.body.hole_number}`;
+  }
+  return undefined;
+}
+
+async function enqueueWrite(op: Omit<OutboxOp, "ts" | "dedupeKey">) {
+  // hole_scores reconciliation: a queued upsert and a queued delete for the
+  // same hole cancel out — keep only the most recent intent.
+  if (op.table === "hole_scores") {
+    if (op.kind === "DELETE") {
+      const m = /summary_id=eq\.(\d+).*hole_number=eq\.(\d+)/.exec(op.query);
+      if (m) await outboxRemoveWhere((o) =>
+        o.table === "hole_scores" && o.kind === "UPSERT" && !Array.isArray(o.body) &&
+        String(o.body.summary_id) === m[1] && String(o.body.hole_number) === m[2]);
+    } else if (op.kind === "UPSERT" && !Array.isArray(op.body)) {
+      await outboxRemoveWhere((o) =>
+        o.table === "hole_scores" && o.kind === "DELETE" &&
+        o.query.includes(`summary_id=eq.${op.body.summary_id}`) &&
+        o.query.includes(`hole_number=eq.${op.body.hole_number}`));
     }
-    if (res.status === 204) return [];
-    return res.json();
+  }
+  await outboxAdd({ ...op, dedupeKey: opDedupeKey(op as any), ts: Date.now() });
+}
+
+const restHeaders = {
+  "apikey": SUPABASE_KEY,
+  "Authorization": `Bearer ${SUPABASE_KEY}`,
+  "Content-Type": "application/json",
+  "Prefer": "return=representation",
+};
+
+const doRpcFetch = async (table: string, method: string, body?: any, query = "") => {
+  const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
+  const res = await fetch(url, { method, headers: restHeaders, body: body ? JSON.stringify(body) : undefined });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `${method} ${table} failed (${res.status})`);
+  }
+  if (res.status === 204) return [];
+  return res.json();
+};
+
+const doUpsertFetch = async (table: string, data: any, onConflict?: string) => {
+  // Supabase upsert requires "resolution=merge-duplicates" in the Prefer header.
+  // Without it, the on_conflict param is ignored and the row is inserted fresh
+  // (or silently rejected as a duplicate), so corrections never reach the DB.
+  const upsertHeaders = { ...restHeaders, "Prefer": "resolution=merge-duplicates,return=representation" };
+  const url = `${SUPABASE_URL}/rest/v1/${table}${onConflict ? `?on_conflict=${onConflict}` : ""}`;
+  const body = Array.isArray(data) ? data : [data];
+  const res = await fetch(url, { method: "POST", headers: upsertHeaders, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `upsert ${table} failed (${res.status})`);
+  }
+  if (res.status === 204) return [];
+  return res.json();
+};
+
+// ── Outbox replay ───────────────────────────────────────────
+// FIFO replay of queued writes. Network failure stops the pass (still
+// offline); a server rejection drops the op and surfaces via the reporter
+// (retrying a 4xx forever would wedge the queue).
+let flushingOutbox = false;
+export async function flushOutbox() {
+  if (flushingOutbox) return;
+  if (typeof navigator !== "undefined" && !navigator.onLine) return;
+  flushingOutbox = true;
+  try {
+    const ops = await outboxAll();
+    for (const op of ops) {
+      try {
+        if (op.kind === "UPSERT") await doUpsertFetch(op.table, op.body, op.onConflict);
+        else await doRpcFetch(op.table, op.kind, op.body, op.query);
+        await outboxRemove(op.id!);
+      } catch (e: any) {
+        if (isNetworkFailure(e)) break;
+        await outboxRemove(op.id!);
+        writeErrorReporter(`Queued ${op.table} sync failed: ${e?.message || String(e)}`);
+      }
+    }
+  } finally {
+    flushingOutbox = false;
+    notifyOutbox();
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => { flushOutbox(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) flushOutbox(); });
+  setInterval(() => { if (navigator.onLine) flushOutbox(); }, 30_000);
+  flushOutbox(); // replay anything left over from a previous session
+}
+
+// Minimal Supabase REST client (no npm install needed for Claude artifact preview)
+export const supabase = (() => {
+  const rpc = async (table: string, method: string, body?: any, query = "") => {
+    try {
+      return await doRpcFetch(table, method, body, query);
+    } catch (e: any) {
+      // Offline-first: idempotent writes are queued and replayed when the
+      // network returns. Inserts are NOT queued — callers need the returned
+      // row id, so they fail fast and visibly instead.
+      if ((method === "PATCH" || method === "DELETE") && isNetworkFailure(e)) {
+        await enqueueWrite({ table, kind: method, body, query });
+        return [];
+      }
+      throw e;
+    }
   };
 
   // Fetch ALL rows by paginating in chunks of 1000 (Supabase default limit)
@@ -64,7 +177,7 @@ export const supabase = (() => {
     let from = 0;
     while (true) {
       const url = `${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=${orderCol}.asc,${pk}.asc&limit=${PAGE}&offset=${from}${extraQuery}`;
-      const res = await fetch(url, { method: "GET", headers });
+      const res = await fetch(url, { method: "GET", headers: restHeaders });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message || `GET ${table} failed (${res.status})`);
@@ -83,25 +196,17 @@ export const supabase = (() => {
       selectById: (cols = "*") => fetchAll(table, cols, "id"),
       selectFiltered: (cols = "*", filterQuery = "", orderCol = "id") => fetchAll(table, cols, orderCol, filterQuery),
       insert: (data: any) => rpc(table, "POST", Array.isArray(data) ? data : [data]),
-      upsert: (data: any, onConflict?: string) => {
-        // Supabase upsert requires "resolution=merge-duplicates" in the Prefer header.
-        // Without it, the on_conflict param is ignored and the row is inserted fresh
-        // (or silently rejected as a duplicate), so corrections never reach the DB.
-        const upsertHeaders = {
-          ...headers,
-          "Prefer": "resolution=merge-duplicates,return=representation",
-        };
-        const url = `${SUPABASE_URL}/rest/v1/${table}${onConflict ? `?on_conflict=${onConflict}` : ""}`;
-        const body = Array.isArray(data) ? data : [data];
-        return fetch(url, { method: "POST", headers: upsertHeaders, body: JSON.stringify(body) })
-          .then(async res => {
-            if (!res.ok) {
-              const err = await res.json().catch(() => ({}));
-              throw new Error(err.message || `upsert ${table} failed (${res.status})`);
-            }
-            if (res.status === 204) return [];
-            return res.json();
-          });
+      upsert: async (data: any, onConflict?: string) => {
+        try {
+          return await doUpsertFetch(table, data, onConflict);
+        } catch (e: any) {
+          // Upserts are idempotent — queue on network failure and replay later.
+          if (isNetworkFailure(e)) {
+            await enqueueWrite({ table, kind: "UPSERT", body: data, query: "", onConflict });
+            return [];
+          }
+          throw e;
+        }
       },
       update: (data: any, match: Record<string, any>) => {
         const q = Object.entries(match).map(([k, v]) => `${k}=eq.${v}`).join("&");

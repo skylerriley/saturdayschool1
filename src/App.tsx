@@ -17,7 +17,7 @@ import { useEdgeElastic } from "./hooks/useEdgeElastic";
 import { usePullToRefresh, PULL_THRESHOLD } from "./hooks/usePullToRefresh";
 
 // Supabase client, env constants, and push notification helper
-import { supabase, sendPush, SUPABASE_URL, SUPABASE_KEY, VAPID_PUBLIC_KEY, GCAPI_KEY } from "./lib/supabaseClient";
+import { supabase, sendPush, SUPABASE_URL, SUPABASE_KEY, VAPID_PUBLIC_KEY, GCAPI_KEY, reportWriteError, setWriteErrorReporter, pendingWriteCount, subscribeOutbox, flushOutbox } from "./lib/supabaseClient";
 
 // Admin tab cluster
 import { AdminTab } from "./tabs/admin/AdminTab";
@@ -186,13 +186,23 @@ const SPLASH_CSS = `
     80%{transform:translateX(3.26em);animation-timing-function:var(--ss-ease);}
     83%,to{transform:translateX(3.36em);}
   }
+
+  /* Reduced motion: show the wordmark statically, no bouncing dot/waves.
+     The splash timeout is also shortened in code (see splashDone effect). */
+  @media (prefers-reduced-motion:reduce){
+    .ss-splash__char,
+    .ss-splash__char:before,
+    .ss-splash__char[data-last="true"]{animation:none!important;opacity:1;transform:none;}
+    .ss-splash__dot{display:none!important;}
+  }
 `;
 
 // ============================================================
 // CSS - DM Sans / DM Serif, larger accessible fonts
 // ============================================================
 const CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+  /* Fonts are loaded from index.html (preconnect + link) — an @import here
+     only starts downloading after React boots and fails offline. */
 
   :root {
     --green-900:#0a2e1a; --green-800:#0f4526; --green-700:#155c32;
@@ -1284,7 +1294,13 @@ export default function App(){
   const [charityDonations,setCharityDonations]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
   const [splashDone,setSplashDone]=useState(false);
-  useEffect(()=>{const t=setTimeout(()=>setSplashDone(true),6200);return()=>clearTimeout(t);},[]);
+  // Reduced motion: the splash animation is disabled in CSS, so don't hold
+  // the user on a static screen for the full animation length either.
+  useEffect(()=>{
+    const reduce=window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const t=setTimeout(()=>setSplashDone(true),reduce?800:6200);
+    return()=>clearTimeout(t);
+  },[]);
   // ── App boot entry-animation window ──────────────────────────
   // Once initial data loads, .app-shell carries .app-booting for a beat
   // so the first paint's top card / leaderboard rows / stats can play
@@ -1336,6 +1352,26 @@ export default function App(){
 
   const showSuccess=useCallback((msg:string)=>{setSuccessMsg(msg);setTimeout(()=>setSuccessMsg(""),6000);},[]);
   const showError=useCallback((msg:string)=>{setErrorMsg(msg);setTimeout(()=>setErrorMsg(""),5000);},[]);
+
+  // Route genuine DB write failures (server rejections — offline writes are
+  // queued by the REST wrapper, not failed) into the visible error toast.
+  useEffect(()=>{setWriteErrorReporter(showError);},[showError]);
+
+  // ── Pending-sync pill state ───────────────────────────────────
+  // Count of writes queued in the offline outbox + connectivity, so the
+  // shell can show "N pending sync" instead of silently holding data.
+  const [pendingSync,setPendingSync]=useState(0);
+  const [isOnlineNow,setIsOnlineNow]=useState(()=>typeof navigator==="undefined"||navigator.onLine);
+  useEffect(()=>{
+    const refresh=()=>{pendingWriteCount().then(setPendingSync);};
+    refresh();
+    const unsub=subscribeOutbox(refresh);
+    const up=()=>{setIsOnlineNow(true);flushOutbox();};
+    const down=()=>setIsOnlineNow(false);
+    window.addEventListener("online",up);
+    window.addEventListener("offline",down);
+    return()=>{unsub();window.removeEventListener("online",up);window.removeEventListener("offline",down);};
+  },[]);
 
   // Event alert banner -- dismissed persists until midnight of the day it was dismissed
   const [alertDismissed,setAlertDismissed]=useState(()=>{
@@ -1853,7 +1889,7 @@ export default function App(){
   useEffect(()=>{
     supabase.from("event_images").selectById("*").then((rows:any)=>{
       if(rows)setEventImages(rows);
-    }).catch(()=>{});
+    }).catch((e:any)=>console.warn("[load] event_images:",e));
   },[]);
 
   // Load hole images (course card photos)
@@ -1871,7 +1907,7 @@ export default function App(){
           setTimeout(preload,1500);
         }
       }
-    }).catch(()=>{});
+    }).catch((e:any)=>console.warn("[load] hole_images:",e));
   },[]);
 
   // Auto-restore in-progress scoring session after data loads.
@@ -2150,7 +2186,7 @@ export default function App(){
                     const {signup_id:_,...rest}={...s,event_id:realId};
                     supabase.from("event_signups")
                       .upsert({...rest,event_id:realId},"event_id,golfer_id")
-                      .catch(()=>{});
+                      .catch(reportWriteError("Signup sync"));
                   });
                   return patched; // state is correct immediately — no refresh needed
                 });
@@ -2251,7 +2287,7 @@ export default function App(){
       if(toUpsert.length>0){
         toUpsert.forEach((row:any)=>{
           const {score_id:_,...payload}=row;
-          supabase.from("hole_scores").upsert(payload,"summary_id,hole_number").catch(()=>{});
+          supabase.from("hole_scores").upsert(payload,"summary_id,hole_number").catch(reportWriteError("Hole score save"));
         });
       }
 
@@ -2388,6 +2424,22 @@ export default function App(){
             transform:pullState.refreshing?"none":`rotate(${(pullState.pull/PULL_THRESHOLD)*360}deg)`,
           }}/>
         </div>
+        {/* Pending-sync pill: offline and/or queued writes waiting to sync */}
+        {(!isOnlineNow||pendingSync>0)&&(
+          <div style={{
+            position:"absolute",top:"calc(env(safe-area-inset-top,0px) + 58px)",left:"50%",transform:"translateX(-50%)",
+            zIndex:300,display:"flex",alignItems:"center",gap:6,
+            background:isOnlineNow?"var(--gold-800,#6b3d00)":"#5a2a00",
+            color:"#ffe9c4",borderRadius:14,padding:"5px 12px",
+            fontSize:12,fontWeight:700,letterSpacing:"0.02em",
+            boxShadow:"0 2px 10px rgba(0,0,0,0.3)",pointerEvents:"none",whiteSpace:"nowrap",
+          }}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:isOnlineNow?"#ffce7a":"#ff9d5c",display:"inline-block"}}/>
+            {!isOnlineNow
+              ?(pendingSync>0?`Offline — ${pendingSync} change${pendingSync>1?"s":""} saved locally`:"Offline — changes save locally")
+              :`Syncing ${pendingSync} change${pendingSync>1?"s":""}…`}
+          </div>
+        )}
         {!alertDismissed&&activeTab==="leaderboard"&&<EventAlertBanner events={events} signups={signups} holeImages={holeImages} mainRef={mainRef} onDismiss={dismissAlert} onNavigateToSignup={()=>{setActiveTab("rsvp");scrollToTop(50);}}/>}
         <main
           className="main-content"

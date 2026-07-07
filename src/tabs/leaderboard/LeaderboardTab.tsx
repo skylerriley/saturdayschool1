@@ -4,7 +4,7 @@ import ReactDOM from "react-dom";
 import { SeasonScrubber, FlickCarousel, SubTabPanel, ToggleGroup, ScoreSymbol, GlassPicker } from "../../components/common";
 import { golferName, formatDate } from "../../lib/formatters";
 import { calcPlayingHandicap } from "../../lib/golfMath";
-import { supabase } from "../../lib/supabaseClient";
+import { supabase, reportWriteError } from "../../lib/supabaseClient";
 import { buildSeasonRounds, golferStats, dedupeLeaderboard } from "../../lib/seasonStats";
 import { useLiveWeather } from "../../hooks/useLiveWeather";
 import { WindParticles } from "../../components/weather/WindParticles";
@@ -2782,13 +2782,13 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
       const existing=imgByHole[hole];
       if(existing){
         // delete old storage file then update row
-        await supabase.storage.remove("hole-images",[existing.storage_path]).catch(()=>{});
+        await supabase.storage.remove("hole-images",[existing.storage_path]).catch((e)=>console.warn("[storage] cleanup:",e));
         const updated={...existing,public_url:result.url,storage_path:path};
-        await supabase.from("hole_images").update({public_url:result.url,storage_path:path},{hole_image_id:existing.hole_image_id}).catch(()=>{});
+        await supabase.from("hole_images").update({public_url:result.url,storage_path:path},{hole_image_id:existing.hole_image_id}).catch(reportWriteError("Hole image save"));
         setHoleImages((p:any[])=>p.map((r:any)=>r.hole_image_id===existing.hole_image_id?updated:r));
       } else {
         const row={course_name:courseName,hole_number:hole,public_url:result.url,storage_path:path};
-        const inserted=await supabase.from("hole_images").insert(row).catch(()=>null);
+        const inserted=await supabase.from("hole_images").insert(row).catch((e:any)=>{reportWriteError("Hole image save")(e);return null;});
         setHoleImages((p:any[])=>[...p,{...row,hole_image_id:inserted?.hole_image_id||Date.now()}]);
       }
       showSuccess(`Hole ${hole} image uploaded!`);
@@ -2799,8 +2799,8 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
   const deleteHoleImage=async(hole:number)=>{
     const existing=imgByHole[hole];
     if(!existing||!window.confirm(`Remove image for hole ${hole}?`))return;
-    await supabase.storage.remove("hole-images",[existing.storage_path]).catch(()=>{});
-    await supabase.from("hole_images").delete({hole_image_id:existing.hole_image_id}).catch(()=>{});
+    await supabase.storage.remove("hole-images",[existing.storage_path]).catch((e)=>console.warn("[storage] cleanup:",e));
+    await supabase.from("hole_images").delete({hole_image_id:existing.hole_image_id}).catch(reportWriteError("Hole image delete"));
     setHoleImages((p:any[])=>p.filter((r:any)=>r.hole_image_id!==existing.hole_image_id));
     showSuccess(`Hole ${hole} image removed`);
   };

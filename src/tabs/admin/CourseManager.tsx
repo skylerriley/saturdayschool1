@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { scrollMainTop } from "../../lib/formatters";
 import { fuzzyMatchCourseName } from "../../lib/courseNameUtils";
-import { supabase, GCAPI_KEY } from "../../lib/supabaseClient";
+import { supabase, GCAPI_KEY, reportWriteError } from "../../lib/supabaseClient";
 
 // -- 3b) COURSE MANAGER ---------------------------------------
 
@@ -40,12 +40,13 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
       if (!result) throw new Error("Upload failed");
       const existing = (holeImages || []).find((r: any) => r.course_name === courseName && r.hole_number === hole);
       if (existing) {
-        await supabase.storage.remove("hole-images", [existing.storage_path]).catch(() => {});
-        await supabase.from("hole_images").update({ public_url: result.url, storage_path: path }, { hole_image_id: existing.hole_image_id }).catch(() => {});
+        // Old-file cleanup is best-effort — the replacement already uploaded
+        await supabase.storage.remove("hole-images", [existing.storage_path]).catch((e) => console.warn("[storage] cleanup:", e));
+        await supabase.from("hole_images").update({ public_url: result.url, storage_path: path }, { hole_image_id: existing.hole_image_id }).catch(reportWriteError("Hole image save"));
         setHoleImages((p: any[]) => p.map((r: any) => r.hole_image_id === existing.hole_image_id ? { ...r, public_url: result.url, storage_path: path } : r));
       } else {
         const row = { course_name: courseName, hole_number: hole, public_url: result.url, storage_path: path };
-        const inserted = await supabase.from("hole_images").insert(row).catch(() => null);
+        const inserted = await supabase.from("hole_images").insert(row).catch((e: any) => { reportWriteError("Hole image save")(e); return null; });
         setHoleImages((p: any[]) => [...p, { ...row, hole_image_id: inserted?.hole_image_id || Date.now() }]);
       }
       showSuccess(`Hole ${hole} image saved`);
@@ -56,8 +57,8 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
   const deleteHoleImage = async (courseName: string, hole: number) => {
     const existing = (holeImages || []).find((r: any) => r.course_name === courseName && r.hole_number === hole);
     if (!existing) return;
-    await supabase.storage.remove("hole-images", [existing.storage_path]).catch(() => {});
-    await supabase.from("hole_images").delete({ hole_image_id: existing.hole_image_id }).catch(() => {});
+    await supabase.storage.remove("hole-images", [existing.storage_path]).catch((e) => console.warn("[storage] cleanup:", e));
+    await supabase.from("hole_images").delete({ hole_image_id: existing.hole_image_id }).catch(reportWriteError("Hole image delete"));
     setHoleImages((p: any[]) => p.filter((r: any) => r.hole_image_id !== existing.hole_image_id));
     showSuccess(`Hole ${hole} image removed`);
   };
