@@ -352,7 +352,7 @@ export function ScoreCorrection({ golfers, courses, events, leaderboard, setLead
       {/* ── Implications popup ── */}
       {implications && (
         <div className="modal-overlay" onClick={() => { setImplications(null); setPendingAction(null); }}>
-          <div className="modal-sheet" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+          <div className="modal-sheet" style={{ maxWidth: 400, paddingBottom: "calc(78px + 16px + 15px)" }} onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
               {implications.action === "delete" ? "⚠ Delete Score — Implications" : implications.action === "add" ? "Review: Adding Golfer" : "Review: Score Change"}
             </div>
