@@ -14,9 +14,10 @@ _Last updated: 2026-07-07. Update this file when starting/finishing features or 
 | `e4eab39` | course handicap trend |
 | `c47ec7d` | updated gif |
 
-Active focus: 2026-07-06 full-app audit → two fix batches (2026-07-07):
+Active focus: 2026-07-06 full-app audit → three fix batches (2026-07-07):
 (1) payouts/dedupe, offline score entry, RSVP crash, odds vig/staleness/memoization, weather races, StrictMode double-inserts, dead-code removal;
-(2) offline-first PWA (vite-plugin-pwa precache + IndexedDB write outbox + sync pill), silent-catch sweep → reportWriteError, fonts to index.html, reduced-motion support, WindParticles DPR/pause, Saturday Handicap chart windowing.
+(2) offline-first PWA (vite-plugin-pwa precache + IndexedDB write outbox + sync pill), silent-catch sweep → reportWriteError, fonts to index.html, reduced-motion support, WindParticles DPR/pause, Saturday Handicap chart windowing;
+(3) vig only in payout odds (Win % now raw, sums to 100% — applyVig() in monteCarlo), charity edit persistence (dbUpdateCharity PATCH path), outbox hardening (pre-mount error buffer + 5xx/429 retry w/ attempts counter, drop only on 4xx), scratch-handicap 0→18 coercions (GolferRoster + guest quick-add), ScoreCorrection add-golfer double-insert/temp-summary_id fix, hole-image insert array-vs-row fix, estimateHolePts weight inversion, pairing engine player-unit sizing + waiting-room overflow (no more 5-7 player groups) + assignLateAdd latest-tee behavior, chart deps include plotted values, event delete now removes its leaderboard rows.
 
 ---
 

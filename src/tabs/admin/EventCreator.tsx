@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { scrollMainTop, formatDate, uniqueCourseNames } from "../../lib/formatters";
 import { GlassPicker } from "../../components/common";
 
-export function EventCreator({ courses, events, setEvents, signups, setSignups, golfers, showSuccess }: any) {
+export function EventCreator({ courses, events, setEvents, signups, setSignups, leaderboard, setLeaderboard, golfers, showSuccess }: any) {
   const formTopRef = useRef<HTMLDivElement>(null);
   const [date, setDate] = useState("");
   const [courseName, setCourseName] = useState("");
@@ -37,9 +37,15 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
   };
 
   const deleteEvent = (evId: number, evDate: string) => {
-    if (!window.confirm(`Delete event on ${formatDate(evDate)}? This cannot be undone.`)) return;
+    // An In-Progress event can already have leaderboard rows — leaving them
+    // behind orphans them into season stats, so they're deleted along with
+    // the event (the DB cascades their hole_scores).
+    const scoreRows = (leaderboard || []).filter((r: any) => r.event_id === evId);
+    const scoreNote = scoreRows.length ? ` ${scoreRows.length} recorded score${scoreRows.length > 1 ? "s" : ""} for this event will also be deleted.` : "";
+    if (!window.confirm(`Delete event on ${formatDate(evDate)}?${scoreNote} This cannot be undone.`)) return;
     setEvents((p: any) => p.filter((e: any) => e.event_id !== evId));
     setSignups((p: any) => p.filter((s: any) => s.event_id !== evId));
+    if (scoreRows.length && setLeaderboard) setLeaderboard((p: any) => p.filter((r: any) => r.event_id !== evId));
     showSuccess("Event deleted");
     setTimeout(() => scrollMainTop(), 50);
   };

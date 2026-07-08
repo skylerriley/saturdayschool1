@@ -1006,7 +1006,7 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
           <div style={{margin:"0 -16px"}}>
             <TrendScrubber
               config={trendConfig}
-              deps={[season,eventTrend.length,trendBand,trendUp,currentSeasonAvg,showSeasonRef]}
+              deps={[season,eventTrend.length,eventTrend.map((e:any)=>e.avg.toFixed(1)).join(),trendBand,trendUp,currentSeasonAvg,showSeasonRef]}
               height={120}
               points={eventTrend}
               lineColor={trendUp?"#1a7340":"#c47800"}

@@ -3,7 +3,7 @@
 // Paste your project URL and anon key here (or use env vars).
 // Get these from: Supabase dashboard -> Settings -> API
 // ============================================================
-import { outboxAdd, outboxAll, outboxRemove, outboxRemoveWhere, outboxCount, subscribeOutbox, notifyOutbox, type OutboxOp } from "./writeOutbox";
+import { outboxAdd, outboxAll, outboxRemove, outboxRemoveWhere, outboxPut, outboxCount, subscribeOutbox, notifyOutbox, type OutboxOp } from "./writeOutbox";
 
 export { outboxCount as pendingWriteCount, subscribeOutbox };
 
@@ -27,8 +27,23 @@ export async function sendPush(title: string, body: string, url = "/") {
 // ── Write-error reporting ───────────────────────────────────
 // App.tsx registers its showError toast here at boot so genuine server
 // rejections surface to the user instead of dying in a silent .catch.
-let writeErrorReporter: (msg: string) => void = (msg) => console.warn("[db]", msg);
-export function setWriteErrorReporter(fn: (msg: string) => void) { writeErrorReporter = fn; }
+// Errors raised before React mounts (the module-load outbox flush) are
+// buffered and delivered once the real reporter registers — otherwise a
+// boot-time replay failure would only ever reach the console.
+let preMountErrorBuffer: string[] | null = [];
+let writeErrorReporter: (msg: string) => void = (msg) => {
+  console.warn("[db]", msg);
+  if (preMountErrorBuffer && preMountErrorBuffer.length < 10) preMountErrorBuffer.push(msg);
+};
+export function setWriteErrorReporter(fn: (msg: string) => void) {
+  writeErrorReporter = fn;
+  if (preMountErrorBuffer?.length) {
+    const buffered = preMountErrorBuffer;
+    preMountErrorBuffer = null;
+    fn(buffered.length === 1 ? buffered[0] : `${buffered.length} saved changes failed to sync — ${buffered[0]}`);
+  }
+  preMountErrorBuffer = null;
+}
 // Catch handler for fire-and-forget writes: `.catch(reportWriteError("RSVP save"))`
 export const reportWriteError = (context: string) => (e: any) => {
   writeErrorReporter(`${context} failed: ${e?.message || String(e)}`);
@@ -80,7 +95,9 @@ const doRpcFetch = async (table: string, method: string, body?: any, query = "")
   const res = await fetch(url, { method, headers: restHeaders, body: body ? JSON.stringify(body) : undefined });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `${method} ${table} failed (${res.status})`);
+    const e: any = new Error(err.message || `${method} ${table} failed (${res.status})`);
+    e.status = res.status;
+    throw e;
   }
   if (res.status === 204) return [];
   return res.json();
@@ -96,7 +113,9 @@ const doUpsertFetch = async (table: string, data: any, onConflict?: string) => {
   const res = await fetch(url, { method: "POST", headers: upsertHeaders, body: JSON.stringify(body) });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `upsert ${table} failed (${res.status})`);
+    const e: any = new Error(err.message || `upsert ${table} failed (${res.status})`);
+    e.status = res.status;
+    throw e;
   }
   if (res.status === 204) return [];
   return res.json();
@@ -104,8 +123,14 @@ const doUpsertFetch = async (table: string, data: any, onConflict?: string) => {
 
 // ── Outbox replay ───────────────────────────────────────────
 // FIFO replay of queued writes. Network failure stops the pass (still
-// offline); a server rejection drops the op and surfaces via the reporter
-// (retrying a 4xx forever would wedge the queue).
+// offline). Transient server errors (5xx/429 — a Supabase hiccup) keep the
+// op and stop the pass so ordering holds; it retries on the next flush, up
+// to MAX_REPLAY_ATTEMPTS. A definitive rejection (4xx) drops the op and
+// surfaces via the reporter (retrying it forever would wedge the queue).
+const MAX_REPLAY_ATTEMPTS = 5;
+const isTransientServerError = (e: any) =>
+  e?.status === 429 || (e?.status >= 500 && e?.status < 600);
+
 let flushingOutbox = false;
 export async function flushOutbox() {
   if (flushingOutbox) return;
@@ -120,6 +145,11 @@ export async function flushOutbox() {
         await outboxRemove(op.id!);
       } catch (e: any) {
         if (isNetworkFailure(e)) break;
+        const attempts = (op.attempts ?? 0) + 1;
+        if (isTransientServerError(e) && attempts < MAX_REPLAY_ATTEMPTS) {
+          await outboxPut({ ...op, attempts });
+          break;
+        }
         await outboxRemove(op.id!);
         writeErrorReporter(`Queued ${op.table} sync failed: ${e?.message || String(e)}`);
       }

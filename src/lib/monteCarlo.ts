@@ -45,8 +45,9 @@
 //
 // 8. HOUSE EDGE (3% vigorish)
 //    The sum of all raw win probs = 1.0 (zero-sum).
-//    We apply vig by scaling: adjProb_i = rawWinProb_i * (1 + VIG)
-//    This creates a ~3% book margin.
+//    Vig applies ONLY to payout (American) odds, by scaling the implied
+//    probability: adjProb_i = rawWinProb_i * (1 + VIG) — a ~3% book margin.
+//    Displayed win PERCENTAGES stay raw so the field sums to 100%.
 //
 // 9. AMERICAN ODDS from probability p
 //    If p >= 0.5:  odds = round(-(p / (1-p)) * 100)   -> negative (favorite)
@@ -230,6 +231,11 @@ export function buildProfile(g: any, leaderboard: any[], events: any[], signups:
   };
 }
 
+// House edge for payout odds: inflate the implied probability so the book
+// keeps a ~3% margin (dividing would lengthen odds and pay MORE than fair).
+// Only feed the result into toAmericanOdds — never display it as a Win %.
+export const applyVig = (p: number) => Math.min(0.99, p * (1 + VIG));
+
 // American odds string from probability
 export function toAmericanOdds(p: number): string {
   if (p <= 0 || p >= 1) return "N/A";
@@ -248,11 +254,9 @@ export function calcFieldOdds(profiles: any[]) {
     const winIdx = draws.map((d, i) => d === max ? i : -1).filter(i => i >= 0);
     winIdx.forEach(i => { wins[i] += 1 / winIdx.length; });
   }
-  const rawProbs = wins.map(w => w / MC_TRIALS);
-  // Apply vig: inflate implied probabilities so they sum > 1 (house margin
-  // shortens the payout). Dividing would lengthen odds and pay MORE than fair.
-  const adjProbs = rawProbs.map(p => Math.min(0.99, p * (1 + VIG)));
-  return adjProbs;
+  // Raw (fair) probabilities — they sum to 1. Callers apply the vig via
+  // applyVig() only when converting to American payout odds.
+  return wins.map(w => w / MC_TRIALS);
 }
 
 // H2H shared event history (newest-first weighted)
@@ -299,9 +303,9 @@ export function estimateHolePts(totalPts: number, course: any): number[] {
   if (!course || !course.hole_stroke_indices || !course.hole_pars)
     return Array(18).fill(totalPts / 18);
   const si: number[] = course.hole_stroke_indices;
-  // Weight = ease factor: lower stroke index = harder = likely fewer pts
-  // We use (19 - SI) so hole SI=1 (hardest) gets weight 18, SI=18 (easiest) gets weight 1
-  const weights = si.map((s: number) => 19 - s);
+  // Weight = ease factor: lower stroke index = harder = likely fewer pts,
+  // so SI=1 (hardest) gets weight 1 and SI=18 (easiest) gets weight 18.
+  const weights = si.map((s: number) => s);
   const wSum = weights.reduce((a: number, b: number) => a + b, 0);
   const raw = weights.map((w: number) => totalPts * (w / wSum));
   // Round preserving total: greedy rounding
@@ -397,19 +401,17 @@ export function pickBestH2H(
   const shared = h2hHistory(leaderboard, events, a.golfer.golfer_id, b.golfer.golfer_id);
   const finalProbA = profA && profB ? h2hWinProb(shared, rawH2hProbA) : 0.5;
   const finalProbB = 1 - finalProbA;
-  const adjA = Math.min(0.99, finalProbA * (1 + VIG));
-  const adjB = Math.min(0.99, finalProbB * (1 + VIG));
 
   const spreadVal = profA && profB ? parseFloat((profA.proj - profB.proj).toFixed(1)) : 0;
   const spreadStr = Math.abs(spreadVal) < 0.3 ? "Pick'em" :
     (spreadVal > 0 ? a.golfer.first_name + " -" + Math.abs(spreadVal) : b.golfer.first_name + " -" + Math.abs(spreadVal)) + " pts";
   return {
     nameA: a.golfer.first_name + " " + a.golfer.last_name,
-    oddsA: toAmericanOdds(adjA),
+    oddsA: toAmericanOdds(applyVig(finalProbA)),
     nameB: b.golfer.first_name + " " + b.golfer.last_name,
-    oddsB: toAmericanOdds(adjB),
+    oddsB: toAmericanOdds(applyVig(finalProbB)),
     spread: spreadStr,
-    probA: adjA,
-    probB: adjB,
+    probA: finalProbA,
+    probB: finalProbB,
   };
 }

@@ -2091,6 +2091,12 @@ export default function App(){
     }catch(e:any){setCharityDonations(prev);showError(`Save failed: ${e.message}`);}
   },[charityDonations,showError]);
 
+  const dbUpdateCharity=useCallback(async(donation:any)=>{
+    const {id,...rest}=donation;
+    try{await supabase.from("charity_donations").update(rest,{id});}
+    catch(e:any){showError(`Donation update failed: ${e.message}`);}
+  },[showError]);
+
   // -- wrapped setters that also write to DB ------------------
   // These are passed to child components exactly like the old setState functions
   // but they also trigger a DB sync.
@@ -2309,9 +2315,19 @@ export default function App(){
       const next=typeof updater==="function"?updater(prev):updater;
       const added=next.filter((n:any)=>!prev.find((o:any)=>o.id===n.id));
       added.forEach((d:any)=>guardInsert(`charity:${d.id}`,()=>dbUpsertCharity(d)));
+      // Edited donations must PATCH the existing row — the insert path above
+      // only fires for new ids, so without this an edit never reaches the DB.
+      const changed=next.filter((n:any)=>{
+        const old=prev.find((o:any)=>o.id===n.id);
+        return old&&JSON.stringify(old)!==JSON.stringify(n);
+      });
+      changed.forEach((d:any)=>{
+        if(d.id>1e12)return; // temp id: no real row to PATCH yet (insert still in flight)
+        setTimeout(()=>dbUpdateCharity(d),0);
+      });
       return next;
     });
-  },[dbUpsertCharity,guardInsert]);
+  },[dbUpsertCharity,dbUpdateCharity,guardInsert]);
 
   // -- loading / error screens ---------------------------------
 

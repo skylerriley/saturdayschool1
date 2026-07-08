@@ -1,5 +1,5 @@
 import { useState, useRef, useLayoutEffect, useEffect, useMemo } from "react";
-import { buildProfile, calcFieldOdds, toAmericanOdds, h2hHistory, h2hWinProb, MC_TRIALS, VIG, randNorm } from "../../lib/monteCarlo";
+import { buildProfile, calcFieldOdds, toAmericanOdds, applyVig, h2hHistory, h2hWinProb, MC_TRIALS, randNorm } from "../../lib/monteCarlo";
 import { TonyInsight } from "./TonyInsight";
 
 // ── Odds chip ─────────────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ function GroupsView({ signups, golfers, event, ranked }: any) {
         const groupOddsMap: Record<number, string> = {};
         memberGolfers.forEach((g: any, i: number) => {
           const normalized = totalProb > 0 ? (groupProbs[i] as number) / totalProb : 1 / memberGolfers.length;
-          groupOddsMap[g.golfer_id as number] = toAmericanOdds(Math.min(0.99, normalized * (1 + VIG)));
+          groupOddsMap[g.golfer_id as number] = toAmericanOdds(applyVig(normalized));
         });
         // Sort group members by descending normalized prob
         const sortedMembers = [...memberGolfers].sort((a: any, b: any) => {
@@ -165,7 +165,7 @@ function MatchupsView({ ranked, golfers, leaderboard, events, signups, courseNam
       const rawProbA = winsA / MC_TRIALS;
       const shared = h2hHistory(leaderboard, events, gidA, gidB);
       const finalProbA = h2hWinProb(shared, rawProbA);
-      const adjA = Math.min(0.99, finalProbA * (1 + VIG));
+      const adjA = applyVig(finalProbA);
       result[gidB] = toAmericanOdds(adjA);
     });
     return result;
@@ -375,11 +375,12 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
             oddsAmerican: bk.win_odds_american, heaterActive: bk.heater_active ?? false, heaterMag: bk.heater_magnitude, oddsSource: "backend" };
         }
         const mcProb = allMcProbs[i] ?? 0;
-        return { ...p, prob: mcProb, projMean: p.proj, projLow: null, projHigh: null, oddsAmerican: toAmericanOdds(mcProb), heaterActive: false, heaterMag: null, oddsSource: "client" };
+        return { ...p, prob: mcProb, projMean: p.proj, projLow: null, projHigh: null, oddsAmerican: toAmericanOdds(applyVig(mcProb)), heaterActive: false, heaterMag: null, oddsSource: "client" };
       })].sort((a: any, b: any) => b.prob - a.prob);
     }
-    const adjProbs = allProfiles.length >= 2 ? calcFieldOdds(allProfiles) : allProfiles.map(() => 1 / allProfiles.length);
-    return [...allProfiles.map((p: any, i: number) => ({ ...p, prob: adjProbs[i], oddsAmerican: toAmericanOdds(adjProbs[i]), oddsSource: "client" }))].sort((a: any, b: any) => b.prob - a.prob);
+    // prob stays fair (field sums to 100%); vig only shapes the payout odds.
+    const rawProbs = allProfiles.length >= 2 ? calcFieldOdds(allProfiles) : allProfiles.map(() => 1 / allProfiles.length);
+    return [...allProfiles.map((p: any, i: number) => ({ ...p, prob: rawProbs[i], oddsAmerican: toAmericanOdds(applyVig(rawProbs[i])), oddsSource: "client" }))].sort((a: any, b: any) => b.prob - a.prob);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allProfiles, eventOdds, hasBackend]);
 
@@ -483,7 +484,7 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
                 <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "right" }}>Odds</div>
               </div>
               {ranked.map((r: any, i: number) => {
-                const rawOdds = r.oddsAmerican ?? toAmericanOdds(r.prob);
+                const rawOdds = r.oddsAmerican ?? toAmericanOdds(applyVig(r.prob));
                 const odds = (r.prob === 0 || rawOdds === "N/A" || rawOdds === "EVEN") ? "N/A" : rawOdds;
                 const isFav = i === 0;
                 return (

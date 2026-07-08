@@ -223,7 +223,8 @@ export function ScatterChart({scatterData,flightWinData}:any){
           transform: visible ? "translateY(0)" : "translateY(12px)",
           transition: "opacity 0.5s ease, transform 0.5s ease",
         }}>
-          <ChartCanvas config={config} deps={[scatterData.length,scatterData.map((d:any)=>d.golfer.golfer_id).join(),visible]} height={270}/>
+          {/* deps include plotted values — a score correction changes hcp/avg without changing who's plotted */}
+          <ChartCanvas config={config} deps={[scatterData.length,scatterData.map((d:any)=>`${d.golfer.golfer_id}:${d.hcp}:${d.avg}`).join(),visible]} height={270}/>
         </div>
       </div>
 

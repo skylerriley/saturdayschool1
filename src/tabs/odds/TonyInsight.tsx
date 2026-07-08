@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { formatDate } from "../../lib/formatters";
-import { toAmericanOdds, pickBestH2H } from "../../lib/monteCarlo";
+import { toAmericanOdds, applyVig, pickBestH2H } from "../../lib/monteCarlo";
 
 // ============================================================
 // TONY.AI -- Golf betting savant insight component
@@ -103,7 +103,7 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
     const eventLabel = selEvent ? (selEvent.course_name + " on " + selEvent.date) : "Unknown event";
     const fieldLines = ranked.map((r: any) => {
       const name = r.golfer.first_name + " " + r.golfer.last_name;
-      const odds = r.oddsAmerican ?? toAmericanOdds(r.prob);
+      const odds = r.oddsAmerican ?? toAmericanOdds(applyVig(r.prob));
       const proj = r.projMean ?? r.proj;
       const ci = r.projLow != null && r.projHigh != null ? " (range " + r.projLow + "-" + r.projHigh + " pts)" : "";
       const trend = r.trend > 0.1 ? " TRENDING UP" : r.trend < -0.1 ? " TRENDING DOWN" : "";

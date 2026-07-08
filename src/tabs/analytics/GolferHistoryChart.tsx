@@ -1135,7 +1135,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
             <div style={{margin:"0 0"}}>
               <RoundScrubber
                 config={histConfig}
-                deps={[golfer.golfer_id,rounds.length,chartDrawKey]}
+                deps={[golfer.golfer_id,rounds.length,rounds.map((r:any)=>`${r.pts}${r.won?"w":""}`).join(),chartDrawKey]}
                 height={160}
                 rounds={rounds}
                 winFlags={winFlags}

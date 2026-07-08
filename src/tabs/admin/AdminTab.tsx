@@ -121,7 +121,7 @@ export function AdminTab({ golfers, setGolfers, courses, setCourses, events, set
         ))}
       </div>
       <SubTabPanel tabs={ADMIN_TABS} value={subTab}>
-        {subTab === "events" && <><EventCreator courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} golfers={golfers} showSuccess={showSuccess} /><AiRecapBackfill events={events} showSuccess={showSuccess} /></>}
+        {subTab === "events" && <><EventCreator courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} leaderboard={leaderboard} setLeaderboard={setLeaderboard} golfers={golfers} showSuccess={showSuccess} /><AiRecapBackfill events={events} showSuccess={showSuccess} /></>}
         {subTab === "pairings" && <PairingDashboard golfers={golfers} courses={courses} events={events} setEvents={setEvents} signups={signups} setSignups={setSignups} showSuccess={showSuccess} scrollToTop={scrollToTop} />}
         {subTab === "hcp" && <HandicapManager golfers={golfers} setGolfers={setGolfers} showSuccess={showSuccess} />}
         {subTab === "coursehcp" && <CourseHcpSheet golfers={golfers} courses={courses} showSuccess={showSuccess} />}

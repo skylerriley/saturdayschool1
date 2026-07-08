@@ -30,7 +30,7 @@ function calcEventImplications(eventId: number, lbRows: any[], golfers: any[]) {
   return { pot, payouts, skinEligible: hbhRows.length, totalPlayers: paidRows.length };
 }
 
-export function ScoreCorrection({ golfers, courses, events, leaderboard, setLeaderboard, holeScores, setHoleScores, dbUpsertLeaderboard, dbUpsertHoleScore, showSuccess }: any) {
+export function ScoreCorrection({ golfers, courses, events, leaderboard, setLeaderboard, holeScores, setHoleScores, dbUpsertLeaderboard, showSuccess }: any) {
   const [selEventId, setSelEventId] = useState("");
   const [selGolferId, setSelGolferId] = useState("");
   const [corrType, setCorrType] = useState("total");
@@ -103,11 +103,12 @@ export function ScoreCorrection({ golfers, courses, events, leaderboard, setLead
           };
         })
         .filter(Boolean);
+      // The wrapped setter persists changed/new rows and deletes cleared ones;
+      // an explicit per-row upsert on top would double-write every hole.
       setHoleScores((p: any) => [
         ...p.filter((hs: any) => hs.summary_id !== entry.summary_id),
         ...newScores,
       ]);
-      newScores.forEach((row: any) => dbUpsertHoleScore(row));
     }
 
     showSuccess(`Score corrected: ${golferName(golfers, parseInt(selGolferId))} -> ${pts} pts`);
@@ -178,24 +179,31 @@ export function ScoreCorrection({ golfers, courses, events, leaderboard, setLead
     setPendingAction("save");
   };
 
-  const confirmNewEntry = (newEntry: any, newGross: string[] | null) => {
-    dbUpsertLeaderboard(newEntry);
-    setLeaderboard((p: any) => [...p, newEntry]);
+  const confirmNewEntry = async (newEntry: any, newGross: string[] | null) => {
+    // Insert directly first so we get the real summary_id back. Handing the
+    // temp-id row to the wrapped setter would fire a second guarded insert
+    // (duplicate leaderboard rows), and hole scores written under the temp
+    // summary_id would be orphaned — they'd never remap to the real row.
+    const realSid = await dbUpsertLeaderboard(newEntry);
+    if (realSid == null) return; // insert failed — error already surfaced
+    const savedEntry = { ...newEntry, summary_id: realSid };
+    setLeaderboard((p: any) => [...p, savedEntry]);
     if (corrType === "hole" && corrCourse && corrPhcp != null && newGross) {
       const newScores = newGross.map((v: string, i: number) => {
         if (!v) return null;
         const net = calcHoleNetScore(parseInt(v), corrPhcp, corrCourse.hole_stroke_indices[i]);
         return {
-          score_id: newEntry.summary_id * 100 + i,
-          summary_id: newEntry.summary_id,
+          score_id: Date.now() + i, // temp id — the wrapped setter inserts these
+          summary_id: realSid,
           hole_number: i + 1,
           gross_score: parseInt(v),
           net_score: net,
           stableford_points: calcStablefordPoints(net, corrCourse.hole_pars[i]),
         };
       }).filter(Boolean);
+      // setHoleScores is the DB-wrapped setter — it persists the new rows
+      // itself; an explicit upsert here would double-write every hole.
       setHoleScores((p: any) => [...p, ...newScores]);
-      newScores.forEach((row: any) => dbUpsertHoleScore(row));
     }
     showSuccess(`Added ${golferName(golfers, newEntry.golfer_id)} to event`);
     setAddingNew(false);

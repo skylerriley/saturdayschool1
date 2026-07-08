@@ -15,12 +15,14 @@ export function GolferRoster({ golfers, setGolfers, showSuccess }: any) {
 
   const save = () => {
     if (!form.first_name.trim() || !form.last_name.trim()) return;
+    // parseFloat(...) || 18 would coerce a legitimate 0 (scratch golfer) to 18
+    const parsedHcp = parseFloat(form.current_handicap_index);
     if (editId !== null) {
-      setGolfers((p: any) => p.map((g: any) => g.golfer_id === editId ? { ...g, ...form, current_handicap_index: parseFloat(form.current_handicap_index) || 18 } : g));
+      setGolfers((p: any) => p.map((g: any) => g.golfer_id === editId ? { ...g, ...form, current_handicap_index: Number.isFinite(parsedHcp) ? parsedHcp : g.current_handicap_index } : g));
       showSuccess(`${form.first_name} ${form.last_name} updated`);
     } else {
       const newId = Date.now();
-      setGolfers((p: any) => [...p, { golfer_id: newId, first_name: form.first_name.trim(), last_name: form.last_name.trim(), email_address: form.email_address.trim(), current_handicap_index: parseFloat(form.current_handicap_index) || 18, is_guest: false, status: "Active", season_fee_paid: form.season_fee_paid }]);
+      setGolfers((p: any) => [...p, { golfer_id: newId, first_name: form.first_name.trim(), last_name: form.last_name.trim(), email_address: form.email_address.trim(), current_handicap_index: Number.isFinite(parsedHcp) ? parsedHcp : 18, is_guest: false, status: "Active", season_fee_paid: form.season_fee_paid }]);
       showSuccess(`${form.first_name} ${form.last_name} added`);
     }
     setForm(blank); setEditId(null);

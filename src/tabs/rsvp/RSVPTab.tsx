@@ -317,7 +317,9 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
     try{
     const [fn,...rest]=guestName.trim().split(" ");
     const ln=rest.join(" ")||"Guest";
-    const hcp=parseFloat(guestHcp)||18;
+    // Number.isFinite guard: `||18` would coerce a scratch guest's 0 to 18
+    const parsedGuestHcp=parseFloat(guestHcp);
+    const hcp=Number.isFinite(parsedGuestHcp)?parsedGuestHcp:18;
 
     // Step 1: Either reuse an existing guest record or insert a new one
     let realGolferId:number|null=null;
@@ -604,8 +606,10 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                     return(
                       <button key={g.golfer_id}
                         onClick={()=>{
-                          if(isActive){setGuestName("");setGuestSelectedId(null);}
-                          else{setGuestName(label);setGuestSelectedId(g.golfer_id);}
+                          if(isActive){setGuestName("");setGuestSelectedId(null);setGuestHcp("18");}
+                          // Carry the stored handicap into the form — leaving the "18"
+                          // default would overwrite the guest's real index on save
+                          else{setGuestName(label);setGuestSelectedId(g.golfer_id);setGuestHcp(String(g.current_handicap_index??18));}
                         }}
                         style={{padding:"7px 14px",borderRadius:"var(--radius-md)",border:`2px solid ${isActive?"var(--gold-500)":"var(--border)"}`,
                           background:isActive?"var(--gold-50)":"var(--surface)",color:isActive?"var(--gold-800)":"var(--text-primary)",

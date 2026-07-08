@@ -2788,8 +2788,11 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
         setHoleImages((p:any[])=>p.map((r:any)=>r.hole_image_id===existing.hole_image_id?updated:r));
       } else {
         const row={course_name:courseName,hole_number:hole,public_url:result.url,storage_path:path};
+        // insert() resolves to an ARRAY of rows — .hole_image_id off it is always
+        // undefined, leaving a temp id that later replace/delete can't match
         const inserted=await supabase.from("hole_images").insert(row).catch((e:any)=>{reportWriteError("Hole image save")(e);return null;});
-        setHoleImages((p:any[])=>[...p,{...row,hole_image_id:inserted?.hole_image_id||Date.now()}]);
+        const insertedRow=Array.isArray(inserted)?inserted[0]:null;
+        setHoleImages((p:any[])=>[...p,{...row,hole_image_id:insertedRow?.hole_image_id||Date.now()}]);
       }
       showSuccess(`Hole ${hole} image uploaded!`);
     }catch(e:any){alert("Upload failed: "+(e?.message||String(e)));}

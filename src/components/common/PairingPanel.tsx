@@ -73,14 +73,26 @@ export function PairingPanel({
     const freq = buildPairingFrequencyMap(historicalSignups);
     const newPairings = runPairingEngine(attendees, selEvent.tee_times || [], freq);
     const teeByGolfer: Record<number, string> = {};
-    newPairings.forEach((grp: any) => grp.players.forEach((pid: number) => { teeByGolfer[pid] = grp.teeTime; }));
+    // A { teeTime: null } group means the field exceeds tee-time capacity
+    // (4 per group) — those players go to the waiting room instead of
+    // being crammed into a 5+ player group.
+    const overflowIds = new Set<number>();
+    newPairings.forEach((grp: any) => grp.players.forEach((pid: number) => {
+      if (grp.teeTime == null) overflowIds.add(pid);
+      else teeByGolfer[pid] = grp.teeTime;
+    }));
     setSignups((su: any) =>
-      su.map((s: any) =>
-        s.event_id === selEventId && teeByGolfer[s.golfer_id] !== undefined
-          ? { ...s, assigned_tee_time: teeByGolfer[s.golfer_id] }
-          : s
-      )
+      su.map((s: any) => {
+        if (s.event_id !== selEventId) return s;
+        if (overflowIds.has(s.golfer_id)) return { ...s, assigned_tee_time: null, in_waiting_room: true };
+        if (teeByGolfer[s.golfer_id] !== undefined) return { ...s, assigned_tee_time: teeByGolfer[s.golfer_id] };
+        return s;
+      })
     );
+    if (overflowIds.size > 0) {
+      const msg = `Not enough tee times for the full field — ${overflowIds.size} player${overflowIds.size > 1 ? "s" : ""} moved to the waiting room. Add a tee time and regenerate.`;
+      showError ? showError(msg) : alert(msg);
+    }
     setMoving(null);
     setPairingsConfirmed(false);
     setPairingsChanged(true);

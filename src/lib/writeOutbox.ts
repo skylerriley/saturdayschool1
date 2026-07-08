@@ -19,6 +19,7 @@ export interface OutboxOp {
   onConflict?: string;  // UPSERT conflict target, e.g. "summary_id,hole_number"
   dedupeKey?: string;   // ops sharing a key: newest replaces the queued one
   ts: number;
+  attempts?: number;    // failed replay attempts (transient server errors)
 }
 
 const DB_NAME = "ss-write-outbox";
@@ -93,6 +94,16 @@ export async function outboxRemoveWhere(pred: (op: OutboxOp) => boolean): Promis
   for (const op of all) {
     if (pred(op)) await tx("readwrite", (s) => s.delete(op.id!));
   }
+}
+
+// Update an op in place (used to persist the replay attempt counter).
+export async function outboxPut(op: OutboxOp): Promise<void> {
+  const db = await openDb();
+  if (!db) {
+    if (memQueue) memQueue = memQueue.map((o) => (o.id === op.id ? op : o));
+    return;
+  }
+  await tx("readwrite", (s) => s.put(op));
 }
 
 export async function outboxAdd(op: OutboxOp): Promise<void> {

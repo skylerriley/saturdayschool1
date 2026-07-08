@@ -4,8 +4,8 @@ import { computeScoringFingerprint } from "../../lib/scoringFingerprint";
 import { ScoringFingerprintRadar } from "../../components/charts/ScoringFingerprintRadar";
 import { formatDate, eventPickerLabel } from "../../lib/formatters";
 import {
-  MC_TRIALS, VIG,
-  buildProfile, calcFieldOdds, toAmericanOdds,
+  MC_TRIALS,
+  buildProfile, calcFieldOdds, toAmericanOdds, applyVig,
   h2hHistory, h2hWinProb, randNorm,
   buildHoleHistory, holeWeightedAvg,
 } from "../../lib/monteCarlo";
@@ -136,7 +136,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
           projMean: p.proj,
           projLow: null,
           projHigh: null,
-          oddsAmerican: toAmericanOdds(mcProb),
+          oddsAmerican: toAmericanOdds(applyVig(mcProb)),
           heaterActive: false,
           heaterMag: null,
           pointsSoFar: null,
@@ -144,12 +144,14 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
         };
       })].sort((a: any, b: any) => b.prob - a.prob);
     }
-    // Client-side Monte Carlo (Upcoming events or no backend data yet)
-    const adjProbs = allProfiles.length >= 2 ? calcFieldOdds(allProfiles) : allProfiles.map(() => 1 / allProfiles.length);
+    // Client-side Monte Carlo (Upcoming events or no backend data yet).
+    // prob is the fair probability (field sums to 100%); the vig lives only
+    // in the American payout odds.
+    const rawProbs = allProfiles.length >= 2 ? calcFieldOdds(allProfiles) : allProfiles.map(() => 1 / allProfiles.length);
     return [...allProfiles.map((p: any, i: number) => ({
       ...p,
-      prob: adjProbs[i],
-      oddsAmerican: toAmericanOdds(adjProbs[i]),
+      prob: rawProbs[i],
+      oddsAmerican: toAmericanOdds(applyVig(rawProbs[i])),
       oddsSource: "client",
     }))].sort((a: any, b: any) => b.prob - a.prob);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -202,9 +204,9 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
   }, [profA, profB]);
   const finalProbA = profA && profB ? h2hWinProb(h2hShared, rawH2hProbA) : 0.5;
   const finalProbB = 1 - finalProbA;
-  // Vig on H2H: inflate implied probs (house margin); dividing pays more than fair
-  const h2hAdjA = Math.min(0.99, finalProbA * (1 + VIG));
-  const h2hAdjB = Math.min(0.99, finalProbB * (1 + VIG));
+  // Vig only touches the American payout odds; displayed % stays fair.
+  const h2hAdjA = applyVig(finalProbA);
+  const h2hAdjB = applyVig(finalProbB);
 
   // Spread
   const spread = profA && profB ? Math.round((profA.proj - profB.proj) * 10) / 10 : 0;
@@ -311,7 +313,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                   // Compute display odds. For backend players use the stored string;
                   // for client-MC players (guests, late-adds) derive from prob.
                   // Only show N/A when prob is genuinely zero (player excluded/no data).
-                  const rawOdds = r.oddsAmerican ?? toAmericanOdds(r.prob);
+                  const rawOdds = r.oddsAmerican ?? toAmericanOdds(applyVig(r.prob));
                   const odds = (r.prob === 0 || rawOdds === "N/A" || rawOdds === "EVEN") ? "N/A" : rawOdds;
                   const isFav = i === 0;
                   return (
@@ -406,8 +408,6 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
 
           {gA && gB && profA && profB && (() => {
             const favIsA = finalProbA >= 0.5;
-            const favProb = favIsA ? h2hAdjA : h2hAdjB;
-            const dogProb = favIsA ? h2hAdjB : h2hAdjA;
             const favG = favIsA ? gA : gB;
             const dogG = favIsA ? gB : gA;
             const favProf = favIsA ? profA : profB;
@@ -429,19 +429,19 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                       <div style={{ textAlign: "left" }}>
                         <div style={{ fontSize: 16, fontWeight: 700, color: "var(--gold-300)" }}>{gA.first_name}</div>
-                        <div style={{ fontSize: 22, fontWeight: 700, color: "white" }}>{(h2hAdjA * 100).toFixed(1)}%</div>
+                        <div style={{ fontSize: 22, fontWeight: 700, color: "white" }}>{(finalProbA * 100).toFixed(1)}%</div>
                         <div style={{ fontSize: 16, fontWeight: 700, color: parseFloat(toAmericanOdds(h2hAdjA)) < 0 ? "var(--gold-300)" : "var(--green-300)" }}>{toAmericanOdds(h2hAdjA)}</div>
                       </div>
                       <div style={{ fontSize: 24, fontWeight: 700, color: "rgba(255,255,255,0.3)", alignSelf: "center" }}>vs</div>
                       <div style={{ textAlign: "right" }}>
                         <div style={{ fontSize: 16, fontWeight: 700, color: "var(--gold-300)" }}>{gB.first_name}</div>
-                        <div style={{ fontSize: 22, fontWeight: 700, color: "white" }}>{(h2hAdjB * 100).toFixed(1)}%</div>
+                        <div style={{ fontSize: 22, fontWeight: 700, color: "white" }}>{(finalProbB * 100).toFixed(1)}%</div>
                         <div style={{ fontSize: 16, fontWeight: 700, color: parseFloat(toAmericanOdds(h2hAdjB)) < 0 ? "var(--gold-300)" : "var(--green-300)" }}>{toAmericanOdds(h2hAdjB)}</div>
                       </div>
                     </div>
                     {/* Probability bar */}
                     <div style={{ height: 8, borderRadius: 4, background: "rgba(255,255,255,0.15)", overflow: "hidden", margin: "10px 0" }}>
-                      <div style={{ height: "100%", borderRadius: 4, background: "linear-gradient(90deg,var(--gold-400),var(--green-400))", width: (h2hAdjA * 100) + "%", transition: "width 0.4s ease" }} />
+                      <div style={{ height: "100%", borderRadius: 4, background: "linear-gradient(90deg,var(--gold-400),var(--green-400))", width: (finalProbA * 100) + "%", transition: "width 0.4s ease" }} />
                     </div>
                   </div>
 
