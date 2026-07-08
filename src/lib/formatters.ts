@@ -25,7 +25,10 @@ export function uniqueCourseNames(courses: any[]) {
 }
 
 export function shortCourseName(name: string) {
-  return (name || "").replace(" Golf Club", "").replace(" Golf Course", "").replace(" Country Club", "").replace(" GC", "").trim();
+  return (name || "")
+    .replace(" Golf Club", "").replace(" Golf Course", "").replace(" Country Club", "")
+    .replace(/\s+(GC|CC)$/, "")  // trailing " GC" / " CC" abbreviations
+    .trim();
 }
 
 export function eventPickerLabel(ev: { date: string; course_name: string }) {

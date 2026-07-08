@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Sun } from "lucide-react";
 import { ToggleGroup, GlassPicker } from "../../components/common";
 import { PairingPanel } from "../../components/common/PairingPanel";
-import { golferName, formatDate, eventPickerLabel } from "../../lib/formatters";
+import { golferName, formatDate, eventPickerLabel, shortCourseName } from "../../lib/formatters";
 import { supabase, sendPush, reportWriteError } from "../../lib/supabaseClient";
 import { assignLateAdd } from "../../lib/golfMath";
 import { useWeather } from "../../hooks/useWeather";
@@ -472,7 +472,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
       {selEvent&&(
         <div ref={cardRef} className="card" style={{padding:"12px 16px",marginBottom:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-            <div style={{fontWeight:700,fontSize:17}}>{selEvent.course_name}</div>
+            <div style={{fontWeight:700,fontSize:17}}>{shortCourseName(selEvent.course_name)}</div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
               <span className="pill pill-green">✓ {yesCount}</span>
               {noCount>0&&<span className="pill pill-red">✗ {noCount}</span>}
