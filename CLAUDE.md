@@ -60,6 +60,7 @@ src/
 
   lib/
     golfMath.ts         # All handicap/Stableford/pairing math (pure functions)
+    sideGames.ts        # Side-game calcs: Nines (3-ball 5/3/1) & Sixes (2v2 skins) — display-only
     monteCarlo.ts       # Client-side odds simulation
     seasonStats.ts      # Season aggregate calculations
     scoringFingerprint.ts # Per-player performance radar data

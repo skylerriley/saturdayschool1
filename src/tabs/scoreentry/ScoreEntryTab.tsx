@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { ScoreSymbol, ToggleGroup, GlassPicker } from "../../components/common";
 import { golferName, teeBoxesForCourse, scrollMainTop, eventPickerLabel } from "../../lib/formatters";
 import { calcPlayingHandicap, calcHoleNetScore, calcStablefordPoints, calcHoleScores } from "../../lib/golfMath";
+import { calcNinesHolePoints, calcSixes } from "../../lib/sideGames";
 import { supabase, SUPABASE_URL, SUPABASE_KEY, reportWriteError, pendingWriteCount as outboxPendingCount, subscribeOutbox } from "../../lib/supabaseClient";
 
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false,started:false,summaryId:null as number|null});
@@ -106,6 +107,12 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   const [expandedScorers,setExpandedScorers]=useState<Record<number,boolean>>({});
   // ── Collapse event/group/player-row section ──
   const [setupCollapsed,setSetupCollapsed]=useState(false);
+
+  // ── Side-game lens on the Score Sheet (Nines for 3-balls, Sixes for 4-balls) ──
+  // Pure comparison views against the physical card — local state only, never saved.
+  const [sideGameView,setSideGameView]=useState("card"); // "card" | "nines" | "sixes"
+  // Player 0's partner index (1-3) for each 6-hole stretch; default = standard rotation
+  const [sixesPartners,setSixesPartners]=useState([1,2,3]);
 
 
   // Build groups from signups: one group per tee time, golfers attending Yes.
@@ -750,10 +757,201 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         if(!activeScorersFull.length)return null;
         const refCourse=activeScorersFull[0].course;
         const ptsClass=(pts:number|null)=>{if(pts===null||pts===undefined)return"";if(pts>=4)return"pts-eagle";if(pts===3)return"pts-birdie";if(pts===2)return"pts-par";if(pts===1)return"pts-bogey";return"pts-zero";};
+
+        // ── Side games: Nines (3 players) / Sixes (4 players) ──
+        const canNines=activeScorersFull.length===3;
+        const canSixes=activeScorersFull.length===4;
+        const view=(sideGameView==="nines"&&canNines)||(sideGameView==="sixes"&&canSixes)?sideGameView:"card";
+        const firstName=(i:number)=>activeScorersFull[i]?.g?.first_name||`P${i+1}`;
+        // Nets recomputed with handicaps reduced to the low man — strokes must be
+        // reallocated by stroke index, so shifting the stableford nets won't do.
+        let sideScorers:any[]=activeScorersFull;
+        if(view!=="card"){
+          const minPhcp=Math.min(...activeScorersFull.map(s=>s.phcp));
+          sideScorers=activeScorersFull.map(s=>({...s,sidePhcp:s.phcp-minPhcp,sideCalcs:calcHoleScores(s.grossScores,s.phcp-minPhcp,s.course)}));
+        }
+        const netsByPlayer=view==="card"?[]:sideScorers.map(s=>s.sideCalcs.map((h:any)=>h.net));
+        const ninesPts=view==="nines"?Array.from({length:18},(_,h)=>calcNinesHolePoints(netsByPlayer.map(p=>p[h]))):[];
+        const sixes=view==="sixes"?calcSixes(netsByPlayer,sixesPartners):null;
+        const teamLabel=(t:number[])=>t.map(firstName).join(" & ");
         return(
           <div style={{marginTop:8}}>
-            <div className="card-title" style={{marginBottom:8}}>Score Sheet</div>
-            <div className="score-grid">
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+              <div className="card-title" style={{marginBottom:0}}>Score Sheet</div>
+              {(canNines||canSixes)&&(
+                <div style={{display:"inline-flex",gap:3,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:18,padding:3}}>
+                  {[{v:"card",l:"Scorecard"},canNines?{v:"nines",l:"Nines"}:{v:"sixes",l:"Sixes"}].map((o:any)=>(
+                    <button key={o.v} onClick={()=>setSideGameView(o.v)} style={{border:"none",cursor:"pointer",borderRadius:15,padding:"5px 12px",fontSize:15,fontWeight:700,background:view===o.v?"var(--green-800)":"transparent",color:view===o.v?"white":"var(--text-muted)",transition:"background 0.15s"}}>{o.l}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── Nines: 5/3/1 pool per hole on reduced-handicap nets ── */}
+            {view==="nines"&&(
+              <div className="score-grid">
+                <table className="score-table" style={{minWidth:`${80+sideScorers.length*52}px`}}>
+                  <thead>
+                    <tr>
+                      <th style={{width:36}}>Hole</th>
+                      <th style={{width:32}}>Par</th>
+                      <th style={{width:28,color:"var(--green-300)",fontSize:11}}>SI</th>
+                      {sideScorers.map((s:any,i:number)=>(
+                        <th key={i} style={{minWidth:48}}>
+                          {s.g?.first_name||`P${i+1}`}
+                          <div style={{fontSize:9,fontWeight:400,opacity:0.8}}>off {s.sidePhcp}</div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({length:18},(_,holeIdx)=>{
+                      const hp=ninesPts[holeIdx];
+                      const row=(
+                        <tr key={`h${holeIdx}`}>
+                          <td style={{fontWeight:600}}>{holeIdx+1}</td>
+                          <td>{refCourse?.hole_pars[holeIdx]}</td>
+                          <td style={{color:"var(--text-muted)",fontSize:12}}>{refCourse?.hole_stroke_indices?.[holeIdx]??""}</td>
+                          {sideScorers.map((s:any,si:number)=>{
+                            const gross=s.grossScores[holeIdx];
+                            const p=hp[si];
+                            return(
+                              <td key={si} style={{padding:"3px 2px",textAlign:"center"}}>
+                                {gross?(
+                                  <span style={{fontWeight:800,fontSize:19,cursor:"pointer",color:p==null?"var(--text-muted)":p>=4?"var(--gold-700)":p===3?"var(--green-700)":"var(--text-muted)"}} onClick={()=>setScoreModal({scorerIdx:s.origIdx,holeIdx})}>{p==null?"–":p}</span>
+                                ):(
+                                  <div className="score-tap-cell" onClick={()=>setScoreModal({scorerIdx:s.origIdx,holeIdx})}>+</div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                      if(holeIdx===8||holeIdx===17){
+                        const [from,to]=holeIdx===8?[0,9]:[9,18];
+                        const sub=(
+                          <tr key={holeIdx===8?"nf9":"nb9"} style={{background:"var(--green-100)",borderTop:"2px solid var(--green-600)"}}>
+                            <td colSpan={3} style={{fontWeight:700,fontSize:15,textAlign:"left",paddingLeft:6,color:"var(--green-800)",textTransform:"uppercase",letterSpacing:"0.05em"}}>{holeIdx===8?"F9":"B9"}</td>
+                            {sideScorers.map((_s:any,si:number)=>{
+                              const t=ninesPts.slice(from,to).reduce((sum:number,ph:any)=>sum+(ph[si]??0),0);
+                              const any=ninesPts.slice(from,to).some((ph:any)=>ph[si]!=null);
+                              return <td key={si} style={{textAlign:"center",fontWeight:700,fontSize:17,color:"var(--green-800)"}}>{any?t:""}</td>;
+                            })}
+                          </tr>
+                        );
+                        return [row,sub];
+                      }
+                      return row;
+                    })}
+                    <tr style={{background:"var(--green-50)",borderTop:"2px solid var(--green-600)"}}>
+                      <td colSpan={3} style={{fontWeight:700,textAlign:"left",paddingLeft:6,fontSize:15,textTransform:"uppercase"}}>Total</td>
+                      {sideScorers.map((_s:any,si:number)=>{
+                        const t=ninesPts.reduce((sum:number,ph:any)=>sum+(ph[si]??0),0);
+                        const any=ninesPts.some((ph:any)=>ph[si]!=null);
+                        return <td key={si} style={{textAlign:"center",fontWeight:800,fontSize:19,color:"var(--green-700)"}}>{any?t:""}</td>;
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* ── Sixes: 2v2 best-ball skins, teams rotate every 6 holes ── */}
+            {view==="sixes"&&sixes&&(
+              <div>
+                <div style={{marginBottom:10,textAlign:"left"}}>
+                  {[0,1,2].map(seg=>(
+                    <div key={seg} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+                      <span style={{fontSize:14,fontWeight:700,color:"var(--green-800)"}}>#{seg*6+1}–{seg*6+6}</span>
+                      {[1,2,3].map(p=>{
+                        const sel=sixesPartners[seg]===p;
+                        return(
+                          <button key={p} onClick={()=>setSixesPartners(prev=>prev.map((v,i)=>i===seg?p:v))}
+                            style={{cursor:"pointer",borderRadius:14,padding:"4px 10px",fontSize:12,fontWeight:700,border:`1.5px solid ${sel?"var(--green-600)":"var(--border)"}`,background:sel?"var(--green-50)":"var(--surface)",color:sel?"var(--green-800)":"var(--text-muted)"}}>
+                            {firstName(0)} & {firstName(p)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                  <div style={{fontSize:11,color:"var(--text-muted)"}}>Pick {firstName(0)}'s partner for each stretch — the other two are the opposing team.</div>
+                </div>
+                <div className="score-grid">
+                  <table className="score-table" style={{minWidth:`${80+sideScorers.length*52}px`}}>
+                    <thead>
+                      <tr>
+                        <th style={{width:36}}>Hole</th>
+                        <th style={{width:32}}>Par</th>
+                        <th style={{width:28,color:"var(--green-300)",fontSize:11}}>SI</th>
+                        {sideScorers.map((s:any,i:number)=>(
+                          <th key={i} style={{minWidth:48}}>
+                            {s.g?.first_name||`P${i+1}`}
+                            <div style={{fontSize:9,fontWeight:400,opacity:0.8}}>off {s.sidePhcp}</div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({length:18},(_,holeIdx)=>{
+                        const seg=Math.min(2,Math.floor(holeIdx/6));
+                        const [A,B]=sixes.teamsBySegment[seg];
+                        const res=sixes.holes[holeIdx];
+                        const winnerTeam=res.winner===0?A:res.winner===1?B:null;
+                        const row=(
+                          <tr key={`h${holeIdx}`}>
+                            <td style={{fontWeight:600}}>{holeIdx+1}</td>
+                            <td>{refCourse?.hole_pars[holeIdx]}</td>
+                            <td style={{color:"var(--text-muted)",fontSize:12}}>{refCourse?.hole_stroke_indices?.[holeIdx]??""}</td>
+                            {sideScorers.map((s:any,si:number)=>{
+                              const gross=s.grossScores[holeIdx];
+                              const onWin=!!winnerTeam&&winnerTeam.includes(si);
+                              const d=res.running[si];
+                              const label=!res.played?"·":res.winner==null?"–":d>0?`+${d}`:`${d}`;
+                              const color=onWin?"var(--gold-800)":!res.played||res.winner==null?"var(--text-muted)":d>0?"var(--green-700)":d<0?"var(--red-600)":"var(--text-muted)";
+                              return(
+                                <td key={si} style={{padding:"3px 2px",textAlign:"center",background:onWin?"var(--gold-100)":undefined}}>
+                                  {gross?(
+                                    <span style={{fontWeight:onWin?800:600,fontSize:19,color,cursor:"pointer"}} onClick={()=>setScoreModal({scorerIdx:s.origIdx,holeIdx})}>{label}</span>
+                                  ):(
+                                    <div className="score-tap-cell" onClick={()=>setScoreModal({scorerIdx:s.origIdx,holeIdx})}>+</div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                        // Team-change divider ahead of holes 1, 7 and 13
+                        if(holeIdx%6===0){
+                          const divider=(
+                            <tr key={`seg${seg}`} style={{background:"var(--green-100)",borderTop:"2px solid var(--green-600)"}}>
+                              <td colSpan={3+sideScorers.length} style={{textAlign:"left",paddingLeft:6,fontWeight:700,fontSize:12,color:"var(--green-800)"}}>
+                                {holeIdx+1}–{holeIdx+6} · {teamLabel(A)} vs {teamLabel(B)}
+                              </td>
+                            </tr>
+                          );
+                          return [divider,row];
+                        }
+                        return row;
+                      })}
+                      <tr style={{background:"var(--green-50)",borderTop:"2px solid var(--green-600)"}}>
+                        <td colSpan={3} style={{fontWeight:700,textAlign:"left",paddingLeft:6,fontSize:15,textTransform:"uppercase"}}>Skins</td>
+                        {sideScorers.map((_s:any,si:number)=>{
+                          const d=sixes.playerDiff[si];
+                          return <td key={si} style={{textAlign:"center",fontWeight:800,fontSize:19,color:d>0?"var(--green-700)":d<0?"var(--red-600)":"var(--text-muted)"}}>{d>0?`+${d}`:d}</td>;
+                        })}
+                      </tr>
+                    </tbody>
+                  </table>
+                  {sixes.forfeited>0&&(
+                    <div style={{fontSize:11,color:"var(--text-muted)",marginTop:6,textAlign:"left"}}>
+                      {sixes.forfeited} skin{sixes.forfeited>1?"s":""} {sixes.holes[17].played?"unclaimed after 18 — forfeited.":"riding."}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {view==="card"&&<div className="score-grid">
               <table className="score-table" style={{minWidth:`${80+activeScorersFull.length*52}px`}}>
                 <thead>
                   <tr>
@@ -865,7 +1063,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                   </tr>
                 </tbody>
               </table>
-            </div>
+            </div>}
           </div>
         );
       })()}

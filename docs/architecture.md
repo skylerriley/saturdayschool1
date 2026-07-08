@@ -77,6 +77,12 @@ leaderboard subtree today.
 - Hole-by-hole entry grid
 - Writes to `hole_scores` table per keystroke/confirm
 - Shows live net score and Stableford points per hole
+- Side-game lens on the Score Sheet (lib/sideGames.ts): pill toggle swaps the
+  table to "Nines" (exactly 3 started scorers) or "Sixes" (exactly 4). Pure
+  derived display — handicaps reduced to the group's low man, nets recomputed
+  via calcHoleNetScore; local state only, nothing persisted. Sixes pairing
+  picks (player 0's partner per 6-hole stretch) default to the standard
+  AB/CD → AC/BD → AD/BC rotation; skins carry across segments, forfeited after 18.
 
 ### AnalyticsTab (tabs/analytics/)
 - Season overview: avg points, best round, earnings

@@ -35,6 +35,12 @@ Active focus: 2026-07-06 full-app audit → three fix batches (2026-07-07):
 ## Features In Progress
 
 - Upcoming event leaderboard formatting (last commit, possibly ongoing)
+- DONE 2026-07-07: Score Entry side-game lens — pill on the Score Sheet swaps to
+  "Nines" (3 started scorers; 5/3/1 pool per hole, ties split, always integers) or
+  "Sixes" (4 scorers; 2v2 best-ball skins, teams rotate every 6 holes, pairing chips
+  pick player 0's partner per stretch, carryovers cross segments, forfeited after 18).
+  Math in `src/lib/sideGames.ts` (pure); nets use handicaps reduced to the group low
+  man via calcHoleNetScore. Display-only — no DB writes, local component state.
 
 ---
 
