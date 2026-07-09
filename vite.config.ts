@@ -54,12 +54,20 @@ export default defineConfig({
             },
           },
           {
-            // Supabase Storage images (hole photos, scorecards)
+            // Supabase Storage images (hole photos, scorecards).
+            // Supabase serves these with `Cache-Control: no-cache`, so the
+            // browser HTTP cache revalidates on every use — on the live PWA
+            // that's a network round-trip per view (the "delay then pop-in").
+            // CacheFirst here serves straight from Cache Storage once stored,
+            // ignoring no-cache. cacheableResponse guards against ever storing
+            // an error/opaque response; higher maxEntries so a full season of
+            // hole photos survives without eviction churn.
             urlPattern: ({ url }) => url.hostname.endsWith('.supabase.co') && url.pathname.startsWith('/storage/v1/object/public/'),
             handler: 'CacheFirst',
             options: {
               cacheName: 'supabase-images',
-              expiration: { maxEntries: 150, maxAgeSeconds: 30 * 24 * 3600 },
+              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 24 * 3600 },
+              cacheableResponse: { statuses: [0, 200] },
             },
           },
         ],
