@@ -307,11 +307,10 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
       {/* Full analytics deep-link */}
       {onNavigateAnalytics && (
         <button
-          className="btn btn-outline btn-full"
-          style={{ fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 2 }}
+          className="drawer-profile-pill"
           onClick={onNavigateAnalytics}
         >
-          View More Stats <ChevronRight size={16} />
+          View More Stats
         </button>
       )}
 
