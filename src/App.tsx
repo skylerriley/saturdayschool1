@@ -49,6 +49,9 @@ import { ProfileView } from "./tabs/settings/ProfileView";
 import { RSVPTab } from "./tabs/rsvp/RSVPTab";
 import { ScoreEntryTab } from "./tabs/scoreentry/ScoreEntryTab";
 
+// Auto-update guardrail: defer forced reload while the user is mid-score-entry
+import { setReloadBlocked } from "./lib/swUpdate";
+
 // Alert banner
 import { EventAlertBanner } from "./components/EventAlertBanner";
 
@@ -2385,6 +2388,15 @@ export default function App(){
     if(pi!==-1&&ni!==-1&&pi!==ni)setTabDir(ni>pi?"right":"left");
     prevTabRef.current=activeTab;
   },[activeTab,tabs]);
+
+  // Guardrail for the SW auto-reload (src/lib/swUpdate.ts): while the Score Entry
+  // tab is open, block a forced reload so we never yank a golfer out of a live
+  // scorecard mid-entry. Leaving the tab unblocks and, if a deploy landed in the
+  // meantime, the reload fires immediately.
+  useEffect(()=>{
+    setReloadBlocked(activeTab==="score");
+    return ()=>setReloadBlocked(false);
+  },[activeTab]);
 
 
   if(loading || !splashDone) return(

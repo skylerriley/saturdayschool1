@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { Analytics } from '@vercel/analytics/react'
 import './index.css'
 import App from './App.tsx'
+import { initServiceWorkerAutoUpdate } from './lib/swUpdate'
 
 function applySafeAreaInsets() {
   const el = document.createElement('div');
@@ -18,6 +19,9 @@ setTimeout(applySafeAreaInsets, 50);
 setTimeout(applySafeAreaInsets, 150);
 setTimeout(applySafeAreaInsets, 500);
 window.addEventListener('resize', applySafeAreaInsets);
+
+// Register the service worker and auto-reload open tabs off stale deploys.
+initServiceWorkerAutoUpdate();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

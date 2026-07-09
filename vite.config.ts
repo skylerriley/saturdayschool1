@@ -14,7 +14,9 @@ export default defineConfig({
     // Settings push opt-in flow has always registered).
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // We register the SW ourselves via virtual:pwa-register (src/lib/swUpdate.ts)
+      // so we can auto-reload open tabs off stale deploys and poll for new versions.
+      injectRegister: null,
       manifest: false, // keep the existing hand-written public/manifest.json
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,gif,woff2}'],
