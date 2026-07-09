@@ -270,7 +270,7 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
             <span style={{fontSize:18}}>📋</span>
             <div>
               <div style={{fontSize:15,fontWeight:700,color:"var(--text-primary)"}}>Version History</div>
-              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:1}}>v4.0.0 · July 1, 2026</div>
+              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:1}}>v5.0.0 · July 8, 2026</div>
             </div>
           </div>
           <span style={{fontSize:18,color:"var(--text-muted)",transition:"transform 0.2s",display:"inline-block",transform:changelogOpen?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
