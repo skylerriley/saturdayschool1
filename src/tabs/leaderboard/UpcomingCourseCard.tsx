@@ -77,22 +77,28 @@ export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldC
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 16, alignItems: "center", justifyContent: "center" }}>
           {totalYards > 0 && <span>{totalYards.toLocaleString()} yds</span>}
           {par && <span>Par {par}</span>}
-          <span style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          {/* Fixed-size reservation: skeleton and real badge are both absolutely
+              positioned inside, so the row's footprint never changes between the
+              loading and loaded states — no reflow that pushes content around. */}
+          <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 185, height: 22 }}>
             {/* Skeleton: visible while data is loading */}
             <span style={{
               opacity: wxReady ? 0 : 1,
               transition: "opacity 0.5s ease",
-              position: wxReady ? "absolute" : "relative",
+              position: "absolute",
               inset: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
               pointerEvents: "none",
             }}>
               <WeatherBadgeSkeleton />
             </span>
             {/* Real weather badge: fades in once ready */}
             <span style={{
-              display: "flex", alignItems: "center", gap: 4,
+              position: "absolute", inset: 0,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
               opacity: wxReady ? 1 : 0,
               transition: "opacity 0.6s ease 0.15s",
+              whiteSpace: "nowrap",
             }}>
               {wx && <>{wmoToDesc(wx.code).emoji} {wx.temp}°F · {wmoToDesc(wx.code).label}</>}
             </span>
