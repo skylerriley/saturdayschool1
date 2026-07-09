@@ -14,7 +14,7 @@ import { TonyInsight } from "./TonyInsight";
 // ------------------------------------------------------------------
 // ODDS TAB COMPONENT
 // ------------------------------------------------------------------
-export function OddsTab({ golfers, leaderboard, events, signups, courses, holeScores, season, eventOdds, oddsLoading, oddsLastUpdated, onTriggerOdds, refreshLiveData }: any) {
+export function OddsTab({ golfers, leaderboard, events, signups, courses, holeScores, season, eventOdds, oddsLoading, oddsLastUpdated, onTriggerOdds, refreshLiveData, memberGolferId }: any) {
   const [oddsMode, setOddsMode] = useState<"field" | "h2h">("field");
   // Field odds state
   const completedAndUpcoming = events.filter((e: any) => e.status !== "Cancelled");
@@ -24,8 +24,8 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
 
   const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set());
 
-  // H2H state
-  const [h2hA, setH2hA] = useState("");
+  // H2H state — Golfer A defaults to the signed-in member (when pickable)
+  const [h2hA, setH2hA] = useState(() => golfers.some((g: any) => g.golfer_id === memberGolferId && !g.is_guest && g.status === "Active") ? String(memberGolferId) : "");
   const [h2hB, setH2hB] = useState("");
 
   const selEvent = events.find((e: any) => e.event_id === parseInt(selEventId));

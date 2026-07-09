@@ -34,6 +34,57 @@ Active focus: 2026-07-06 full-app audit → three fix batches (2026-07-07):
 
 ## Features In Progress
 
+- DONE 2026-07-08: Member identity + persistent logins. Admin unlock moved from
+  sessionStorage to localStorage (`ss_admin`) and auto-restored on boot, so it
+  survives an iOS force-quit; cleared only via the profile-icon logout. New
+  member identity (personalization only, no auth): first-run "Who are you?"
+  picker in App.tsx (localStorage `ss_member` + `ss_member_skip` for the
+  "just browsing" dismissal), changeable via the new Your Profile card in
+  SettingsTab. Drives a time-of-day greeting in AppHeader
+  (`.app-bar__greeting`) and gold `.me-row` highlights (accent bar + wash,
+  CSS in App.tsx) on season/top15/weekly lb-rows, live + upcoming-field rows
+  in LeaderboardTab, and the member's RSVP row. Also defaults selections:
+  Analytics > By Golfer pre-selects the member, and Analytics > Odds >
+  Head-to-Head pre-selects them as Golfer A (lazy useState init in
+  AnalyticsTab/OddsTab, only when the member passes the picker's
+  active-non-guest filter). RSVP "Member Sign Ups" list hoists the member's
+  row (with their nested guest rows) to the top, rest stay alphabetical.
+  Weekly feed EventFeedCards: the date pill turns gold (same treatment as the
+  "1st" chip) on events the member has a leaderboard entry for — subtle
+  played-it marker, no extra badge. Analytics > Pts Gained: me-row accents on
+  every PGLeaderboard (all categories + yardage/hole subcategories), on
+  overview leader rows when the member leads, and on the member's row in the
+  Consistency table (inline gold there — its zebra striping is inline styles).
+  Profile view (src/tabs/settings/ProfileView.tsx): "Welcome, Name" season
+  snapshot — Season Avg + Top 15 standings with week-over-week rank delta
+  (standings vs standings minus latest event, mirrors LeaderboardTab math),
+  last round (gross from hole_scores, finish, derived skins $ — stored
+  skins_payout_won is always 0; scorecard was tried then removed as clutter),
+  next-event RSVP status w/ early-tee badge (filled pills matching the RSVP
+  tab's active In/Out buttons; when the member's assigned_tee_time is set the
+  card is promoted above the standings cards and shows tee time + group
+  chips). Standings cards scroll the leaderboard to the member's row
+  (LeaderboardTab initialScrollToMe — NOTE: no done-ref guard; StrictMode
+  double-invokes mount effects with the same refs, a guard set in run 1
+  suppresses run 2 after cleanup cleared run 1's timer). Last Round card
+  opens the event detail scrolled to the POS/GOLFER/PTS/$$$ table.
+  IMPORTANT iOS PWA gotcha: never use scrollIntoView for these deep-link
+  scrolls — in standalone mode it also scrolls the window/body, lifting the
+  whole app shell out of the safe areas. Scroll the owning container
+  (.main-content / the feed-overlay node) via scrollTo, and offset overlay
+  targets by env(safe-area-inset-top) (measured via a fixed probe div).
+  Settings tab header is contextual: Profile subtab shows "Welcome, X / Your
+  YYYY season at a glance", Settings subtab shows the normal header; the
+  ProfileView greeting block renders in overlay mode only. Header
+  greeting is absolutely centred on the app bar (unequal logo/profile widths
+  pushed flex centring off); profile stat strip uses a 3-col grid for true
+  centring. Testing tip: the signups table is event_signups; Playwright
+  page.route can inject pairings, but block service workers in the context.
+  Cards deep-link: leaderboard subtabs via lbRestoreSubTab, weekly event
+  detail via new LeaderboardTab initialOpenEventId prop, RSVP tab. Shown as
+  full-screen overlay after the first-run picker; permanently lives under
+  Settings > Profile subtab (ToggleGroup Profile|Settings, defaults to
+  Profile when identity set). Score Entry deliberately untouched (user opted out).
 - Upcoming event leaderboard formatting (last commit, possibly ongoing)
 - DONE 2026-07-07: Score Entry side-game lens — pill on the Score Sheet swaps to
   "Nines" (3 started scorers; 5/3/1 pool per hole, ties split, always integers) or

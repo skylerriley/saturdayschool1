@@ -4,6 +4,8 @@ import "./nav.css";
 interface AppHeaderProps {
   /** Whether admin mode is currently active (tints the profile icon gold). */
   adminMode: boolean;
+  /** Personalized greeting for the signed-in member (null hides it). */
+  greeting?: string | null;
   /** Tapping the logo scrolls the active tab back to the top. */
   onLogoClick: () => void;
   /** Tapping the profile icon toggles / unlocks admin mode. */
@@ -16,7 +18,7 @@ interface AppHeaderProps {
  * secondary row of nav links have been removed in favour of the
  * floating bottom tab bar.
  */
-export function AppHeader({ adminMode, onLogoClick, onProfileClick }: AppHeaderProps) {
+export function AppHeader({ adminMode, greeting, onLogoClick, onProfileClick }: AppHeaderProps) {
   return (
     <header className="app-header app-bar" onClick={onLogoClick}>
       <button
@@ -26,6 +28,8 @@ export function AppHeader({ adminMode, onLogoClick, onProfileClick }: AppHeaderP
       >
         <img src="/logo.svg" alt="Saturday School" className="app-bar__logo-img" />
       </button>
+
+      {greeting && <div className="app-bar__greeting">{greeting}</div>}
 
       <button
         type="button"

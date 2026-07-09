@@ -10,9 +10,10 @@ import { ChampionsView } from "./ChampionsView";
 import { GolferHistoryChart } from "./GolferHistoryChart";
 import { PointsGained } from "./PointsGained";
 
-export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase,refreshLiveData,initialGolfer,onInitialGolferConsumed,onBack,backLabel,charityDonations}:any){
+export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase,refreshLiveData,initialGolfer,onInitialGolferConsumed,onBack,backLabel,charityDonations,memberGolferId}:any){
   const [subTab,setSubTab]=useState("overview");
-  const [selGolfer,setSelGolfer]=useState("");
+  // By Golfer defaults to the signed-in member (when they're a pickable option)
+  const [selGolfer,setSelGolfer]=useState(()=>golfers.some((g:any)=>g.golfer_id===memberGolferId&&!g.is_guest&&g.status==="Active")?String(memberGolferId):"");
   const [initialPtsTab,setInitialPtsTab]=useState<string|undefined>(undefined);
 
   useEffect(()=>{
@@ -171,7 +172,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
             case "course":return <CourseChart courseAvgs={courseAvgs} holeScores={holeScores} events={events} courses={courses} leaderboard={leaderboard} golfers={golfers}/>;
             case "scatter":return <ScatterChart scatterData={scatterData} flightWinData={flightWinData}/>;
             case "champions":return <ChampionsView golfers={golfers} leaderboard={leaderboard} events={events}/>;
-            case "points-gained":return <PointsGained golfers={golfers} events={events} leaderboard={leaderboard} holeScores={holeScores} courses={courses} signups={signups} selSeason={selSeason} initialTab={initialPtsTab} seasonData={seasonData}/>;
+            case "points-gained":return <PointsGained golfers={golfers} events={events} leaderboard={leaderboard} holeScores={holeScores} courses={courses} signups={signups} selSeason={selSeason} initialTab={initialPtsTab} seasonData={seasonData} memberGolferId={memberGolferId}/>;
             case "golfer":return(
               <>
                 <div className="form-group">
@@ -191,7 +192,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
                 {selG&&golferRounds.length===0&&<div className="empty-state"><div className="empty-text">No rounds recorded this season</div></div>}
               </>
             );
-            case "odds":return <OddsTab golfers={golfers} leaderboard={leaderboard} events={events} signups={signups} courses={courses} holeScores={holeScores} season={selSeason} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={onTriggerOdds} refreshLiveData={refreshLiveData}/>;
+            case "odds":return <OddsTab golfers={golfers} leaderboard={leaderboard} events={events} signups={signups} courses={courses} holeScores={holeScores} season={selSeason} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={onTriggerOdds} refreshLiveData={refreshLiveData}/>;
             default:return null;
           }
         };

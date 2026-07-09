@@ -45,6 +45,7 @@ import { BottomNav } from "./components/nav/BottomNav";
 
 // Settings, RSVP, ScoreEntry
 import { SettingsTab } from "./tabs/settings/SettingsTab";
+import { ProfileView } from "./tabs/settings/ProfileView";
 import { RSVPTab } from "./tabs/rsvp/RSVPTab";
 import { ScoreEntryTab } from "./tabs/scoreentry/ScoreEntryTab";
 
@@ -442,9 +443,18 @@ const CSS = `
     align-items:center;
   }
   .lb-row:last-child{border-bottom:none;border-radius:0 0 var(--radius-md) var(--radius-md);}
-  .lb-row:first-of-type{} 
+  .lb-row:first-of-type{}
   .lb-row:hover{background:var(--green-50);}
   .lb-row.expanded{background:var(--green-50);}
+
+  /* ── "THAT'S ME" ROW HIGHLIGHT ──
+     Applied to the signed-in member's rows (leaderboards, live, RSVP) so
+     their line is findable at a glance. Gold accent bar + faint gold wash. */
+  .lb-row.me-row,.lb-live-row.me-row,.rsvp-swipe-row.me-row{
+    background:color-mix(in srgb,var(--gold-500) 9%,var(--surface));
+    box-shadow:inset 3px 0 0 var(--gold-500);
+  }
+  .lb-row.me-row:hover,.lb-row.me-row.expanded{background:color-mix(in srgb,var(--gold-500) 15%,var(--surface));}
 
   .lb-rank-cell{font-size:20px;font-weight:700;color:var(--earth-400);line-height:1;}
   .lb-rank-cell.r1{color:var(--gold-500);}
@@ -1144,6 +1154,11 @@ const CSS = `
   /* ── ERROR BANNER ── */
   .error-banner{background:var(--red-100);border:1px solid var(--red-400);border-radius:var(--radius-md);padding:12px 16px;color:var(--red-600);font-size:14px;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
 
+  /* ── PROFILE WELCOME OVERLAY ── */
+  .profile-welcome{animation:pvSlideUp 0.32s cubic-bezier(0.22,1,0.36,1);}
+  @keyframes pvSlideUp{from{opacity:0;transform:translateY(26px);}to{opacity:1;transform:none;}}
+  @media (prefers-reduced-motion: reduce){.profile-welcome{animation:none;}}
+
   /* ── MODAL OVERLAY ── */
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:flex-end;justify-content:center;}
   .modal-sheet{background:var(--surface);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:28px 24px calc(78px + 16px);width:100%;max-width:360px;}
@@ -1326,7 +1341,36 @@ export default function App(){
   const [analyticsInitialGolfer,setAnalyticsInitialGolfer]=useState<string>("");
   const [analyticsBackLabel,setAnalyticsBackLabel]=useState<string>("");
   const [lbRestoreSubTab,setLbRestoreSubTab]=useState<string>("");
-  const [adminMode,setAdminMode]=useState(false);
+  // Persisted in localStorage (not sessionStorage) so the unlock survives a
+  // force-quit of the installed PWA; cleared only by explicit logout.
+  const [adminMode,setAdminMode]=useState(()=>{try{return localStorage.getItem("ss_admin")==="1";}catch{return false;}});
+
+  // ── Member identity (personalization only, no auth) ─────────
+  // Which league member is using this device — drives the header greeting
+  // and "that's me" row highlights on leaderboards / RSVP. Persisted in
+  // localStorage; picked via first-run modal or Settings.
+  const [memberGolferId,setMemberGolferId]=useState<number|null>(()=>{
+    try{const v=parseInt(localStorage.getItem("ss_member")||"",10);return isNaN(v)?null:v;}catch{return null;}
+  });
+  const [memberPromptDismissed,setMemberPromptDismissed]=useState(()=>{
+    try{return localStorage.getItem("ss_member_skip")==="1";}catch{return false;}
+  });
+  const chooseMember=useCallback((id:number|null)=>{
+    setMemberGolferId(id);
+    setMemberPromptDismissed(true);
+    try{
+      if(id==null)localStorage.removeItem("ss_member");
+      else localStorage.setItem("ss_member",String(id));
+      localStorage.setItem("ss_member_skip","1");
+    }catch{}
+  },[]);
+  // Welcome/profile overlay: shown after picking your name from the first-run
+  // modal; afterwards the same view lives under Settings > Profile.
+  const [showWelcome,setShowWelcome]=useState(false);
+  // Deep link: open a specific completed event's detail overlay on the weekly feed
+  const [lbOpenEventId,setLbOpenEventId]=useState<number>(0);
+  // Deep link: scroll the season/top15 board to the member's own row
+  const [lbScrollToMe,setLbScrollToMe]=useState(false);
 
   // Tabs defined here (stable useMemo) so effects can safely depend on it
   const tabs=useMemo(()=>adminMode
@@ -2402,20 +2446,33 @@ export default function App(){
     </>
   );
 
+  // Personalized header greeting for the signed-in member
+  const memberGolfer=memberGolferId!=null?golfers.find((g:any)=>g.golfer_id===memberGolferId):null;
+  // Profile-view navigation: jump to a leaderboard subtab / event detail / RSVP
+  const goLeaderboardSub=(sub:string)=>{setShowWelcome(false);setLbRestoreSubTab(sub);setLbScrollToMe(true);setActiveTab("leaderboard");scrollToTop(0);};
+  const goLastRound=(eventId:number)=>{setShowWelcome(false);setLbOpenEventId(eventId);setLbRestoreSubTab("weekly");setActiveTab("leaderboard");scrollToTop(0);};
+  const goRsvpFromProfile=()=>{setShowWelcome(false);setActiveTab("rsvp");scrollToTop(0);};
+  const greetHour=new Date().getHours();
+  const greeting=memberGolfer?`${greetHour<12?"Morning":greetHour<17?"Afternoon":"Evening"}, ${memberGolfer.first_name}`:null;
+  // First-run "Who are you?" picker — members only, once data is in
+  const memberList=golfers.filter((g:any)=>!g.is_guest&&(g.status==null||g.status==="Active"))
+    .sort((a:any,b:any)=>(a.first_name||"").localeCompare(b.first_name||"")||(a.last_name||"").localeCompare(b.last_name||""));
+  const showMemberPicker=!memberPromptDismissed&&memberGolferId==null&&!loading&&splashDone&&memberList.length>0&&!showPinModal;
+
   return(
     <>
       <style>{CSS}</style>
 <div className={`app-shell${appBooting?" app-booting":""}`} ref={shellRef}>
         <AppHeader
           adminMode={adminMode}
+          greeting={greeting}
           onLogoClick={()=>scrollToTop(0)}
           onProfileClick={()=>{
             if(adminMode){
               setAdminMode(false);
-              sessionStorage.removeItem("ss_admin");
+              try{localStorage.removeItem("ss_admin");}catch{}
+              try{sessionStorage.removeItem("ss_admin");}catch{} // legacy key
               setActiveTab(t=>t==="admin"?"leaderboard":t);
-            } else if(sessionStorage.getItem("ss_admin")==="1"){
-              setAdminMode(true);
             } else {
               setPinInput("");setPinError(false);setPinShake(false);
               setShowPinModal(true);
@@ -2464,12 +2521,12 @@ export default function App(){
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
           {errorMsg&&<div className="error-banner"><span>⚠</span>{errorMsg}</div>}
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
-          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
-          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
+          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} memberGolferId={memberGolferId} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} initialOpenEventId={lbOpenEventId} onOpenEventConsumed={()=>setLbOpenEventId(0)} initialScrollToMe={lbScrollToMe} onScrollToMeConsumed={()=>setLbScrollToMe(false)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
+          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} setLeaderboardLocal={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} dbDeleteHoleScore={dbDeleteHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}
-          {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
-          {activeTab==="settings"&&<SettingsTab/>}
+          {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
+          {activeTab==="settings"&&<SettingsTab golfers={golfers} memberGolferId={memberGolferId} onChangeMember={chooseMember} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} onNavigateSeason={()=>goLeaderboardSub("season")} onNavigateTop15={()=>goLeaderboardSub("top15")} onNavigateLastRound={goLastRound} onNavigateRsvp={goRsvpFromProfile}/>}
           </div>
         </main>
 
@@ -2488,7 +2545,7 @@ export default function App(){
               if(PINS.includes(next)){
                 setAdminMode(true);
                 setActiveTab("admin");
-                sessionStorage.setItem("ss_admin","1");
+                try{localStorage.setItem("ss_admin","1");}catch{}
                 setShowPinModal(false);
                 setPinInput("");
                 setPinAttempts(0);
@@ -2564,6 +2621,54 @@ export default function App(){
             </div>
           );
         })()}
+
+        {/* First-run member picker — personalization only, no auth */}
+        {showMemberPicker&&(
+          <div className="modal-overlay" onClick={()=>chooseMember(null)}>
+            <div className="modal-sheet" onClick={(e:any)=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",maxHeight:"72dvh"}}>
+              <div style={{textAlign:"center",marginBottom:16}}>
+                <div style={{fontSize:18,fontWeight:700,color:"var(--green-800)",marginBottom:4}}>Who are you?</div>
+                <div style={{fontSize:13,color:"var(--text-muted)",lineHeight:1.5}}>Pick your name to get a personal greeting and have your rows highlighted on leaderboards and sign-ups. You can change this anytime in Settings.</div>
+              </div>
+              <div style={{flex:1,minHeight:0,overflowY:"auto",display:"flex",flexDirection:"column",gap:8,marginBottom:14,WebkitOverflowScrolling:"touch"}}>
+                {memberList.map((g:any)=>(
+                  <button
+                    key={g.golfer_id}
+                    onClick={()=>{chooseMember(g.golfer_id);setShowWelcome(true);}}
+                    style={{
+                      padding:"13px 16px",textAlign:"left",fontSize:16,fontWeight:600,
+                      borderRadius:"var(--radius-md)",border:"1px solid var(--border)",
+                      background:"var(--surface)",color:"var(--text-primary)",cursor:"pointer",
+                      boxShadow:"var(--shadow-sm)",flexShrink:0,
+                    }}
+                  >{g.first_name} {g.last_name}</button>
+                ))}
+              </div>
+              <button
+                className="btn btn-outline btn-full"
+                style={{fontSize:15}}
+                onClick={()=>chooseMember(null)}
+              >Just browsing</button>
+            </div>
+          </div>
+        )}
+
+        {/* Welcome overlay — personal season snapshot after picking your name */}
+        {showWelcome&&memberGolfer&&(
+          <ProfileView
+            golfer={memberGolfer}
+            golfers={golfers}
+            events={events}
+            leaderboard={leaderboard}
+            holeScores={holeScores}
+            signups={signups}
+            onNavigateSeason={()=>goLeaderboardSub("season")}
+            onNavigateTop15={()=>goLeaderboardSub("top15")}
+            onNavigateLastRound={goLastRound}
+            onNavigateRsvp={goRsvpFromProfile}
+            onClose={()=>setShowWelcome(false)}
+          />
+        )}
       </div>
     </>
   );

@@ -203,7 +203,7 @@ export function computeRows(
 }
 
 // ── Leaderboard table ─────────────────────────────────────────────────────────
-function PGLeaderboard({ playerRows, fieldAvg }: { playerRows: { golfer: any; avg: number; delta: number; count: number }[]; fieldAvg: number }) {
+function PGLeaderboard({ playerRows, fieldAvg, memberGolferId }: { playerRows: { golfer: any; avg: number; delta: number; count: number }[]; fieldAvg: number; memberGolferId?: number | null }) {
   const fmtDelta = (d: number) => (d >= 0 ? "+" : "−") + Math.abs(d).toFixed(2);
 
   const maxAbs = BAR_SCALE_MODE === "fixed"
@@ -260,7 +260,7 @@ function PGLeaderboard({ playerRows, fieldAvg }: { playerRows: { golfer: any; av
           return (
             <div
               key={row.golfer.golfer_id}
-              className="lb-row"
+              className={"lb-row" + (row.golfer.golfer_id === memberGolferId ? " me-row" : "")}
               style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "default" }}
             >
               {/* Rank */}
@@ -309,7 +309,7 @@ function PGLeaderboard({ playerRows, fieldAvg }: { playerRows: { golfer: any; av
 }
 
 // ── Par sub-view with yardage bucket pills ────────────────────────────────────
-function ParView({ par, golfers, events, leaderboard, holeScores, courses, signups, selSeason }: any) {
+function ParView({ par, golfers, events, leaderboard, holeScores, courses, signups, selSeason, memberGolferId }: any) {
   const [ydBucket, setYdBucket] = useState("all");
   const buckets = bucketsForPar(par);
   const hasYards = courses.some((c: any) => Array.isArray(c.hole_yards) && c.hole_yards.some((y: number) => y > 0));
@@ -394,7 +394,7 @@ function ParView({ par, golfers, events, leaderboard, holeScores, courses, signu
           ))}
         </div>
       )}
-      <PGLeaderboard playerRows={playerRows} fieldAvg={fieldAvg} />
+      <PGLeaderboard playerRows={playerRows} fieldAvg={fieldAvg} memberGolferId={memberGolferId} />
     </div>
   );
 }
@@ -402,7 +402,7 @@ function ParView({ par, golfers, events, leaderboard, holeScores, courses, signu
 // ── Course view with per-hole subtabs ────────────────────────────────────────
 const HOLES = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
 
-function CourseView({ courseName, golfers, events, leaderboard, holeScores, courses, signups, selSeason }: any) {
+function CourseView({ courseName, golfers, events, leaderboard, holeScores, courses, signups, selSeason, memberGolferId }: any) {
   const [holeTab, setHoleTab] = useState("all");
   const activeHole = holeTab === "all" ? null : parseInt(holeTab);
 
@@ -474,7 +474,7 @@ function CourseView({ courseName, golfers, events, leaderboard, holeScores, cour
           </button>
         ))}
       </div>
-      <PGLeaderboard playerRows={playerRows} fieldAvg={fieldAvg} />
+      <PGLeaderboard playerRows={playerRows} fieldAvg={fieldAvg} memberGolferId={memberGolferId} />
     </div>
   );
 }
@@ -492,7 +492,7 @@ function Chevron() {
 }
 
 // One row per metric: shows the leader in lb-row style
-function OverviewSection({ defs, golfers, events, leaderboard, holeScores, courses, signups, selSeason, onNavigate, seasonData }: { defs: MetricDef[]; onNavigate: (id: string) => void } & any) {
+function OverviewSection({ defs, golfers, events, leaderboard, holeScores, courses, signups, selSeason, onNavigate, seasonData, memberGolferId }: { defs: MetricDef[]; onNavigate: (id: string) => void } & any) {
   const fmtDelta = (d: number) => (d >= 0 ? "+" : "−") + Math.abs(d).toFixed(2);
 
   // Compute all metrics up front — course categories scope by course name
@@ -524,7 +524,7 @@ function OverviewSection({ defs, golfers, events, leaderboard, holeScores, cours
     return (
       <div
         key={def.id}
-        className="lb-row"
+        className={"lb-row" + (leader && leader.golfer.golfer_id === memberGolferId ? " me-row" : "")}
         onClick={() => onNavigate(def.id)}
         style={{ gridTemplateColumns: "1fr 36px 52px 28px", padding: "11px 14px", cursor: "pointer" }}
       >
@@ -578,7 +578,7 @@ function OverviewSection({ defs, golfers, events, leaderboard, holeScores, cours
 
       {/* Consistency row — between back9 and strawberry */}
       <div
-        className="lb-row"
+        className={"lb-row" + (consistencyLeader && consistencyLeader.golfer.golfer_id === memberGolferId ? " me-row" : "")}
         onClick={() => onNavigate("consistency")}
         style={{ gridTemplateColumns: "1fr 36px 52px 28px", padding: "11px 14px", cursor: "pointer" }}
       >
@@ -642,7 +642,7 @@ const METRIC_DEFS: MetricDef[] = [
   { id: "oakcreek",    label: "Oak Creek",      filter: () => true },
 ];
 
-export function PointsGained({ golfers, events, leaderboard, holeScores, courses, signups, selSeason, initialTab, seasonData }: any) {
+export function PointsGained({ golfers, events, leaderboard, holeScores, courses, signups, selSeason, initialTab, seasonData, memberGolferId }: any) {
   const [activeTab, setActiveTab] = useState(initialTab || "overview");
   const [slideDir, setSlideDir] = useState<"left"|"right"|"none">("none");
   const [showSkeleton, setShowSkeleton] = useState(false);
@@ -675,7 +675,7 @@ export function PointsGained({ golfers, events, leaderboard, holeScores, courses
     [backFilter, golfers, events, leaderboard, holeScores, courses, selSeason, signups]
   );
 
-  const commonProps = { golfers, events, leaderboard, holeScores, courses, signups, selSeason };
+  const commonProps = { golfers, events, leaderboard, holeScores, courses, signups, selSeason, memberGolferId };
 
   return (
     <div>
@@ -709,7 +709,7 @@ export function PointsGained({ golfers, events, leaderboard, holeScores, courses
 
               {activeTab === "front9" && (
                 <>
-                  <PGLeaderboard playerRows={frontData.playerRows} fieldAvg={frontData.fieldAvg} />
+                  <PGLeaderboard playerRows={frontData.playerRows} fieldAvg={frontData.fieldAvg} memberGolferId={memberGolferId} />
                   <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11.5, paddingTop: 6, paddingBottom: 8 }}>
                     Season {selSeason} &middot; guests excluded
                   </div>
@@ -718,14 +718,14 @@ export function PointsGained({ golfers, events, leaderboard, holeScores, courses
 
               {activeTab === "back9" && (
                 <>
-                  <PGLeaderboard playerRows={backData.playerRows} fieldAvg={backData.fieldAvg} />
+                  <PGLeaderboard playerRows={backData.playerRows} fieldAvg={backData.fieldAvg} memberGolferId={memberGolferId} />
                   <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11.5, paddingTop: 6, paddingBottom: 8 }}>
                     Season {selSeason} &middot; guests excluded
                   </div>
                 </>
               )}
 
-              {activeTab === "consistency" && <ConsistencyTable seasonData={seasonData} />}
+              {activeTab === "consistency" && <ConsistencyTable seasonData={seasonData} memberGolferId={memberGolferId} />}
 
               {activeTab === "strawberry" && <CourseView courseName={STRAWBERRY} {...commonProps} />}
               {activeTab === "oakcreek" && <CourseView courseName={OAK_CREEK} {...commonProps} />}

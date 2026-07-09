@@ -45,6 +45,27 @@
   display: block;
 }
 
+/* Personalized member greeting — absolutely centred on the bar so the
+   unequal logo/profile widths can't nudge it off-centre. Top + line-height
+   mirror the bar's padding and its tallest child (the 40px profile button). */
+.app-bar__greeting {
+  position: absolute;
+  left: 50%;
+  top: calc(env(safe-area-inset-top, 14px) + 8px);
+  transform: translateX(-50%);
+  line-height: 40px;
+  max-width: 55%;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--gold-300);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
 .app-bar__profile {
   display: flex;
   align-items: center;

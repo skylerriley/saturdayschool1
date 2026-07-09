@@ -177,6 +177,7 @@ interface SwipeMemberRowProps {
   signup: any;
   golfer: any;
   isEarly: boolean;
+  isMe: boolean;
   myGuests: any[];
   allGolfers: any[];
   onToggleEarly: () => void;
@@ -184,7 +185,7 @@ interface SwipeMemberRowProps {
   onToggleGuestAttending: (guestSignupId: number, guestGolferId: number, val: string, current: string) => void;
 }
 
-function SwipeMemberRow({ signup, golfer, isEarly, myGuests, allGolfers, onToggleEarly, onToggleAttending, onToggleGuestAttending }: SwipeMemberRowProps) {
+function SwipeMemberRow({ signup, golfer, isEarly, isMe, myGuests, allGolfers, onToggleEarly, onToggleAttending, onToggleGuestAttending }: SwipeMemberRowProps) {
   const swipeEnabled = signup.attending === "Yes";
   const rowRef = useSwipeEarly(onToggleEarly, swipeEnabled);
 
@@ -197,7 +198,7 @@ function SwipeMemberRow({ signup, golfer, isEarly, myGuests, allGolfers, onToggl
             <span>{isEarly ? 'REMOVE' : 'EARLY'}</span>
           </div>
         )}
-        <div ref={rowRef} className={`rsvp-swipe-row${isEarly ? ' early-active' : ''}`}>
+        <div ref={rowRef} className={`rsvp-swipe-row${isEarly ? ' early-active' : ''}${isMe ? ' me-row' : ''}`}>
           <div className="rsvp-name" style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
             {golfer.first_name} {golfer.last_name}
           </div>
@@ -226,7 +227,7 @@ function SwipeMemberRow({ signup, golfer, isEarly, myGuests, allGolfers, onToggl
   );
 }
 
-export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,showSuccess,showError,adminMode,scrollToTop,dbUpsertGolfer,setGolfers,initialSubTab}:any){
+export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,showSuccess,showError,adminMode,memberGolferId,scrollToTop,dbUpsertGolfer,setGolfers,initialSubTab}:any){
   const upcomingEvents=[...events].filter((e:any)=>e.status!=="Completed").sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
   const [selEventId,setSelEventId]=useState<number>(upcomingEvents[0]?.event_id||0);
   const [subTab,setSubTab]=useState(()=>{
@@ -565,6 +566,10 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             Swipe name left <svg width="16" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}><line x1="15" y1="7" x2="1" y2="7" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><polyline points="7,1 1,7 7,13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg> for an early tee time 
           </div>
           {[...eventSignups.filter((s:any)=>!s.is_guest_entry)].sort((a:any,b:any)=>{
+            // Signed-in member (and their nested guests) float to the top so
+            // they never have to scroll to find themselves
+            if(a.golfer_id===memberGolferId&&b.golfer_id!==memberGolferId)return -1;
+            if(b.golfer_id===memberGolferId&&a.golfer_id!==memberGolferId)return 1;
             const ga=golfers.find((x:any)=>x.golfer_id===a.golfer_id);
             const gb=golfers.find((x:any)=>x.golfer_id===b.golfer_id);
             if(!ga||!gb)return 0;
@@ -579,6 +584,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                 signup={signup}
                 golfer={g}
                 isEarly={!!signup.early_tee_request}
+                isMe={g.golfer_id===memberGolferId}
                 myGuests={myGuests}
                 allGolfers={golfers}
                 onToggleEarly={()=>toggleEarlyTee(signup.signup_id)}

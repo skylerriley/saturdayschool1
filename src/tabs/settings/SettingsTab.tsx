@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { SUPABASE_URL, SUPABASE_KEY, VAPID_PUBLIC_KEY } from "../../lib/supabaseClient";
+import { ToggleGroup } from "../../components/common";
+import { ProfileView } from "./ProfileView";
 
 function PushNotificationButton(){
   const [state,setState]=useState<"idle"|"requesting"|"granted"|"denied"|"unsupported">("idle");
@@ -102,8 +104,16 @@ function PushNotificationButton(){
   );
 }
 
-export function SettingsTab(){
+export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,events=[],leaderboard=[],holeScores=[],signups=[],onNavigateSeason,onNavigateTop15,onNavigateLastRound,onNavigateRsvp}:any){
   const [changelogOpen,setChangelogOpen]=useState(false);
+  const memberGolfer=memberGolferId!=null?golfers.find((g:any)=>g.golfer_id===memberGolferId):null;
+  // Default to Profile when an identity is set — that's the personal landing spot
+  const [subTab,setSubTab]=useState(memberGolfer?"profile":"settings");
+  const memberList=golfers.filter((g:any)=>!g.is_guest&&(g.status==null||g.status==="Active"))
+    .sort((a:any,b:any)=>(a.first_name||"").localeCompare(b.first_name||"")||(a.last_name||"").localeCompare(b.last_name||""));
+  const completedSeasons=events.filter((e:any)=>e.status==="Completed").map((e:any)=>e.season);
+  const season=completedSeasons.length?Math.max(...completedSeasons):new Date().getFullYear();
+  const profileHeader=subTab==="profile"&&memberGolfer;
   const versions=[
     {
       version:"v4.0.0 Seraph",
@@ -171,8 +181,69 @@ export function SettingsTab(){
   const typeBg:any={NEW:"var(--green-50)",IMPROVED:"#eaf4fb",FIXED:"#fdf0f0"};
   return(
     <div className="tab-content">
-      <div className="section-title" style={{marginBottom:4}}>Settings</div>
-      <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:20}}>Manage your app preferences.</p>
+      <div className="section-title" style={{marginBottom:4}}>{profileHeader?`Welcome, ${memberGolfer.first_name}`:"Settings"}</div>
+      <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:14}}>{profileHeader?`Your ${season} season at a glance`:"Manage your app preferences."}</p>
+
+      <ToggleGroup
+        options={[{value:"profile",label:"Profile"},{value:"settings",label:"Settings"}]}
+        value={subTab}
+        onChange={setSubTab}
+      />
+
+      {subTab==="profile"&&(
+        memberGolfer?(
+          <ProfileView
+            golfer={memberGolfer}
+            golfers={golfers}
+            events={events}
+            leaderboard={leaderboard}
+            holeScores={holeScores}
+            signups={signups}
+            onNavigateSeason={onNavigateSeason}
+            onNavigateTop15={onNavigateTop15}
+            onNavigateLastRound={onNavigateLastRound}
+            onNavigateRsvp={onNavigateRsvp}
+          />
+        ):(
+          <div className="card" style={{padding:24,textAlign:"center"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:6}}>No profile selected</div>
+            <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:14,lineHeight:1.6}}>Pick your name to see your standings, last round, and next event at a glance.</p>
+            <select
+              value=""
+              onChange={e=>onChangeMember&&onChangeMember(e.target.value?parseInt(e.target.value,10):null)}
+              style={{width:"100%",padding:"12px 14px",fontSize:15,fontWeight:600,borderRadius:"var(--radius-md)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text-primary)",appearance:"none",WebkitAppearance:"none"}}
+            >
+              <option value="">Choose your name…</option>
+              {memberList.map((g:any)=>(
+                <option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}</option>
+              ))}
+            </select>
+          </div>
+        )
+      )}
+
+      {subTab==="settings"&&(<>
+      <div className="card" style={{padding:20,marginBottom:16}}>
+        <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>Your Profile</div>
+        <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:12,lineHeight:1.6}}>
+          Pick your name to get a personal greeting and have your rows highlighted on leaderboards and sign-up lists.
+        </p>
+        <select
+          value={memberGolferId??""}
+          onChange={e=>onChangeMember&&onChangeMember(e.target.value?parseInt(e.target.value,10):null)}
+          style={{width:"100%",padding:"12px 14px",fontSize:15,fontWeight:600,borderRadius:"var(--radius-md)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text-primary)",appearance:"none",WebkitAppearance:"none"}}
+        >
+          <option value="">Not set — just browsing</option>
+          {memberList.map((g:any)=>(
+            <option key={g.golfer_id} value={g.golfer_id}>{g.first_name} {g.last_name}</option>
+          ))}
+        </select>
+        {memberGolferId!=null&&(
+          <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"var(--green-700)",fontWeight:600,marginTop:10}}>
+            <span>✓</span> Your rows are highlighted across the app
+          </div>
+        )}
+      </div>
       <div className="card" style={{padding:20,marginBottom:16}}>
         <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>Push Notifications</div>
         <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:16,lineHeight:1.6}}>
@@ -218,6 +289,7 @@ export function SettingsTab(){
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }

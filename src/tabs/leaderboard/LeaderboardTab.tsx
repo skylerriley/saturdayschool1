@@ -21,7 +21,7 @@ ensureShimmer();
 // ── EventFeedCard ─────────────────────────────────────────────────────────────
 // Full-width image card for the weekly leaderboard feed.
 // Props: event, eventNumber, golfers, leaderboard, holeScores, holeImages
-function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeImages,onClick}:any){
+function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeImages,memberGolferId,onClick}:any){
   const courseName:string=event.course_name||"";
 
   // Hole image: cycle 1..18 by event number
@@ -91,6 +91,9 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
   const dateLabel=`${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}`;
   const fieldSize=entries.length;
 
+  // Signed-in member played this event -> the date pill goes gold
+  const memberPlayed=memberGolferId!=null&&entries.some((r:any)=>r.golfer_id===memberGolferId);
+
   return(
     <div
       className="ef-card"
@@ -125,10 +128,15 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
       {/* Content layer */}
       <div style={{position:"relative",minHeight:230,display:"flex",flexDirection:"column",justifyContent:"space-between",padding:"12px 14px 14px",color:"white"}}>
 
-        {/* Top row: course name left, date pill right */}
+        {/* Top row: course name left, date pill right (gold when the member played) */}
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
           <div style={{fontSize:18,fontWeight:800,lineHeight:1.15,letterSpacing:"-0.01em",textShadow:"0 1px 8px rgba(0,0,0,0.6)"}}>{courseName}</div>
-          <div style={{background:"rgba(0,0,0,0.45)",backdropFilter:"blur(4px)",borderRadius:20,padding:"4px 11px",fontSize:12,fontWeight:700,letterSpacing:"0.04em",whiteSpace:"nowrap",flexShrink:0}}>{dateLabel}</div>
+          <div style={{
+            background:memberPlayed?"rgba(212,168,67,0.35)":"rgba(0,0,0,0.45)",
+            border:memberPlayed?"1px solid rgba(212,168,67,0.7)":"1px solid transparent",
+            color:memberPlayed?"#f5d87a":undefined,
+            backdropFilter:"blur(4px)",borderRadius:20,padding:"4px 11px",fontSize:12,fontWeight:700,letterSpacing:"0.04em",whiteSpace:"nowrap",flexShrink:0,
+          }}>{dateLabel}</div>
         </div>
 
         {/* Bottom block */}
@@ -180,7 +188,7 @@ const FEED_PAGE_MORE=5;
 // Paginated vertical feed of EventFeedCards for the selected season.
 // Props: seasonEvents (all completed events for the season, newest first),
 //        golfers, leaderboard, holeScores, holeImages, onCardTap
-function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages,onCardTap}:any){
+function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages,memberGolferId,onCardTap}:any){
   const [visibleCount,setVisibleCount]=useState(FEED_PAGE_INIT);
   const sentinelRef=useRef<HTMLDivElement|null>(null);
   const allEvents:any[]=[...seasonEvents].sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
@@ -221,6 +229,7 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
           leaderboard={leaderboard}
           holeScores={holeScores}
           holeImages={holeImages}
+          memberGolferId={memberGolferId}
           onClick={()=>onCardTap(ev)}
         />
       ))}
@@ -229,7 +238,7 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
   );
 }
 
-export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab,restoreSubTab,onSubTabChange,initialFeedOpen,onNavigateToAnalyticsGolfer}:any){
+export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,memberGolferId,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab,restoreSubTab,onSubTabChange,initialFeedOpen,initialOpenEventId,onOpenEventConsumed,initialScrollToMe,onScrollToMeConsumed,onNavigateToAnalyticsGolfer}:any){
   // ── Golden Hour Mode ──────────────────────────────────────────────────
   // Fri/Sat 4-8pm PST: the leaderboard drifts toward amber-tinted greens and
   // warmer whites. Friday afternoon = anticipation; Saturday evening = the
@@ -401,6 +410,62 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     setFeedOverlayReady(false);
     setTimeout(()=>setFeedOverlayReady(true),320);
   },[initialFeedOpen,completedEvents.length]);
+
+  // Deep link (Profile view "Last Round" card): open a specific event's detail
+  // overlay and jump straight to the full standings table (POS/GOLFER/PTS/$$$)
+  useEffect(()=>{
+    if(!initialOpenEventId||recapOpenedRef.current)return;
+    const ev=completedEvents.find((e:any)=>e.event_id===initialOpenEventId);
+    if(!ev)return;
+    recapOpenedRef.current=true;
+    setFeedOverlayEvent(ev);
+    setSelEventId(ev.event_id);
+    setFeedOverlayReady(false);
+    setTimeout(()=>setFeedOverlayReady(true),320);
+    setTimeout(()=>{
+      // Scroll ONLY the overlay container (scrollIntoView also scrolls the
+      // window in an iOS standalone PWA, lifting the whole shell), and keep
+      // the header clear of the status bar via the top safe-area inset.
+      const scroller=overlayScrollRef.current as HTMLElement|null;
+      const hdr=scroller?.querySelector(".lb-header") as HTMLElement|null;
+      if(!scroller||!hdr)return;
+      const probe=document.createElement("div");
+      probe.style.cssText="position:fixed;top:env(safe-area-inset-top,0px);height:0;pointer-events:none;";
+      document.body.appendChild(probe);
+      const safeTop=probe.getBoundingClientRect().top;
+      probe.remove();
+      const y=hdr.getBoundingClientRect().top-scroller.getBoundingClientRect().top+scroller.scrollTop-safeTop-12;
+      scroller.scrollTo({top:Math.max(0,y),behavior:"smooth"});
+    },900);
+    onOpenEventConsumed?.();
+  },[initialOpenEventId,completedEvents.length]);
+
+  // Deep link (Profile view standings cards): scroll the member's own row into
+  // view. No done-ref guard: StrictMode double-invokes mount effects with the
+  // same refs, so a guard set in run 1 would suppress run 2 after run 1's
+  // timer was cleaned up. Consuming the prop (-> false) retires the effect.
+  useEffect(()=>{
+    if(!initialScrollToMe||memberGolferId==null)return;
+    const timers:any[]=[];
+    const attempt=(tries:number)=>{
+      const el=lbRowRefs.current[memberGolferId];
+      const main=el?.closest(".main-content") as HTMLElement|null;
+      if(el&&main){
+        // Scroll ONLY .main-content — scrollIntoView also scrolls the window
+        // in an iOS standalone PWA, lifting the whole app shell out of the
+        // safe areas (header into the status bar, green gap under the nav).
+        const y=el.getBoundingClientRect().top-main.getBoundingClientRect().top+main.scrollTop
+          -main.clientHeight/2+el.clientHeight/2;
+        main.scrollTo({top:Math.max(0,y),behavior:"smooth"});
+        onScrollToMeConsumed?.();
+        return;
+      }
+      if(tries<5)timers.push(setTimeout(()=>attempt(tries+1),400));
+      else onScrollToMeConsumed?.();
+    };
+    timers.push(setTimeout(()=>attempt(0),600));
+    return()=>timers.forEach(clearTimeout);
+  },[initialScrollToMe]);
 
   const eventEntries=displayEvent
     ?dedupeLeaderboard(leaderboard.filter((e:any)=>e.event_id===displayEvent.event_id)).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)
@@ -846,7 +911,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     return(
       <div key={gid}>
         <div
-          className={`lb-row${isExpanded?" expanded lb-row-open":""}${decayOpacity>0?" post-win":""}`}
+          className={`lb-row${isExpanded?" expanded lb-row-open":""}${decayOpacity>0?" post-win":""}${gid===memberGolferId?" me-row":""}`}
           style={decayOpacity>0?{["--decay-opacity" as any]:decayOpacity.toFixed(3)}:undefined}
           onClick={()=>{
             // Preserve overlay scroll position -- expanding a row changes layout
@@ -1539,7 +1604,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                       className={`live-row-wrap${trailDir==="up"?" trail-up":trailDir==="down"?" trail-down":""}${i===finalRows.length-1?" last":""}`}
                       style={liveAnimatable?{position:"absolute",left:0,right:0,top:i*(liveRowH as number)}:{position:"relative"}}
                     >
-                      <div className="lb-live-row" onClick={()=>setLiveExpandedId(isExp?null:row.golfer_id)}>
+                      <div className={`lb-live-row${row.golfer_id===memberGolferId?" me-row":""}`} onClick={()=>setLiveExpandedId(isExp?null:row.golfer_id)}>
                         <div className="pos-flip" style={{fontSize:18,fontWeight:700,color:rankColor}}>
                           {isFlipping?(
                             <>
@@ -1959,7 +2024,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   const isGroupStart=pairingsSet&&rowIdx>0&&s.assigned_tee_time&&prevRow&&s.assigned_tee_time!==prevRow.assigned_tee_time;
                   return(
                     <div key={s.signup_id} className={isExp?"lb-row-open":undefined} style={isGroupStart?{borderTop:"2px solid var(--green-700)"}:undefined}>
-                      <div className="lb-live-row" onClick={()=>setUpcomingExpandedId(isExp?null:s.golfer_id)}>
+                      <div className={`lb-live-row${s.golfer_id===memberGolferId?" me-row":""}`} onClick={()=>setUpcomingExpandedId(isExp?null:s.golfer_id)}>
                         <div style={{fontSize:16,fontWeight:700,color:"var(--text-secondary)"}}>{posLabel}</div>
                         <div style={{fontSize:16,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}</div>
                         <div></div>
@@ -2071,6 +2136,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             leaderboard={leaderboard}
             holeScores={holeScores}
             holeImages={holeImages}
+            memberGolferId={memberGolferId}
             onCardTap={openFeedOverlay}
           />
         </div>

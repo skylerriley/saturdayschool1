@@ -51,7 +51,11 @@ Guests are not a count field on a member's signup row — each guest gets its ow
 - Owns all global state
 - Manages polling refresh loops and initial data fetches
 - Renders the shell: `AppHeader` + `BottomNav` + tab content
-- Handles admin PIN validation
+- Handles admin PIN validation (unlock persisted in localStorage `ss_admin`,
+  restored on boot; survives PWA force-quit until explicit logout)
+- Member identity: localStorage `ss_member` (golfer_id) picked via first-run
+  modal or Settings — personalization only (header greeting + `.me-row`
+  highlights on leaderboard/RSVP rows), not authentication
 
 Note: the `.golden-hour` class is applied inside `LeaderboardTab.tsx` (Fri/Sat
 4–8pm via `Intl` in `America/Los_Angeles`), not in App.tsx — it only tints the
