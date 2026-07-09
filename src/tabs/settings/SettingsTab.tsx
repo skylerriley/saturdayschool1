@@ -116,6 +116,15 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
   const profileHeader=subTab==="profile"&&memberGolfer;
   const versions=[
     {
+      version:"v5.0.0 The Keymaker",
+      date:"July 8, 2026",
+      sections:[
+        {type:"NEW",items:["Your Profile — pick your name to personalize the app: time-of-day greeting in the header, gold highlights on your rows across leaderboards, RSVP, and analytics","Season snapshot on your profile — season average, Top 15 standing with week-over-week rank change, last round, and next-event RSVP status","Offline mode — the app now works without a signal: reads are cached, and your score edits queue up and sync automatically when you're back online","Pending-sync pill showing queued changes and offline state","Side-game lens in Score Entry — swap the score sheet to Nines (3-ball 5/3/1) or Sixes (2v2 best-ball skins)","Saturday Handicap — WHS-style handicap engine with a course handicap trend chart","By-golfer course handicap trend on analytics"]},
+        {type:"IMPROVED",items:["Win % now shows true probability (sums to 100%) — the house vig only applies to payout odds","Analytics dropdowns refreshed with a frosted-glass picker","Deep links throughout — profile cards jump you straight to your standings, last round, and next event","Persistent admin login — unlock survives a force-quit until you log out","Pairing engine group sizing and late-add tee-time handling","Reduced-motion support and smoother weather wind animation"]},
+        {type:"FIXED",items:["Odds bugs — guest player odds, front-end display, and stale/duplicate calculations","Payout and skins de-duplication edge cases","RSVP crash and event-detail load bugs","Plus-handicap (better-than-scratch) scoring","Tzedakah / charity card edits now save","Weather timing and data-refresh race conditions","Deleting an event now also clears its leaderboard rows"]}
+      ]
+    },
+    {
       version:"v4.0.0 Seraph",
       date:"July 1, 2026",
       sections:[
