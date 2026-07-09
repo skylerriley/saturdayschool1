@@ -104,7 +104,7 @@ function PushNotificationButton(){
   );
 }
 
-export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,events=[],leaderboard=[],holeScores=[],signups=[],onNavigateSeason,onNavigateTop15,onNavigateLastRound,onNavigateRsvp}:any){
+export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,events=[],leaderboard=[],holeScores=[],signups=[],onNavigateSeason,onNavigateTop15,onNavigateLastRound,onNavigateRsvp,onNavigateAnalytics}:any){
   const [changelogOpen,setChangelogOpen]=useState(false);
   const memberGolfer=memberGolferId!=null?golfers.find((g:any)=>g.golfer_id===memberGolferId):null;
   // Default to Profile when an identity is set — that's the personal landing spot
@@ -212,6 +212,7 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
             onNavigateTop15={onNavigateTop15}
             onNavigateLastRound={onNavigateLastRound}
             onNavigateRsvp={onNavigateRsvp}
+            onNavigateAnalytics={onNavigateAnalytics}
           />
         ):(
           <div className="card" style={{padding:24,textAlign:"center"}}>

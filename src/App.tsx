@@ -1340,6 +1340,8 @@ export default function App(){
   const [initialFeedOpen]=useState(_initOpenRecap);
   const [analyticsInitialGolfer,setAnalyticsInitialGolfer]=useState<string>("");
   const [analyticsBackLabel,setAnalyticsBackLabel]=useState<string>("");
+  // Where the analytics back chip returns to ("leaderboard" | "settings")
+  const [analyticsBackTarget,setAnalyticsBackTarget]=useState<string>("leaderboard");
   const [lbRestoreSubTab,setLbRestoreSubTab]=useState<string>("");
   // Persisted in localStorage (not sessionStorage) so the unlock survives a
   // force-quit of the installed PWA; cleared only by explicit logout.
@@ -2452,6 +2454,15 @@ export default function App(){
   const goLeaderboardSub=(sub:string)=>{setShowWelcome(false);setLbRestoreSubTab(sub);setLbScrollToMe(true);setActiveTab("leaderboard");scrollToTop(0);};
   const goLastRound=(eventId:number)=>{setShowWelcome(false);setLbOpenEventId(eventId);setLbRestoreSubTab("weekly");setActiveTab("leaderboard");scrollToTop(0);};
   const goRsvpFromProfile=()=>{setShowWelcome(false);setActiveTab("rsvp");scrollToTop(0);};
+  const goMoreStats=()=>{
+    if(memberGolferId==null)return;
+    setShowWelcome(false);
+    setAnalyticsInitialGolfer(String(memberGolferId));
+    setAnalyticsBackLabel("Return to Profile");
+    setAnalyticsBackTarget("settings");
+    setActiveTab("analytics");
+    scrollToTop(0);
+  };
   const greetHour=new Date().getHours();
   const greeting=memberGolfer?`${greetHour<12?"Morning":greetHour<17?"Afternoon":"Evening"}, ${memberGolfer.first_name}`:null;
   // First-run "Who are you?" picker — members only, once data is in
@@ -2521,12 +2532,12 @@ export default function App(){
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
           {errorMsg&&<div className="error-banner"><span>⚠</span>{errorMsg}</div>}
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
-          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} memberGolferId={memberGolferId} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} initialOpenEventId={lbOpenEventId} onOpenEventConsumed={()=>setLbOpenEventId(0)} initialScrollToMe={lbScrollToMe} onScrollToMeConsumed={()=>setLbScrollToMe(false)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
+          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} memberGolferId={memberGolferId} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} initialOpenEventId={lbOpenEventId} onOpenEventConsumed={()=>setLbOpenEventId(0)} initialScrollToMe={lbScrollToMe} onScrollToMeConsumed={()=>setLbScrollToMe(false)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setAnalyticsBackTarget("leaderboard");setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} setLeaderboardLocal={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} dbDeleteHoleScore={dbDeleteHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}
-          {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
-          {activeTab==="settings"&&<SettingsTab golfers={golfers} memberGolferId={memberGolferId} onChangeMember={chooseMember} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} onNavigateSeason={()=>goLeaderboardSub("season")} onNavigateTop15={()=>goLeaderboardSub("top15")} onNavigateLastRound={goLastRound} onNavigateRsvp={goRsvpFromProfile}/>}
+          {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab(analyticsBackTarget);setAnalyticsBackTarget("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
+          {activeTab==="settings"&&<SettingsTab golfers={golfers} memberGolferId={memberGolferId} onChangeMember={chooseMember} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} onNavigateSeason={()=>goLeaderboardSub("season")} onNavigateTop15={()=>goLeaderboardSub("top15")} onNavigateLastRound={goLastRound} onNavigateRsvp={goRsvpFromProfile} onNavigateAnalytics={goMoreStats}/>}
           </div>
         </main>
 
@@ -2666,6 +2677,7 @@ export default function App(){
             onNavigateTop15={()=>goLeaderboardSub("top15")}
             onNavigateLastRound={goLastRound}
             onNavigateRsvp={goRsvpFromProfile}
+            onNavigateAnalytics={goMoreStats}
             onClose={()=>setShowWelcome(false)}
           />
         )}

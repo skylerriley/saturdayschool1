@@ -75,10 +75,15 @@ Active focus: 2026-07-06 full-app audit → three fix batches (2026-07-07):
   targets by env(safe-area-inset-top) (measured via a fixed probe div).
   Settings tab header is contextual: Profile subtab shows "Welcome, X / Your
   YYYY season at a glance", Settings subtab shows the normal header; the
-  ProfileView greeting block renders in overlay mode only. Header
+  ProfileView greeting block renders in overlay mode only. "View More Stats"
+  button at the profile's bottom deep-links to Analytics > By Golfer
+  (member pre-selected) with a "← Return to Profile" back chip — the
+  analytics back chip's destination is now App state analyticsBackTarget
+  ("leaderboard" | "settings"), reset to leaderboard after use. Header
   greeting is absolutely centred on the app bar (unequal logo/profile widths
-  pushed flex centring off); profile stat strip uses a 3-col grid for true
-  centring. Testing tip: the signups table is event_signups; Playwright
+  pushed flex centring off) and fades out 20s after load (1.2s opacity
+  transition in AppHeader; timer restarts when the greeting text changes);
+  profile stat strip uses a 3-col grid for true centring. Testing tip: the signups table is event_signups; Playwright
   page.route can inject pairings, but block service workers in the context.
   Cards deep-link: leaderboard subtabs via lbRestoreSubTab, weekly event
   detail via new LeaderboardTab initialOpenEventId prop, RSVP tab. Shown as

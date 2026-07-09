@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { UserCog } from "lucide-react";
 import "./nav.css";
 
@@ -19,6 +20,16 @@ interface AppHeaderProps {
  * floating bottom tab bar.
  */
 export function AppHeader({ adminMode, greeting, onLogoClick, onProfileClick }: AppHeaderProps) {
+  // The greeting is a welcome moment, not a fixture — fade it out after 20s.
+  // Restarts if the greeting text changes (e.g. a new identity is picked).
+  const [greetingVisible, setGreetingVisible] = useState(true);
+  useEffect(() => {
+    if (!greeting) return;
+    setGreetingVisible(true);
+    const t = setTimeout(() => setGreetingVisible(false), 7000);
+    return () => clearTimeout(t);
+  }, [greeting]);
+
   return (
     <header className="app-header app-bar" onClick={onLogoClick}>
       <button
@@ -29,7 +40,9 @@ export function AppHeader({ adminMode, greeting, onLogoClick, onProfileClick }: 
         <img src="/logo.svg" alt="Saturday School" className="app-bar__logo-img" />
       </button>
 
-      {greeting && <div className="app-bar__greeting">{greeting}</div>}
+      {greeting && (
+        <div className={`app-bar__greeting${greetingVisible ? "" : " is-hidden"}`}>{greeting}</div>
+      )}
 
       <button
         type="button"

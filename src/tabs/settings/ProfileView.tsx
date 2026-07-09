@@ -27,7 +27,7 @@ function memberStanding(rows: any[], memberId: number, key: string) {
   return { ...row, pos, tied, rank: idx + 1 };
 }
 
-export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, signups, onNavigateSeason, onNavigateTop15, onNavigateLastRound, onNavigateRsvp, onClose }: any) {
+export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, signups, onNavigateSeason, onNavigateTop15, onNavigateLastRound, onNavigateRsvp, onNavigateAnalytics, onClose }: any) {
   const memberId = golfer.golfer_id;
 
   const data = useMemo(() => {
@@ -303,6 +303,17 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
 
       {/* Next event RSVP status (pre-pairings position) */}
       {!pairingsSet && nextEventCard}
+
+      {/* Full analytics deep-link */}
+      {onNavigateAnalytics && (
+        <button
+          className="btn btn-outline btn-full"
+          style={{ fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 2 }}
+          onClick={onNavigateAnalytics}
+        >
+          View More Stats <ChevronRight size={16} />
+        </button>
+      )}
 
       {onClose && (
         <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>

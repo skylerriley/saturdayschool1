@@ -64,6 +64,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
+  transition: opacity 1.2s ease;
+}
+.app-bar__greeting.is-hidden {
+  opacity: 0;
 }
 
 .app-bar__profile {
