@@ -11,6 +11,7 @@ import { WindParticles } from "../../components/weather/WindParticles";
 import { WeatherModal } from "../../components/weather/WeatherModal";
 import { UpcomingCourseCard } from "./UpcomingCourseCard";
 import { ensureShimmer } from "../../components/weather/WeatherSkeleton";
+import { useCachedImage, prefetchImages } from "../../lib/imageCache";
 import { FieldStrengthMeter } from "./FieldStrengthMeter";
 import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
@@ -29,9 +30,8 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
   const imgRecord=(holeImages||[]).find((img:any)=>img.course_name===courseName&&img.hole_number===holeNum&&img.public_url);
   const imgUrl:string|null=imgRecord?imgRecord.public_url:null;
 
-  const [imgLoaded,setImgLoaded]=useState(false);
-  // Reset when the URL changes (different card / holeImages update)
-  useEffect(()=>{ setImgLoaded(false); },[imgUrl]);
+  // Cached-image hook: fades in on first decode, appears instantly on revisits.
+  const {loaded:imgLoaded,onLoad:onImgLoad}=useCachedImage(imgUrl);
 
   // Leaderboard entries for this event, sorted by points desc
   const entries=dedupeLeaderboard(leaderboard.filter((r:any)=>r.event_id===event.event_id))
@@ -119,8 +119,9 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
           style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 60%",
             opacity:imgLoaded?1:0,transition:"opacity 0.4s ease"}}
           loading="lazy"
+          decoding="async"
           draggable={false}
-          onLoad={()=>setImgLoaded(true)}
+          onLoad={onImgLoad}
         />
       )}
       {/* Scrim: dark at bottom, light touch at top */}
@@ -208,6 +209,17 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
     obs.observe(sentinelRef.current);
     return()=>obs.disconnect();
   },[hasMore,visibleCount]);
+
+  // Warm the image cache for every shown card's hole photo so cards fade in
+  // once (or appear instantly on revisit) instead of re-shimmering on scroll.
+  useEffect(()=>{
+    const urls=shown.map((ev:any)=>{
+      const holeNum=(((eventNumMap[ev.event_id]||1)-1)%18)+1;
+      const rec=(holeImages||[]).find((img:any)=>img.course_name===(ev.course_name||"")&&img.hole_number===holeNum&&img.public_url);
+      return rec?rec.public_url:null;
+    });
+    prefetchImages(urls);
+  },[visibleCount,holeImages,seasonEvents]);
 
   if(allEvents.length===0){
     return(

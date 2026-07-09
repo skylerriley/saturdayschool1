@@ -4,6 +4,7 @@ import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc } from "../../components/weather/weatherUtils";
 import { WeatherBadgeSkeleton } from "../../components/weather/WeatherSkeleton";
 import { useWeatherReady } from "../../hooks/useWeatherReady";
+import { useCachedImage } from "../../lib/imageCache";
 
 // ------------------------------------------------------------------
 // UPCOMING COURSE CARD -- rounded hero image (random hole photo) with
@@ -12,10 +13,19 @@ import { useWeatherReady } from "../../hooks/useWeatherReady";
 export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldCount, firstTeeTime }: any) {
   const courseName = event?.course_name || "";
   const courseImages = (holeImages || []).filter((img: any) => img.course_name === courseName && img.public_url);
+  // Deterministic pick (hashed off the course name) instead of random, so the
+  // same photo is chosen on every mount — that keeps the session image cache
+  // warm and lets the card appear instantly on revisit instead of re-loading.
   const randomImg = useMemo(() => {
     if (!courseImages.length) return null;
-    return courseImages[Math.floor(Math.random() * courseImages.length)];
+    let h = 0;
+    for (let i = 0; i < courseName.length; i++) h = (h * 31 + courseName.charCodeAt(i)) | 0;
+    const idx = Math.abs(h) % courseImages.length;
+    return courseImages[idx];
   }, [courseName, courseImages.length]);
+
+  const imgUrl: string | null = randomImg?.public_url || null;
+  const { loaded: imgLoaded, onLoad: onImgLoad } = useCachedImage(imgUrl);
 
   const courseTees = courses.filter((c: any) => c.course_name === courseName);
   const longestTee = courseTees.reduce((best: any, c: any) => {
@@ -31,9 +41,17 @@ export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldC
 
   return (
     <div onClick={onClick} style={{ position: "relative", borderRadius: "var(--radius-lg, 16px)", overflow: "hidden", marginBottom: 14, minHeight: 160, background: "linear-gradient(135deg,var(--green-900),var(--green-700))", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
-      {randomImg && (
-        <img src={randomImg.public_url} alt={courseName}
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 70%" }} />
+      {/* Shimmer placeholder — visible until the photo decodes */}
+      {imgUrl && !imgLoaded && (
+        <div className="wx-skel" style={{ position: "absolute", inset: 0, borderRadius: 0 }} />
+      )}
+      {imgUrl && (
+        <img src={imgUrl} alt={courseName}
+          loading="eager"
+          decoding="async"
+          onLoad={onImgLoad}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 70%",
+            opacity: imgLoaded ? 1 : 0, transition: "opacity 0.4s ease" }} />
       )}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(0,0,0,0.05),rgba(0,0,0,0.65))" }} />
       {fieldCount != null && fieldCount > 0 && (
