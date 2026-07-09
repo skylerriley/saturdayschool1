@@ -172,12 +172,12 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
         <div style={labelStyle}>Next Event</div>
         <ChevronRight size={15} style={{ color: "var(--text-muted)", marginTop: -4 }} />
       </div>
-      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>
-        {nextEvent.course_name} <span style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: 13 }}>&middot; {formatDate(nextEvent.date)}</span>
+      <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>
+        {nextEvent.course_name} <span style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: 15 }}>&middot; {formatDate(nextEvent.date)}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
         <span style={{
-          fontSize: 12, fontWeight: 800, color: "white",
+          fontSize: 15, fontWeight: 800, color: "white",
           background: rsvpFill, borderRadius: 12, padding: "4px 11px",
           border: `1px solid ${rsvpFill}`,
         }}>{rsvpText}</span>
@@ -225,16 +225,16 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
       {/* Quick stats strip — equal grid columns so the middle stat sits dead-center */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", maxWidth: 300, margin: "14px auto 16px" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text-primary)" }}>{golfer.current_handicap_index?.toFixed(1) ?? "--"}</div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>HCP</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: "var(--text-primary)" }}>{golfer.current_handicap_index?.toFixed(1) ?? "--"}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>HCP</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text-primary)" }}>{seasonRow?.rounds ?? 0}</div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Rounds</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: "var(--text-primary)" }}>{seasonRow?.rounds ?? 0}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Rounds</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text-primary)" }}>{lastRound ? lastRound.pts : "--"}</div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Last Pts</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: "var(--text-primary)" }}>{lastRound ? lastRound.pts : "--"}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Last Pts</div>
         </div>
       </div>
 
@@ -248,8 +248,8 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
           {seasonRow ? (
             <>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <span style={{ fontSize: 26, fontWeight: 800, color: "var(--green-700)", lineHeight: 1 }}>{posLabel(seasonRow.pos, seasonRow.tied)}</span>
-                <ChevronRight size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                <span style={{ fontSize: 29, fontWeight: 800, color: "var(--green-700)", lineHeight: 1 }}>{posLabel(seasonRow.pos, seasonRow.tied)}</span>
+                <ChevronRight size={17} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginTop: 5 }}>{seasonRow.avg.toFixed(2)} <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>pts avg</span></div>
               <div style={{ marginTop: 5 }}>{deltaChip(seasonDelta)}</div>
@@ -263,8 +263,8 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
           {top15Row ? (
             <>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <span style={{ fontSize: 26, fontWeight: 800, color: "var(--green-700)", lineHeight: 1 }}>{posLabel(top15Row.pos, top15Row.tied)}</span>
-                <ChevronRight size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                <span style={{ fontSize: 29, fontWeight: 800, color: "var(--green-700)", lineHeight: 1 }}>{posLabel(top15Row.pos, top15Row.tied)}</span>
+                <ChevronRight size={17} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginTop: 5 }}>{top15Row.avg.toFixed(2)} <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>pts avg</span> &middot; {top15Row.rounds} rds</div>
               <div style={{ marginTop: 5 }}>{deltaChip(top15Delta)}</div>
@@ -293,8 +293,8 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
               { v: lastRound.skinsWon > 0 ? `$${Math.round(lastRound.skinsWon)}` : "$0", l: "Skins" },
             ].map((t, i) => (
               <div key={i} style={{ background: "var(--surface2)", borderRadius: "var(--radius-sm)", padding: "8px 4px", textAlign: "center" }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: i === 3 && lastRound.skinsWon > 0 ? "var(--gold-600,#b8860b)" : "var(--green-700)" }}>{t.v}</div>
-                <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase", marginTop: 2 }}>{t.l}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: i === 3 && lastRound.skinsWon > 0 ? "var(--gold-600,#b8860b)" : "var(--green-700)" }}>{t.v}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase", marginTop: 2 }}>{t.l}</div>
               </div>
             ))}
           </div>
