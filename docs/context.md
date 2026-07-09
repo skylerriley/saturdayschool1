@@ -42,7 +42,15 @@ Active focus: 2026-07-06 full-app audit → three fix batches (2026-07-07):
   "just browsing" dismissal), changeable via the new Your Profile card in
   SettingsTab. The picker auto-shows on load only in the installed PWA
   (html.is-pwa from index.html's standalone detection); in a plain mobile
-  browser (e.g. emailed links) it waits until the Settings tab is opened. Drives a time-of-day greeting in AppHeader
+  browser (e.g. emailed links) it waits until the Settings tab is opened.
+  EventAlertBanner (leaderboard sign-up reminder, Mon–Wed) hides for an
+  identified member who has already answered In OR Out for the upcoming
+  event; unidentified users and Unconfirmed members still see it. Dismissal
+  (swipe or ×) is per-event and permanent — localStorage
+  `ss_alert_dismissed_event` stores the event_id, self-managed inside
+  EventAlertBanner (App's old midnight-expiry sessionStorage flag is gone);
+  the banner returns when a new event becomes the target.
+  Drives a time-of-day greeting in AppHeader
   (`.app-bar__greeting`) and gold `.me-row` highlights (accent bar + wash,
   CSS in App.tsx) on season/top15/weekly lb-rows, live + upcoming-field rows
   in LeaderboardTab, and the member's RSVP row. Also defaults selections:

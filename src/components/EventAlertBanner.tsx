@@ -22,8 +22,9 @@ interface Props {
   events: any[];
   signups: any[];
   holeImages: any[];
+  /** Identified member — the reminder hides once they've answered In/Out. */
+  memberGolferId?: number | null;
   mainRef: React.RefObject<HTMLElement>;
-  onDismiss: () => void;
   onNavigateToSignup: () => void;
 }
 
@@ -31,14 +32,24 @@ export function EventAlertBanner({
   events,
   signups,
   holeImages,
+  memberGolferId,
   mainRef,
-  onDismiss,
   onNavigateToSignup,
 }: Props) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const [scrollY, setScrollY] = useState(0);
+
+  // Dismissal is per-event and permanent (localStorage): dismissing this
+  // week's banner keeps it hidden for that event only — next week's event
+  // has a new id, so its banner shows again.
+  const [dismissedEventId, setDismissedEventId] = useState<string | null>(() => {
+    try { return localStorage.getItem("ss_alert_dismissed_event"); } catch { return null; }
+  });
+  // The swipe effect below is mounted once; it reaches the current event's
+  // dismiss through this ref, assigned after upcomingEvent is derived.
+  const dismissRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const el = mainRef.current;
@@ -78,7 +89,7 @@ export function EventAlertBanner({
       setSwiping(false);
       if (Math.abs(currentX) >= DISMISS_PX) {
         setSwipeX(currentX > 0 ? 420 : -420);
-        setTimeout(() => onDismiss(), 220);
+        setTimeout(() => dismissRef.current(), 220);
       } else {
         setSwipeX(0);
       }
@@ -95,7 +106,7 @@ export function EventAlertBanner({
       card.removeEventListener("touchend", onEnd);
       card.removeEventListener("touchcancel", onEnd);
     };
-  }, [onDismiss]);
+  }, []);
 
   if (!isAlertDay()) return null;
 
@@ -109,6 +120,23 @@ export function EventAlertBanner({
     .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
 
   if (!upcomingEvent) return null;
+
+  // Dismissed for this specific event -> stays hidden until a new event takes over
+  if (String(upcomingEvent.event_id) === dismissedEventId) return null;
+  const dismiss = () => {
+    try { localStorage.setItem("ss_alert_dismissed_event", String(upcomingEvent.event_id)); } catch {}
+    setDismissedEventId(String(upcomingEvent.event_id));
+  };
+  dismissRef.current = dismiss;
+
+  // Identified member who has already answered (In OR Out) doesn't need the
+  // reminder. Unidentified users and undecided members still see it.
+  if (memberGolferId != null) {
+    const mySignup = signups.find(
+      (s: any) => s.event_id === upcomingEvent.event_id && s.golfer_id === memberGolferId && !s.is_guest_entry
+    );
+    if (mySignup && (mySignup.attending === "Yes" || mySignup.attending === "No")) return null;
+  }
 
   const yesCount = signups.filter(
     (s: any) => s.event_id === upcomingEvent.event_id && s.attending === "Yes"
@@ -233,7 +261,7 @@ export function EventAlertBanner({
         {/* Dismiss × */}
         <button
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+          onClick={(e) => { e.stopPropagation(); dismiss(); }}
           style={{
             position: "absolute",
             top: "50%",

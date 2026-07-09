@@ -1422,23 +1422,8 @@ export default function App(){
     return()=>{unsub();window.removeEventListener("online",up);window.removeEventListener("offline",down);};
   },[]);
 
-  // Event alert banner -- dismissed persists until midnight of the day it was dismissed
-  const [alertDismissed,setAlertDismissed]=useState(()=>{
-    try{
-      const raw=sessionStorage.getItem("ss_alert_dismissed");
-      if(!raw)return false;
-      const expires=parseInt(raw,10);
-      // If value is not a valid future timestamp, clear and show banner
-      if(isNaN(expires)||Date.now()>expires){sessionStorage.removeItem("ss_alert_dismissed");return false;}
-      return true;
-    }catch{return false;}
-  });
-  const dismissAlert=useCallback(()=>{
-    // Expire at midnight tonight
-    const midnight=new Date();midnight.setHours(23,59,59,999);
-    try{sessionStorage.setItem("ss_alert_dismissed",String(midnight.getTime()));}catch{}
-    setAlertDismissed(true);
-  },[]);
+  // Event alert banner dismissal now lives inside EventAlertBanner itself:
+  // per-event, persisted in localStorage ("ss_alert_dismissed_event").
 
   // .main-content is now the sole scroll container -- see CSS and scrollMainTop()
   const scrollToTop=(delay=50)=>setTimeout(()=>{
@@ -2542,7 +2527,7 @@ export default function App(){
               :`Syncing ${pendingSync} change${pendingSync>1?"s":""}…`}
           </div>
         )}
-        {!alertDismissed&&activeTab==="leaderboard"&&<EventAlertBanner events={events} signups={signups} holeImages={holeImages} mainRef={mainRef} onDismiss={dismissAlert} onNavigateToSignup={()=>{setActiveTab("rsvp");scrollToTop(50);}}/>}
+        {activeTab==="leaderboard"&&<EventAlertBanner events={events} signups={signups} holeImages={holeImages} memberGolferId={memberGolferId} mainRef={mainRef} onNavigateToSignup={()=>{setActiveTab("rsvp");scrollToTop(50);}}/>}
         <main
           className="main-content"
           ref={mainRef}
