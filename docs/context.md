@@ -40,7 +40,9 @@ Active focus: 2026-07-06 full-app audit → three fix batches (2026-07-07):
   member identity (personalization only, no auth): first-run "Who are you?"
   picker in App.tsx (localStorage `ss_member` + `ss_member_skip` for the
   "just browsing" dismissal), changeable via the new Your Profile card in
-  SettingsTab. Drives a time-of-day greeting in AppHeader
+  SettingsTab. The picker auto-shows on load only in the installed PWA
+  (html.is-pwa from index.html's standalone detection); in a plain mobile
+  browser (e.g. emailed links) it waits until the Settings tab is opened. Drives a time-of-day greeting in AppHeader
   (`.app-bar__greeting`) and gold `.me-row` highlights (accent bar + wash,
   CSS in App.tsx) on season/top15/weekly lb-rows, live + upcoming-field rows
   in LeaderboardTab, and the member's RSVP row. Also defaults selections:

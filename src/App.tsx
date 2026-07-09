@@ -2465,10 +2465,16 @@ export default function App(){
   };
   const greetHour=new Date().getHours();
   const greeting=memberGolfer?`${greetHour<12?"Morning":greetHour<17?"Afternoon":"Evening"}, ${memberGolfer.first_name}`:null;
-  // First-run "Who are you?" picker — members only, once data is in
+  // First-run "Who are you?" picker — members only, once data is in.
+  // Auto-shows on load ONLY in the installed PWA (is-pwa class from
+  // index.html's standalone detection). In a plain mobile browser — e.g.
+  // opening an emailed link in Chrome/Safari — it waits until the user
+  // taps the Settings tab, so link visitors aren't nagged on every open.
+  const isStandalonePWA=typeof document!=="undefined"&&document.documentElement.classList.contains("is-pwa");
   const memberList=golfers.filter((g:any)=>!g.is_guest&&(g.status==null||g.status==="Active"))
     .sort((a:any,b:any)=>(a.first_name||"").localeCompare(b.first_name||"")||(a.last_name||"").localeCompare(b.last_name||""));
-  const showMemberPicker=!memberPromptDismissed&&memberGolferId==null&&!loading&&splashDone&&memberList.length>0&&!showPinModal;
+  const showMemberPicker=!memberPromptDismissed&&memberGolferId==null&&!loading&&splashDone&&memberList.length>0&&!showPinModal
+    &&(isStandalonePWA||activeTab==="settings");
 
   return(
     <>
