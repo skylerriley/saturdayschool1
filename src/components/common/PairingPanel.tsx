@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { runPairingEngine, buildPairingFrequencyMap } from "../../lib/golfMath";
 import { golferName, formatDate } from "../../lib/formatters";
 import { supabase, sendPush, reportWriteError } from "../../lib/supabaseClient";
-import { BEZEL_BTN_LIGHT, BEZEL_BTN_STRONG } from "../../tabs/leaderboard/bezelStyles";
+import { BEZEL_BTN_LIGHT, BEZEL_BTN_STRONG, BADGE_DEPRESSED_BEZEL } from "../../tabs/leaderboard/bezelStyles";
 
 interface PairingPanelProps {
   golfers: any[];
@@ -304,7 +304,7 @@ export function PairingPanel({
                           {g ? `${g.first_name} ${g.last_name}` : "Guest"}{isMoving ? " ✋" : ""}
                         </span>
                         {su.early_tee_request && (
-                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: "50%", background: "var(--gold-600)", color: "white", fontSize: 8, fontWeight: 800, lineHeight: 1, marginLeft: 5, flexShrink: 0 }}>E</span>
+                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: "50%", background: "var(--gold-600)", color: "white", fontSize: 8, fontWeight: 800, lineHeight: 1, marginLeft: 5, flexShrink: 0, boxShadow: BADGE_DEPRESSED_BEZEL, verticalAlign: "middle" }}>E</span>
                         )}
                         {su.is_guest_entry && (
                           <span style={{ fontSize: 11, fontWeight: 600, background: "var(--gold-100)", borderRadius: 4, padding: "1px 5px", marginLeft: 6, color: "var(--gold-800)" }}>guest</span>

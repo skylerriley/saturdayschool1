@@ -9,7 +9,7 @@ import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
 import { WeatherAmbience, getWeatherCardBg } from "../../components/WeatherAmbience";
 import { useWeatherReady } from "../../hooks/useWeatherReady";
-import { BEZEL_OUTER_SHADOW, CHIP_BEZEL, BEZEL_BTN_LIGHT, bezelRimOverlay } from "../leaderboard/bezelStyles";
+import { BEZEL_OUTER_SHADOW, CHIP_BEZEL, BEZEL_BTN_LIGHT, BADGE_DEPRESSED_BEZEL, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 const swipeEarlyStyles = `
 .rsvp-swipe-outer {
@@ -520,8 +520,8 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                   {displayNames.map((d,i:number)=>(
                     <span key={i} style={{display:"inline-flex",alignItems:"center",gap:5,background:"var(--green-50)",border:"1px solid var(--green-100)",borderRadius:14,padding:"3px 10px",fontSize:13,fontWeight:600,color:"var(--green-700)",boxShadow:CHIP_BEZEL}}>
                       {d.name}
-                      {d.isGuest&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--green-700)",color:"white",fontSize:9,fontWeight:800,lineHeight:1,flexShrink:0}}>G</span>}
-                      {d.early&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--gold-600)",color:"white",fontSize:8,fontWeight:800,lineHeight:1,flexShrink:0}}>E</span>}
+                      {d.isGuest&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--green-700)",color:"white",fontSize:9,fontWeight:800,lineHeight:1,flexShrink:0,boxShadow:BADGE_DEPRESSED_BEZEL}}>G</span>}
+                      {d.early&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--gold-600)",color:"white",fontSize:8,fontWeight:800,lineHeight:1,flexShrink:0,boxShadow:BADGE_DEPRESSED_BEZEL}}>E</span>}
                     </span>
                   ))}
                 </span>

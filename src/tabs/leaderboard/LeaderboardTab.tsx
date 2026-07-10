@@ -13,7 +13,7 @@ import { UpcomingCourseCard } from "./UpcomingCourseCard";
 import { ensureShimmer } from "../../components/weather/WeatherSkeleton";
 import { useCachedImage, prefetchImages } from "../../lib/imageCache";
 import { FieldStrengthMeter } from "./FieldStrengthMeter";
-import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, BEZEL_BTN_LIGHT, bezelRimOverlay } from "./bezelStyles";
+import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, BEZEL_BTN_LIGHT, bezelRimOverlay, SKIN_SQUARE_BEZEL } from "./bezelStyles";
 import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
 import { WinProbabilityChart } from "../../WinProbabilityChart";
@@ -1921,11 +1921,12 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                               style={{
                                 width:"100%",aspectRatio:"1",borderRadius:5,cursor:isGold?"pointer":"default",
                                 background:isGold?"var(--gold-400)":isTied?"var(--surface2)":"transparent",
-                                border:isPending?"2px dashed #e05050":isTied?"2px solid var(--border)":"2px solid transparent",
+                                border:isGold?"none":isPending?"2px dashed #e05050":isTied?"2px solid var(--border)":"2px solid transparent",
                                 display:"flex",alignItems:"center",justifyContent:"center",
                                 WebkitTapHighlightColor:"transparent",
                                 position:"relative",
                                 transition:"transform 0.1s",
+                                boxShadow:isGold?SKIN_SQUARE_BEZEL:undefined,
                               }}
                             />
                           </div>
@@ -2484,10 +2485,11 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                             style={{
                               width:"100%",aspectRatio:"1",borderRadius:5,cursor:isGold?"pointer":"default",
                               background:isGold?"var(--gold-400)":isTied?"var(--surface2)":"transparent",
-                              border:isPending?"2px dashed #e05050":isTied?"2px solid var(--border)":"2px solid transparent",
+                              border:isGold?"none":isPending?"2px dashed #e05050":isTied?"2px solid var(--border)":"2px solid transparent",
                               display:"flex",alignItems:"center",justifyContent:"center",
                               WebkitTapHighlightColor:"transparent",
                               transition:"transform 0.1s",
+                              boxShadow:isGold?SKIN_SQUARE_BEZEL:undefined,
                             }}
                           />
                         </div>

@@ -50,6 +50,21 @@ export const BEZEL_BTN_LIGHT =
 export const BEZEL_BTN_STRONG =
   "0 1px 2px rgba(0,0,0,0.12), 0 3px 7px -2px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(255,255,255,0.10)";
 
+// Depressed (pressed-in) bezel for tiny circular badges — the G (guest) / E
+// (early) badges on the RSVP "Field" player chips. The inverse of the raised
+// rim: a dark inset at the TOP edge + a light inset at the BOTTOM edge makes the
+// badge read as recessed/stamped into the chip. Applied inline on the badges.
+export const BADGE_DEPRESSED_BEZEL =
+  "inset 0 1px 2px rgba(0,0,0,0.45), inset 0 -1px 0 rgba(255,255,255,0.25)";
+
+// Raised bezel for the small gold skin squares in the "Skins Won" / "Live Skins"
+// grids. These are tiny saturated gold tiles that should read as physically
+// raised off the card, so we combine a soft outer drop (to lift the square off
+// the surface) with a rim inset: a bright top edge + a dark bottom edge, giving
+// the beveled/raised-key look. Applied inline on the gold cells only.
+export const SKIN_SQUARE_BEZEL =
+  "0 1px 1px rgba(0,0,0,0.10), 0 2px 4px -1px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 1px rgba(0,0,0,0.22)";
+
 // Rim overlay for DARK cards (green-900 surfaces / photos). Softer whites so the
 // highlight doesn't blow out against the dark body.
 //   radius:   corner radius to match the host card.
