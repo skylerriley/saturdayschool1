@@ -12,6 +12,12 @@ import { BEZEL_OUTER_SHADOW, BEZEL_TOGGLE_LIGHT, bezelRimOverlay } from "../lead
 // positions; week-over-week = full standings vs standings without the most
 // recent completed event).
 
+// Raised "bezel" emboss for the quick-stat numbers: a bright highlight riding
+// the top edge of each glyph + a dark shadow under the bottom edge, plus a soft
+// drop for depth — reads as if the digits are pressed up out of the surface.
+const STAT_BEZEL_SHADOW =
+  "0 1px 0 rgba(255,255,255,0.55), 0 -1px 0 rgba(0,0,0,0.30), 0 2px 4px rgba(0,0,0,0.15)";
+
 const ordinal = (n: number) => {
   const s = n % 100 >= 11 && n % 100 <= 13 ? "th" : n % 10 === 1 ? "st" : n % 10 === 2 ? "nd" : n % 10 === 3 ? "rd" : "th";
   return `${n}${s}`;
@@ -249,15 +255,15 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
       {/* Quick stats strip — equal grid columns so the middle stat sits dead-center */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", maxWidth: 300, margin: "14px auto 16px" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "var(--text-primary)" }}>{golfer.current_handicap_index?.toFixed(1) ?? "--"}</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{golfer.current_handicap_index?.toFixed(1) ?? "--"}</div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>HCP</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "var(--text-primary)" }}>{seasonRow?.rounds ?? 0}</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{seasonRow?.rounds ?? 0}</div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Rounds</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "var(--text-primary)" }}>{lastRound ? lastRound.pts : "--"}</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{lastRound ? lastRound.pts : "--"}</div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Last Pts</div>
         </div>
       </div>
