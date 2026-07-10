@@ -207,9 +207,9 @@ export function SaturdayHandicapChart({
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                 <PanelCell label="Rating / Slope" value={`${sel.courseRating.toFixed(1)} / ${sel.slopeRating}`} />
+                <PanelCell label="Tees" value={sel.teeName ? `${sel.teeName}` : "—"} />
                 <PanelCell label="Differential" value={sel.differential.toFixed(1)} />
                 <PanelCell label="Gross" value={String(sel.gross)} />
-                <PanelCell label="Adjusted Gross" value={String(sel.adjustedGross)} />
               </div>
             </div>
           )}
