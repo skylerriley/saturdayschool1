@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { calcPlayingHandicap } from "../../lib/golfMath";
 import { uniqueCourseNames, teeBoxesForCourse } from "../../lib/formatters";
 import { GlassPicker } from "../../components/common";
@@ -73,10 +74,15 @@ export function CourseHcpSheet({ golfers, courses, showSuccess }: any) {
             <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setShowModal(true)}>✉ Email Handicaps</button>
           </div>
 
-          {/* Email modal */}
-          {showModal && (
-            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 999, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setShowModal(false)}>
-              <div style={{ background: "var(--surface)", borderRadius: "var(--radius-lg) var(--radius-lg) 0 0", padding: 24, width: "100%", maxWidth: 520, maxHeight: "85vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+          {/* Email modal — portaled to <body> so it escapes the .tab-pane
+              stacking context (will-change:opacity); otherwise its z-index is
+              trapped and the sticky subtab pills paint over its top.
+              z-index sits BELOW the bottom nav (z 200) so the nav stays on top
+              and the sheet tucks underneath it; its bottom padding pushes the
+              content clear of the nav's opaque surface. */}
+          {showModal && createPortal(
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 150, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setShowModal(false)}>
+              <div style={{ background: "var(--surface)", borderRadius: "var(--radius-lg) var(--radius-lg) 0 0", padding: 24, paddingBottom: "calc(24px + 78px + var(--safe-area-bottom, 0px))", width: "100%", maxWidth: 520, maxHeight: "calc(100dvh - var(--safe-area-top, 0px) - 24px)", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
                 <div style={{ fontSize: 18, fontWeight: 700, color: "var(--green-800)", marginBottom: 4 }}>Email Course Handicaps</div>
                 <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 20 }}>{selCourseName}</div>
 
@@ -114,7 +120,8 @@ export function CourseHcpSheet({ golfers, courses, showSuccess }: any) {
 
                 <button className="btn btn-outline btn-full" style={{ marginTop: 18 }} onClick={() => setShowModal(false)}>Close</button>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
         </>
       )}
