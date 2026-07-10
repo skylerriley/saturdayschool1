@@ -200,6 +200,7 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
         onChange={setSubTab}
       />
 
+      <div key={subTab} className="settings-subtab-panel">
       {subTab==="profile"&&(
         memberGolfer?(
           <ProfileView
@@ -309,6 +310,7 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
       </div>
       </div>
       </>)}
+      </div>
     </div>
   );
 }

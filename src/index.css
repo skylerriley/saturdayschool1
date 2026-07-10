@@ -90,3 +90,16 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* Settings/Profile subtab crossfade-slide — retriggers each toggle via React key */
+@keyframes settingsSubtabSlideIn {
+  from { opacity: 0; transform: translateX(14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.settings-subtab-panel {
+  animation: settingsSubtabSlideIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-subtab-panel { animation: none; }
+}
