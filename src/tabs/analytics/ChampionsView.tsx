@@ -1,5 +1,6 @@
 // -- Season Overview Dashboard ---------------------------------
 import { dedupeLeaderboard } from "../../lib/seasonStats";
+import { BEZEL_PILL_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 // ── Champions View ────────────────────────────────────────────────────────────
 export function ChampionsView({golfers,leaderboard,events}:any){
@@ -85,7 +86,9 @@ export function ChampionsView({golfers,leaderboard,events}:any){
       </div>
 
       {rows.map(({season,seasonAvg,top15})=>(
-        <div key={season} style={{textAlign:"left",marginBottom:20,borderRadius:14,overflow:"hidden",boxShadow:"var(--shadow-md)",border:"1px solid rgba(212,168,67,0.2)"}}>
+        <div key={season} style={{marginBottom:20,borderRadius:14,boxShadow:BEZEL_PILL_SHADOW}}>
+        <div style={{position:"relative",textAlign:"left",borderRadius:14,overflow:"hidden",border:"1px solid rgba(212,168,67,0.2)"}}>
+          <div style={bezelRimOverlay("14px","pill")}/>
 
           {/* Season banner */}
           <div style={{background:"linear-gradient(135deg,var(--green-900,#1a3a1a) 0%,#0f2010 60%,#1a2e10 100%)",padding:"20px 20px 16px",position:"relative",overflow:"hidden"}}>
@@ -127,6 +130,7 @@ export function ChampionsView({golfers,leaderboard,events}:any){
             </div>
           </div>
 
+        </div>
         </div>
       ))}
     </div>

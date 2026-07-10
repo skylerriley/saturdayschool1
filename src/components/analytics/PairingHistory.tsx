@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { CountUp } from "../common";
+import { BEZEL_OUTER_SHADOW, bezelRimOverlay } from "../../tabs/leaderboard/bezelStyles";
 
 interface TrailDot {
   eventId: number;
@@ -263,7 +264,8 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
   return (
     <div style={{ marginBottom: 20 }}>
       {/* Summary card — dark green with three sub-cards */}
-      <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", padding: "16px 12px", marginBottom: 14 }}>
+      <div style={{ position: "relative", background: "linear-gradient(180deg,var(--green-800),var(--green-900))", borderRadius: "var(--radius-md)", padding: "16px 12px", marginBottom: 14, boxShadow: BEZEL_OUTER_SHADOW }}>
+        <div style={bezelRimOverlay("var(--radius-md)", "strong")} />
         {/* Title row */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>
@@ -341,7 +343,9 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
 
       {/* Pairing table */}
       {sortedPairings.filter((r) => r.timesPaired >= 1).length > 0 && (
-        <div style={{ background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", overflow: "hidden", marginBottom: 16 }}>
+        <div style={{ borderRadius: "var(--radius-md)", boxShadow: BEZEL_OUTER_SHADOW, marginBottom: 16 }}>
+        <div style={{ position: "relative", background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", overflow: "hidden" }}>
+          <div style={bezelRimOverlay("var(--radius-md)", "light")} />
           {/* Header */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 44px 54px", padding: "8px 12px", background: "var(--green-900)" }}>
             {["Player", "Times", "Pts Δ"].map((h, i) => (
@@ -387,6 +391,7 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
             );
           })}
         </div>
+        </div>
       )}
 
       {/* Never played with subsection */}
@@ -395,7 +400,9 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.5 }}>
             Active players only. &ldquo;Shared rounds&rdquo; = rounds where both were present in the field on the same day.
           </div>
-          <div style={{ background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", overflow: "hidden" }}>
+          <div style={{ borderRadius: "var(--radius-md)", boxShadow: BEZEL_OUTER_SHADOW }}>
+          <div style={{ position: "relative", background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", overflow: "hidden" }}>
+            <div style={bezelRimOverlay("var(--radius-md)", "light")} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 44px 54px", padding: "8px 12px", background: "var(--green-900)" }}>
               {["Player", "", "Shared"].map((h, i) => (
                 <div key={i} style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.06em", textTransform: "uppercase", textAlign: i > 0 ? "center" : "left", paddingLeft: i === 0 ? 4 : 0 }}>{h}</div>
@@ -425,6 +432,7 @@ export function PairingHistory({ golfer, signups, seasonEvents, leaderboard, gol
                 </div>
               </div>
             ))}
+          </div>
           </div>
         </div>
       )}

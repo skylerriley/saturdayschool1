@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { formatDate } from "../../lib/formatters";
 import { toAmericanOdds, applyVig, pickBestH2H } from "../../lib/monteCarlo";
+import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 // ============================================================
 // TONY.AI -- Golf betting savant insight component
@@ -272,7 +273,9 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
 
   return (
     <div>
-    <div style={{ marginTop: 18, background: "linear-gradient(135deg,#0f1f14,#1a2f1e)", borderRadius: "var(--radius-md)", border: "1.5px solid rgba(196,120,0,0.4)", overflow: "hidden" }}>
+    <div style={{ marginTop: 18, borderRadius: "var(--radius-md)", boxShadow: BEZEL_PILL_SHADOW }}>
+    <div style={{ position: "relative", background: "linear-gradient(135deg,#0f1f14,#1a2f1e)", borderRadius: "var(--radius-md)", border: "1.5px solid rgba(196,120,0,0.4)", overflow: "hidden" }}>
+      <div style={bezelRimOverlay("var(--radius-md)", "pill")} />
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0px 14px", borderBottom: "1px solid rgba(196,120,0,0.2)", background: "rgba(0,0,0,0.3)" }}>
         <div style={{ flexShrink: 0 }}>
@@ -367,10 +370,13 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
         </>
       )}
     </div>
+    </div>
 
     {/* ── Tony.AI Historical Record ───────────────────────────── */}
     {!hideRecord && record && (record.wins + record.losses + record.pushes > 0) && (
-      <div style={{ marginTop: 14, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+      <div style={{ marginTop: 14, borderRadius: "var(--radius-md)", boxShadow: BEZEL_OUTER_SHADOW }}>
+      <div style={{ position: "relative", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+        <div style={bezelRimOverlay("var(--radius-md)", "light")} />
         {/* Record header — tap to expand/collapse history */}
         <div
           onClick={() => setShowHistory(h => !h)}
@@ -454,6 +460,7 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
         </div>
         )}
         {showHistory}
+      </div>
       </div>
     )}
     </div>

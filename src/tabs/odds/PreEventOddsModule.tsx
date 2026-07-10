@@ -1,6 +1,7 @@
 import { useState, useRef, useLayoutEffect, useEffect, useMemo } from "react";
 import { buildProfile, calcFieldOdds, toAmericanOdds, applyVig, h2hHistory, h2hWinProb, MC_TRIALS, randNorm } from "../../lib/monteCarlo";
 import { TonyInsight } from "./TonyInsight";
+import { bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 // ── Odds chip ─────────────────────────────────────────────────────────────────
 function OddsChip({ odds }: { odds: string }) {
@@ -54,7 +55,9 @@ function GroupsView({ signups, golfers, event, ranked }: any) {
   ranked.forEach((r: any) => { probByGid[r.golfer.golfer_id] = r.prob; });
 
   return (
-    <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+    // Transparent — sits inside PreEventOddsModule's gradient card, so it must
+    // NOT paint its own opaque green-900 fill (that would hide the gradient).
+    <div style={{ background: "transparent", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
       {/* Header */}
       <div style={{ padding: "8px 20px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "left" }}>
@@ -183,7 +186,9 @@ function MatchupsView({ ranked, golfers, leaderboard, events, signups, courseNam
   };
 
   return (
-    <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+    // Transparent — sits inside PreEventOddsModule's gradient card, so it must
+    // NOT paint its own opaque green-900 fill (that would hide the gradient).
+    <div style={{ background: "transparent", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
       {/* Header */}
       <div style={{ padding: "8px 20px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
         <div style={{ fontSize: 11, textAlign: "left",fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase" }}>
@@ -460,8 +465,12 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
       `}</style>
       <div className="card-title" style={{ marginBottom: 10 }}>Event Odds</div>
 
-      {/* Odds view nav — rendered on dark background */}
-      <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 4 }}>
+      {/* Odds view nav — rendered on dark background. Dark cards get their
+          raised "bezel" look from a subtle top→bottom surface gradient (lighter
+          top, darker bottom) plus the inset rim — no drop shadow needed, since
+          a shadow adds no contrast against the dark background. */}
+      <div style={{ position: "relative", background: "linear-gradient(180deg, var(--green-800), var(--green-900))", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 4 }}>
+        <div style={bezelRimOverlay("var(--radius-md)", "strong")} />
         <div style={{ padding: "14px 14px 0" }}>
           <OddsViewNav view={oddsView} setView={(v) => {
             const mc = document.querySelector(".main-content") as HTMLElement | null;

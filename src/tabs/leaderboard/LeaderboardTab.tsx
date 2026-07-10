@@ -13,6 +13,7 @@ import { UpcomingCourseCard } from "./UpcomingCourseCard";
 import { ensureShimmer } from "../../components/weather/WeatherSkeleton";
 import { useCachedImage, prefetchImages } from "../../lib/imageCache";
 import { FieldStrengthMeter } from "./FieldStrengthMeter";
+import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, bezelRimOverlay } from "./bezelStyles";
 import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
 import { WinProbabilityChart } from "../../WinProbabilityChart";
@@ -1524,7 +1525,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             {/* Event header -- tappable to open weather */}
             <div
               onClick={()=>setShowWeatherModal(true)}
-              style={{background:"linear-gradient(135deg,var(--green-900),var(--green-700))",borderRadius:"var(--radius-md)",padding:"12px 16px",color:"white",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+              style={{position:"relative",background:"linear-gradient(135deg,var(--green-900),var(--green-700))",borderRadius:"var(--radius-md)",padding:"12px 16px",color:"white",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",WebkitTapHighlightColor:"transparent",boxShadow:BEZEL_PILL_SHADOW}}>
+              <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
               <div>
                 <div style={{fontSize:11,letterSpacing:"0.1em",textTransform:"uppercase",opacity:0.8,display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
                   <span className="live-dot" style={{background:"#ff6b6b"}}/>Scoring in Progress 
@@ -1580,7 +1582,9 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             )}
 
             {finalRows.length>0&&(
-              <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
+              <div style={{borderRadius:"var(--radius-md)",boxShadow:BEZEL_OUTER_SHADOW}}>
+              <div style={{position:"relative",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
+                <div style={bezelRimOverlay("var(--radius-md)","light")}/>
                 <div style={{display:"grid",gridTemplateColumns:"44px 1fr 56px 52px",padding:"8px 12px",background:"var(--green-900)"}}>
                   <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase"}}>POS</div>
                   <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textAlign:"left",marginLeft:5,textTransform:"uppercase"}}>Golfer</div>
@@ -1821,6 +1825,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   );
                 })()}
               </div>
+              </div>
             )}
             {/* ── Live skins board ── */}
             {liveSkinsEligible&&(()=>{
@@ -1852,7 +1857,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
               return(
                 <div style={{marginTop:14,marginBottom:4}}>
-                  <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",padding:"14px 12px",boxShadow:"var(--shadow-sm)"}}>
+                  <div style={{position:"relative",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",padding:"14px 12px",boxShadow:BEZEL_OUTER_SHADOW}}>
+                    <div style={bezelRimOverlay("var(--radius-md)","light")}/>
                     <div className="card-title" style={{marginBottom:10}}>Live Skins</div>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:6}}>
                       {holeState.map((state,i)=>{
@@ -1949,7 +1955,9 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                 <div style={{marginTop:14}}>
                   <div className="card-title" style={{marginBottom:6}}>Live Odds</div>
                   {/* Odds board — same 4-col grid as OddsTab */}
-                  <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",overflow:"hidden",marginBottom:4}}>
+                  <div style={{borderRadius:"var(--radius-md)",boxShadow:BEZEL_PILL_SHADOW,marginBottom:4}}>
+                  <div style={{position:"relative",background:"linear-gradient(180deg,var(--green-800),var(--green-900))",borderRadius:"var(--radius-md)",overflow:"hidden"}}>
+                    <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 60px 65px 60px",padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
                       <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase"}}>Golfer</div>
                       <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"center"}}>Proj</div>
@@ -1982,6 +1990,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                         </div>
                       );
                     })}
+                  </div>
                   </div>
                 </div>
               );
@@ -2020,7 +2029,9 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             )}
 
             {rows.length>0&&(
-              <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)",marginBottom:14}}>
+              <div style={{borderRadius:"var(--radius-md)",boxShadow:BEZEL_OUTER_SHADOW,marginBottom:14}}>
+              <div style={{position:"relative",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
+                <div style={bezelRimOverlay()}/>
                 <div style={{display:"grid",gridTemplateColumns:"44px 1fr 56px 52px",padding:"8px 12px",background:"var(--green-900)"}}>
                   <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase"}}>RANK</div>
                   <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textAlign:"left",marginLeft:5,textTransform:"uppercase"}}>Golfer</div>
@@ -2057,6 +2068,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     </div>
                   );
                 })}
+              </div>
               </div>
             )}
 
@@ -2342,7 +2354,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
                   {/* AI event recap -- rendered only when available; no spinner/placeholder */}
                   {displayEvent?.ai_event_summary&&(
-                    <div style={{marginBottom:14,padding:"14px 16px",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",boxShadow:"var(--shadow-sm)"}}>
+                    <div style={{position:"relative",marginBottom:14,padding:"14px 16px",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",boxShadow:BEZEL_OUTER_SHADOW}}>
+                      <div style={bezelRimOverlay("var(--radius-md)","light")}/>
                       <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
                         <Sparkles size={11} fill="currentColor" style={{color:"var(--text-muted)",flexShrink:0}}/>
                         <div style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.08em",textTransform:"uppercase"}}>EVENT SUMMARY</div>
@@ -2392,7 +2405,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             const wSkinsWonCount=wHoleState.filter(s=>typeof s==="number").length;
             return(
               <div style={{marginBottom:14}}>
-                <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",padding:"14px 12px",boxShadow:"var(--shadow-sm)"}}>
+                <div style={{position:"relative",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",padding:"14px 12px",boxShadow:BEZEL_OUTER_SHADOW}}>
+                  <div style={bezelRimOverlay("var(--radius-md)","light")}/>
                   <div className="card-title" style={{marginBottom:10,textAlign:"center"}}>Skins Won ({wSkinsWonCount})</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:6}}>
                     {wHoleState.map((state,i)=>{
@@ -2458,7 +2472,9 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               </div>
             );
           })()}
-                  <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
+                  <div style={{borderRadius:"var(--radius-md)",boxShadow:BEZEL_OUTER_SHADOW}}>
+                  <div style={{position:"relative",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
+            <div style={bezelRimOverlay("var(--radius-md)","light")}/>
             <div className="lb-header" style={{gridTemplateColumns:"36px 1fr 56px 62px"}}>
               <div className="lb-header-cell">POS</div><div className="lb-header-cell">Golfer</div>
               <div className="lb-header-cell right">Pts</div><div className="lb-header-cell right">$$$</div>
@@ -2468,6 +2484,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                 {renderLbRow(entry,"weekly")}
               </div>
             ))}
+          </div>
           </div>
 
           {adminMode&&eventEntries.length>=2&&(()=>{
@@ -2822,7 +2839,8 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
   const totalHoles=holeStats.length;
   if(totalHoles===0){
     return(
-      <div style={{marginTop:16,padding:"18px 16px",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",textAlign:"center",color:"var(--text-muted)",fontSize:14}}>
+      <div style={{position:"relative",marginTop:16,padding:"18px 16px",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",textAlign:"center",color:"var(--text-muted)",fontSize:14,boxShadow:BEZEL_OUTER_SHADOW}}>
+        <div style={bezelRimOverlay("var(--radius-md)","light")}/>
         📊 Course stats will appear after hole-by-hole scores are entered
       </div>
     );
@@ -3035,7 +3053,9 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
 
       {/* ── Hole Stats table ── */}
       {view==="stats"&&(
-        <div style={{overflowX:"auto",overflowY:"auto",maxHeight:500,WebkitOverflowScrolling:"touch",borderRadius:"var(--radius-md)",marginTop:23,overscrollBehavior:"none",marginBottom:20,border:"1px solid var(--border)",boxShadow:"var(--shadow-sm)"}}>
+        <div style={{position:"relative",borderRadius:"var(--radius-md)",marginTop:23,marginBottom:20,border:"1px solid var(--border)",boxShadow:BEZEL_OUTER_SHADOW,overflow:"hidden"}}>
+        <div style={{...bezelRimOverlay("var(--radius-md)","light"),zIndex:20}}/>
+        <div style={{overflowX:"auto",overflowY:"auto",maxHeight:500,WebkitOverflowScrolling:"touch",borderRadius:"var(--radius-md)",overscrollBehavior:"none"}}>
           <table style={{borderCollapse:"collapse",fontSize:13,width:"100%",minWidth:520,background:"var(--surface)"}}>
             <colgroup>
               <col style={{width:52,minWidth:52}}/>
@@ -3072,6 +3092,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
               })}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 

@@ -9,6 +9,7 @@ import { ChartCanvas } from "./ChartCanvas";
 import { PairingHistory } from "../../components/analytics/PairingHistory";
 import { Chart as ChartJS } from "chart.js";
 import { buildSeasonRounds } from "../../lib/seasonStats";
+import { BEZEL_OUTER_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 function RoundScrubber({config,deps,height=160,rounds,winFlags,avgPtsSpanRef,subLabelRef,baseAvg}:{
   config:object,deps:any[],height:number,
@@ -572,11 +573,14 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
         <>
           {/* Rank stat triple card + stats all inside one green card */}
           <div style={{
-            background:"var(--green-900)",
+            position:"relative",
+            background:"linear-gradient(180deg,var(--green-800),var(--green-900))",
             borderRadius:"var(--radius-md)",
             padding:"16px 12px",
             marginBottom:14,
+            boxShadow:BEZEL_OUTER_SHADOW,
           }}>
+            <div style={bezelRimOverlay("var(--radius-md)","strong")}/>
             {/* 3-column rank grid — center column is visually dominant */}
             <div style={{
               display:"grid",
@@ -816,15 +820,19 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                   transition:"transform 0.6s cubic-bezier(0.4,0,0.2,1)",
                   transformStyle:"preserve-3d",
                   transform:fingerprintFlipped?"rotateY(180deg)":"rotateY(0deg)",
+                  boxShadow:BEZEL_OUTER_SHADOW,
+                  borderRadius:"var(--radius-md)",
                 }}>
                   {/* Front face */}
                   <div style={{
-                    background:"var(--green-900)",
+                    position:"relative",
+                    background:"linear-gradient(180deg,var(--green-800),var(--green-900))",
                     borderRadius:"var(--radius-md)",
                     padding:16,
                     backfaceVisibility:"hidden",
                     WebkitBackfaceVisibility:"hidden",
                   }}>
+                    <div style={bezelRimOverlay("var(--radius-md)","strong")}/>
                     <div style={{fontSize:14,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",fontWeight:700,marginBottom:10}}>
                       Scoring fingerprint
                     </div>
@@ -857,7 +865,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                     <div style={{
                       position:"absolute",
                       top:0,left:0,right:0,bottom:0,
-                      background:"var(--green-900)",
+                      background:"linear-gradient(180deg,var(--green-800),var(--green-900))",
                       borderRadius:"var(--radius-md)",
                       backfaceVisibility:"hidden",
                       WebkitBackfaceVisibility:"hidden",
@@ -866,6 +874,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                       alignItems:"center",
                       justifyContent:"center",
                     }}>
+                      <div style={bezelRimOverlay("var(--radius-md)","strong")}/>
                       <img
                         src={isSkyler?"/swingtest.gif":"/gregswing.gif"}
                         alt={isSkyler?"Skyler Riley swing":"Greg Levy swing"}
@@ -895,7 +904,8 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
         <>
           {/* Avg score summary */}
           {grossAvgStats.hasData&&(
-            <div style={{marginBottom:16,background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px"}}>
+            <div style={{position:"relative",marginBottom:16,background:"linear-gradient(180deg,var(--green-800),var(--green-900))",borderRadius:"var(--radius-md)",padding:"16px 12px",boxShadow:BEZEL_OUTER_SHADOW}}>
+              <div style={bezelRimOverlay("var(--radius-md)","strong")}/>
               <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",marginBottom:14}}>Avg Scores</div>
 
               {/* Donut + flanking stats */}
@@ -1051,7 +1061,8 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
             return(
               <div style={{marginBottom:20}}>
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:0}}/>
-                <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px 12px"}}>
+                <div style={{position:"relative",background:"linear-gradient(180deg,var(--green-800),var(--green-900))",borderRadius:"var(--radius-md)",padding:"16px 12px 12px",boxShadow:BEZEL_OUTER_SHADOW}}>
+                  <div style={bezelRimOverlay("var(--radius-md)","strong")}/>
                   <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",marginBottom:14}}>Scoring by Distance</div>
                   <style>{`
                     @keyframes dist-bar-rise {
@@ -1111,7 +1122,8 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
           })()}
 
           {/* Round history chart */}
-          <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"14px 0 12px",marginBottom:16}}>
+          <div style={{position:"relative",background:"linear-gradient(180deg,var(--green-800),var(--green-900))",borderRadius:"var(--radius-md)",padding:"14px 0 12px",marginBottom:16,boxShadow:BEZEL_OUTER_SHADOW}}>
+            <div style={bezelRimOverlay("var(--radius-md)","strong")}/>
             {/* Header */}
             <div style={{display:"flex",alignItems:"center",padding:"0 14px",marginBottom:4}}>
               <div style={{flex:1}}/>
@@ -1233,7 +1245,8 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
 
             return(
               <div style={{marginBottom:16}}>
-                <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px 12px 14px"}}>
+                <div style={{position:"relative",background:"linear-gradient(180deg,var(--green-800),var(--green-900))",borderRadius:"var(--radius-md)",padding:"16px 12px 14px",boxShadow:BEZEL_OUTER_SHADOW}}>
+                  <div style={bezelRimOverlay("var(--radius-md)","strong")}/>
                   <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.5)",marginBottom:12}}>Hole Streaks</div>
 
                   <div style={{marginBottom:32,display:"flex",justifyContent:"center"}}>
@@ -1406,12 +1419,17 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
               <div style={{marginBottom:16}}>
                 {/* Title */}
                 <div className="card-title" style={{marginBottom:8}}>Points Gained</div>
+                {/* Wrapper carries the drop shadow — the card's overflow:hidden
+                    (for the rounded table clip) would otherwise crop it. */}
+                <div style={{borderRadius:"var(--radius-md)",boxShadow:BEZEL_OUTER_SHADOW}}>
                 <div style={{
-                  background:"var(--green-900)",
+                  position:"relative",
+                  background:"linear-gradient(180deg,var(--green-800),var(--green-900))",
                   borderRadius:"var(--radius-md)",
                   overflow:"hidden",
                   border:"1px solid rgba(255,255,255,0.08)",
                 }}>
+                  <div style={bezelRimOverlay("var(--radius-md)","strong")}/>
                   {/* Header */}
                   <div style={{
                     display:"grid",
@@ -1517,6 +1535,7 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                     Pts gained vs. field avg · guests excluded
                   </div>
                 </div>
+                </div>
               </div>
             );
           })()}
@@ -1525,7 +1544,9 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
           {courseBreakdown.length>0&&(
             <div style={{marginTop:8,marginBottom:16}}>
               <div className="card-title" style={{marginBottom:8}}>Performance by Course</div>
-              <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden",boxShadow:"var(--shadow-sm)"}}>
+              <div style={{borderRadius:"var(--radius-md)",boxShadow:BEZEL_OUTER_SHADOW}}>
+              <div style={{position:"relative",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
+                <div style={bezelRimOverlay("var(--radius-md)","light")}/>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 48px 64px 72px",padding:"8px 12px",background:"var(--green-900)"}}>
                   {["Course","Rds","Avg Pts","Avg Finish"].map((h:string,i:number)=>(
                     <div key={i} style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.06em",textTransform:"uppercase",textAlign:i>0?"center":"left"}}>{h}</div>
@@ -1542,12 +1563,14 @@ export function GolferHistoryChart({golfer,rounds,leaderboard,golfers,seasonEven
                   </div>
                 ))}
               </div>
+              </div>
             </div>
           )}
 
           {/* Per-round list */}
           <div className="card-title" style={{marginBottom:8}}>Round-by-Round</div>
-          <div style={{background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",boxShadow:"var(--shadow-sm)"}}>
+          <div style={{position:"relative",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",boxShadow:BEZEL_OUTER_SHADOW}}>
+            <div style={{...bezelRimOverlay("var(--radius-md)","light"),zIndex:5}}/>
             <div style={{display:"grid",gridTemplateColumns:"1fr 48px 64px 52px",background:"var(--green-900)",padding:"9px 10px",borderRadius:"var(--radius-md) var(--radius-md) 0 0"}}>
               <div style={{color:"var(--gold-300)",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Date / Course</div>
               <div style={{color:"var(--gold-300)",fontSize:12,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",textAlign:"center"}}>Pts</div>

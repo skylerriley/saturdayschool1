@@ -4,6 +4,7 @@ import { CountUp } from "../../components/common";
 import { formatDate } from "../../lib/formatters";
 import { dedupeLeaderboard } from "../../lib/seasonStats";
 import { ChartCanvas } from "./ChartCanvas";
+import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale,
@@ -822,13 +823,16 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
       {/* ── Charity Total — full-width gold card ───────────── */}
       {seasonCharity>0&&(
         <div style={{
-          background:"var(--gold-500)",
+          position:"relative",
+          background:"linear-gradient(180deg,var(--gold-400),var(--gold-500))",
           borderRadius:"var(--radius-md)",
           padding:"16px 18px",
           marginBottom:16,
           color:"var(--green-900)",
           textAlign:"center",
+          boxShadow:BEZEL_PILL_SHADOW,
         }}>
+          <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
           <div style={{fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:700,opacity:0.6,marginBottom:4}}>Tzedakah Collected</div>
           <div style={{fontSize:42,fontWeight:700,lineHeight:1,fontVariantNumeric:"tabular-nums",marginBottom:6}}>
             <SlotCounter value={seasonCharity} fontSize={42} color="var(--green-900)" />
@@ -841,7 +845,8 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
 
         {/* Events Played */}
-        <div className="stat-card" style={{textAlign:"center"}}>
+        <div className="stat-card" style={{textAlign:"center",position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+          <div style={bezelRimOverlay("var(--radius-md)","light")}/>
           <div className="stat-value" style={{color:"var(--green-700)",fontVariantNumeric:"tabular-nums"}}>
             <CountUp value={seasonEvents.length}/>
           </div>
@@ -851,7 +856,8 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
         </div>
 
         {/* Total Rounds */}
-        <div className="stat-card" style={{textAlign:"center"}}>
+        <div className="stat-card" style={{textAlign:"center",position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+          <div style={bezelRimOverlay("var(--radius-md)","light")}/>
           <div className="stat-value"><CountUp value={totalRounds}/></div>
           <div className="stat-label">Total Rounds</div>
           {eventsPlayed>0&&(
@@ -877,7 +883,8 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
       {/* ── Hero highlight cards ────────────────────────────── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
         {highScorer&&(
-          <div style={{background:"linear-gradient(135deg,var(--gold-900),var(--gold-700))",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center",color:"white"}}>
+          <div style={{position:"relative",background:"linear-gradient(135deg,var(--gold-900),var(--gold-700))",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center",color:"white",boxShadow:BEZEL_PILL_SHADOW}}>
+            <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
             <div style={{display:"flex",justifyContent:"center",marginBottom:2}}><Trophy size={22} strokeWidth={2}/></div>
             <div style={{fontSize:11,letterSpacing:"0.08em",textTransform:"uppercase",opacity:0.8,marginTop:2}}>High Score</div>
             <div style={{fontSize:16,fontWeight:700,marginTop:4}}>{highScorer.golfer.first_name}</div>
@@ -885,7 +892,8 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
           </div>
         )}
         {earningsLeader&&earningsLeader.earned>0&&(
-          <div style={{background:"linear-gradient(135deg,var(--earth-800),var(--earth-700))",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center",color:"white"}}>
+          <div style={{position:"relative",background:"linear-gradient(135deg,var(--earth-800),var(--earth-700))",borderRadius:"var(--radius-md)",padding:"14px 12px",textAlign:"center",color:"white",boxShadow:BEZEL_PILL_SHADOW}}>
+            <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
             <div style={{display:"flex",justifyContent:"center",marginBottom:2}}><Banknote size={22} strokeWidth={2}/></div>
             <div style={{fontSize:11,letterSpacing:"0.08em",textTransform:"uppercase",opacity:0.8,marginTop:2}}>Earnings Leader</div>
             <div style={{fontSize:16,fontWeight:700,marginTop:4}}>{earningsLeader.golfer.first_name}</div>
@@ -896,14 +904,17 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
 
       {/* ── Win Leader — full-width dark hero ──────────────── */}
       {winLeader&&winLeader.wins>0&&(
+        // Wrapper carries the drop shadow — the inner card's overflow:hidden
+        // (needed to clip the background trophy texture) would otherwise crop it.
+        <div style={{borderRadius:"var(--radius-md)",boxShadow:BEZEL_PILL_SHADOW,marginBottom:16}}>
         <div style={{
           position:"relative",overflow:"hidden",
-          background:"var(--green-900)",
+          background:"linear-gradient(180deg,var(--green-800),var(--green-900))",
           borderRadius:"var(--radius-md)",
           padding:"16px 14px 14px",
-          marginBottom:16,
           color:"white",
         }}>
+          <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
           {/* Background trophy texture */}
           <div style={{
             position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",
@@ -970,11 +981,13 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
             </div>
           </div>
         </div>
+        </div>
       )}
 
       {/* ── Field Scoring Trend — stock ticker style ─────── */}
       {eventTrend.length>1&&(
-        <div className="card" style={{marginBottom:12}}>
+        <div className="card" style={{marginBottom:12,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+          <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
           <div className="card-title" style={{marginBottom:6}}>Field Scoring Trend</div>
           <div style={{display:"flex",alignItems:"flex-end",gap:10,marginBottom:2}}>
             {/* avgSpanRef is written directly by TrendScrubber's tween — no React re-render per tick */}
@@ -1050,19 +1063,22 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
         </div>
       )}
       {eventTrend.length<=1&&currentSeasonTrend.length>1&&(
-        <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14}}>
+        <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+          <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
           No events match this time window — try a wider band.
         </div>
       )}
       {currentSeasonTrend.length<=1&&seasonEvents.length>0&&(
-        <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14}}>
+        <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+          <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
           Scoring trend chart will appear once 2+ events are completed this season.
         </div>
       )}
 
       {/* ── Wins & 2nd Place — HTML div bars ─────────────── */}
       {winData.length>0&&(
-        <div className="card" style={{marginBottom:12}}>
+        <div className="card" style={{marginBottom:12,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+          <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
           <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:10}}>
             <div style={{fontSize:13,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase",color:"var(--green-700)",flex:1}}>
               Wins &amp; 2nd Place
@@ -1104,14 +1120,16 @@ export function SeasonOverview({seasonData,seasonEvents,season,leaderboard,golfe
         </div>
       )}
       {winData.length===0&&seasonEvents.length>0&&(
-        <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14}}>
+        <div className="card" style={{marginBottom:12,textAlign:"center",padding:"20px",color:"var(--text-muted)",fontSize:14,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+          <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
           Win tallies will appear once scoring is entered for this season.
         </div>
       )}
 
       {/* ── Form Heatmap ─────────────────────────────────── */}
       {seasonEvents.length>0&&(
-        <div className="card" style={{marginBottom:12,marginTop:20,padding:"12px 8px"}}>
+        <div className="card" style={{marginBottom:12,marginTop:20,padding:"12px 8px",position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+          <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
           <div style={{fontSize:13,fontWeight:600,color:"var(--green-700)",letterSpacing:"0.05em",marginBottom:10,textTransform:"uppercase"}}>Form Heatmap</div>
           <FormHeatmap seasonEvents={seasonEvents} leaderboard={leaderboard} golfers={golfers} season={season}/>
         </div>

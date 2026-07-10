@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { SUPABASE_URL, SUPABASE_KEY, VAPID_PUBLIC_KEY } from "../../lib/supabaseClient";
 import { ToggleGroup } from "../../components/common";
 import { ProfileView } from "./ProfileView";
+import { BEZEL_OUTER_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 function PushNotificationButton(){
   const [state,setState]=useState<"idle"|"requesting"|"granted"|"denied"|"unsupported">("idle");
@@ -215,7 +216,8 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
             onNavigateAnalytics={onNavigateAnalytics}
           />
         ):(
-          <div className="card" style={{padding:24,textAlign:"center"}}>
+          <div className="card" style={{padding:24,textAlign:"center",position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+            <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
             <div style={{fontSize:15,fontWeight:700,marginBottom:6}}>No profile selected</div>
             <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:14,lineHeight:1.6}}>Pick your name to see your standings, last round, and next event at a glance.</p>
             <select
@@ -233,7 +235,8 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
       )}
 
       {subTab==="settings"&&(<>
-      <div className="card" style={{padding:20,marginBottom:16}}>
+      <div className="card" style={{padding:20,marginBottom:16,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+        <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
         <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>Your Profile</div>
         <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:12,lineHeight:1.6}}>
           Pick your name to get a personal greeting and have your rows highlighted on leaderboards and sign-up lists.
@@ -254,14 +257,17 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
           </div>
         )}
       </div>
-      <div className="card" style={{padding:20,marginBottom:16}}>
+      <div className="card" style={{padding:20,marginBottom:16,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+        <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
         <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>Push Notifications</div>
         <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:16,lineHeight:1.6}}>
           Enable notifications to get alerts when pairings are set, scoring starts, and results are in.
         </p>
         <PushNotificationButton/>
       </div>
-      <div className="card" style={{padding:0,overflow:"hidden"}}>
+      <div style={{borderRadius:"var(--radius-lg)",boxShadow:BEZEL_OUTER_SHADOW}}>
+      <div className="card" style={{padding:0,overflow:"hidden",position:"relative",boxShadow:"none",marginBottom:0}}>
+        <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
         <button
           onClick={()=>setChangelogOpen(o=>!o)}
           style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 20px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}
@@ -298,6 +304,7 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
             ))}
           </div>
         )}
+      </div>
       </div>
       </>)}
     </div>

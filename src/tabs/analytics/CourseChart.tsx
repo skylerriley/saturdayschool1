@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { CountUp } from "../../components/common";
+import { BEZEL_PILL_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 // Sparkline for a course: small canvas showing round-by-round avg trend
 function Sparkline({data,color="#7dc07d",height=44,reveal=false}:{data:number[],color?:string,height?:number,reveal?:boolean}){
@@ -175,7 +176,8 @@ export function CourseChart({courseAvgs,holeScores,events,courses,leaderboard,go
 
   return(
     <div>
-      <div style={{background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px",marginBottom:20}}>
+      <div style={{position:"relative",background:"linear-gradient(180deg,var(--green-800),var(--green-900))",borderRadius:"var(--radius-md)",padding:"16px",marginBottom:20,boxShadow:BEZEL_PILL_SHADOW}}>
+        <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
         <div className="card-title" style={{marginBottom:12,color:"#fff"}}>Stableford Averages by Course</div>
 
         {/* Hero tiles — side by side, dark */}

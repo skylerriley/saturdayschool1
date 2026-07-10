@@ -18,11 +18,14 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { computeGolferSaturdayHandicap } from "../lib/saturdayHandicapData";
+import { BEZEL_OUTER_SHADOW, bezelRimOverlay } from "../tabs/leaderboard/bezelStyles";
 
 // -- Design tokens resolved to hex (see App.tsx CSS block) --------------------
 const GOLD = "#e09400";        // --gold-500  : counts toward handicap
 const GREEN = "#5cc98a";       // --green-300 : other rounds (readable on dark)
 const CARD_BG = "#0a2e1a";     // --green-900 : card background (matches fingerprint)
+// iOS-widget bezel: lighter-top → CARD_BG gradient so the dark card reads raised.
+const CARD_GRAD = `linear-gradient(180deg, #12432a, ${CARD_BG})`;
 const TEXT_ON_DARK = "#ffffff";
 const TEXT_MUTED_DARK = "rgba(255,255,255,0.5)";
 
@@ -110,12 +113,15 @@ export function SaturdayHandicapChart({
   return (
     <div
       style={{
-        background: CARD_BG,
+        position: "relative",
+        background: CARD_GRAD,
         borderRadius: "var(--radius-md)",
         padding: 16,
         marginBottom: 16,
+        boxShadow: BEZEL_OUTER_SHADOW,
       }}
     >
+      <div style={bezelRimOverlay("var(--radius-md)", "strong")} />
       {/* Header: title top-left, big index metric top-right */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
         <div style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: TEXT_MUTED_DARK, fontWeight: 700 }}>

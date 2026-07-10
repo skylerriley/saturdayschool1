@@ -10,6 +10,7 @@ import {
   buildHoleHistory, holeWeightedAvg,
 } from "../../lib/monteCarlo";
 import { TonyInsight } from "./TonyInsight";
+import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 // ------------------------------------------------------------------
 // ODDS TAB COMPONENT
@@ -302,7 +303,9 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
               )}
 
               {/* Odds board */}
-              <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 4 }}>
+              <div style={{ borderRadius: "var(--radius-md)", boxShadow: BEZEL_PILL_SHADOW, marginBottom: 4 }}>
+              <div style={{ position: "relative", background: "linear-gradient(180deg,var(--green-800),var(--green-900))", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                <div style={bezelRimOverlay("var(--radius-md)", "pill")} />
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 60px 65px 60px", padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase" }}>Golfer</div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.07em", textTransform: "uppercase", textAlign: "center" }}>Proj</div>
@@ -348,6 +351,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                     </div>
                   );
                 })}
+              </div>
               </div>
 
               {noHistoryGolfers.length > 0 && (
@@ -418,7 +422,9 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
             return (
               <div>
                 {/* H2H matchup card */}
-                <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 16 }}>
+                <div style={{ borderRadius: "var(--radius-md)", boxShadow: BEZEL_PILL_SHADOW, marginBottom: 16 }}>
+                <div style={{ position: "relative", background: "linear-gradient(180deg,var(--green-800),var(--green-900))", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                  <div style={bezelRimOverlay("var(--radius-md)", "pill")} />
                   <div style={{ padding: "12px 16px", textAlign: "center", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
                     <div style={{ fontSize: 12, color: "var(--gold-300)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Head-to-Head · {selEvent ? formatDate(selEvent.date) : "All Time"}</div>
                     <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>{h2hShared.length} shared events · {courseName}</div>
@@ -473,9 +479,12 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                     </div>
                   </div>
                 </div>
+                </div>
 
                 {/* Side-by-side stat comparison */}
-                <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 16 }}>
+                <div style={{ borderRadius: "var(--radius-md)", boxShadow: BEZEL_PILL_SHADOW, marginBottom: 16 }}>
+                <div style={{ position: "relative", background: "linear-gradient(180deg,var(--green-800),var(--green-900))", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                  <div style={bezelRimOverlay("var(--radius-md)", "pill")} />
                   <div style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", fontWeight: 700, padding: "12px 14px 8px" }}>
                     Stat Comparison
                   </div>
@@ -534,6 +543,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                     );
                   })}
                 </div>
+                </div>
 
                 {/* Scoring Fingerprint overlay -- tactical matchup shape */}
                 {(() => {
@@ -541,7 +551,8 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                   const fpA = computeScoringFingerprint(gA.golfer_id, h2hSeasonEvents, leaderboard, holeScores || [], courses, signups);
                   const fpB = computeScoringFingerprint(gB.golfer_id, h2hSeasonEvents, leaderboard, holeScores || [], courses, signups);
                   return (
-                    <div style={{ background: "var(--green-900)", borderRadius: "var(--radius-md)", padding: 16, marginBottom: 16 }}>
+                    <div style={{ position: "relative", background: "linear-gradient(180deg,var(--green-800),var(--green-900))", borderRadius: "var(--radius-md)", padding: 16, marginBottom: 16, boxShadow: BEZEL_PILL_SHADOW }}>
+                      <div style={bezelRimOverlay("var(--radius-md)", "pill")} />
                       <div style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", fontWeight: 700, marginBottom: 10 }}>
                         Scoring Fingerprint
                       </div>
@@ -570,7 +581,9 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                 {h2hShared.length > 0 && (
                   <>
                     <div className="card-title" style={{ marginBottom: 8 }}>Head-to-Head History</div>
-                    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12, boxShadow: "var(--shadow-sm)" }}>
+                    <div style={{ borderRadius: "var(--radius-md)", boxShadow: BEZEL_OUTER_SHADOW, marginBottom: 12 }}>
+                    <div style={{ position: "relative", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                      <div style={bezelRimOverlay("var(--radius-md)", "light")} />
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 40px 40px 40px", padding: "7px 12px", background: "var(--green-900)", gap: 4 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Date</div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold-300)", textAlign: "center" }}>{gA.first_name}</div>
@@ -590,6 +603,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
                           </div>
                         );
                       })}
+                    </div>
                     </div>
                     {(() => {
                       let wA = 0, wB = 0, ties = 0;

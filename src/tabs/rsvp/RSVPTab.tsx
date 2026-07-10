@@ -9,6 +9,7 @@ import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
 import { WeatherAmbience, getWeatherCardBg } from "../../components/WeatherAmbience";
 import { useWeatherReady } from "../../hooks/useWeatherReady";
+import { BEZEL_OUTER_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 const swipeEarlyStyles = `
 .rsvp-swipe-outer {
@@ -471,7 +472,8 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
       {/* Event summary card -- status, tee times, and inline weather row */}
       {selEvent&&(
-        <div ref={cardRef} className="card" style={{padding:"12px 16px",marginBottom:16}}>
+        <div ref={cardRef} className="card" style={{padding:"12px 16px",marginBottom:16,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+          <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
             <div style={{fontWeight:700,fontSize:17}}>{shortCourseName(selEvent.course_name)}</div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>

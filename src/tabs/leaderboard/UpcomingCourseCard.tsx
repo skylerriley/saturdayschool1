@@ -40,7 +40,21 @@ export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldC
   const wxReady = useWeatherReady(wx);
 
   return (
-    <div onClick={onClick} style={{ position: "relative", borderRadius: "var(--radius-lg, 16px)", overflow: "hidden", marginBottom: 14, minHeight: 160, background: "linear-gradient(135deg,var(--green-900),var(--green-700))", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+   <div style={{
+     borderRadius: "var(--radius-lg, 16px)",
+     marginBottom: 14,
+     // iOS-widget bezel — matches FieldStrengthMeter. Lives on this wrapper
+     // (not the image container below) because the inner div's overflow:hidden,
+     // needed to clip the photo to the rounded corners, would otherwise crop
+     // the outer drop shadow. Negative spread keeps the shadow from bleeding
+     // into .main-content's overflow-x:clip gutter and slicing a hard edge.
+     boxShadow: [
+       "0 1px 1px rgba(0,0,0,0.04)",
+       "0 4px 8px -2px rgba(0,0,0,0.10)",
+       "0 8px 16px -6px rgba(0,0,0,0.10)",
+     ].join(", "),
+   }}>
+    <div onClick={onClick} style={{ position: "relative", borderRadius: "var(--radius-lg, 16px)", overflow: "hidden", minHeight: 160, background: "linear-gradient(135deg,var(--green-900),var(--green-700))", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       {/* Shimmer placeholder — visible until the photo decodes */}
       {imgUrl && !imgLoaded && (
         <div className="wx-skel" style={{ position: "absolute", inset: 0, borderRadius: 0 }} />
@@ -105,6 +119,15 @@ export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldC
           </span>
         </div>
       </div>
+      {/* Bezel rim — top-most overlay so the highlight/shadow edge paints above
+          the photo and its gradient (both inset:0), instead of being covered by
+          them. Non-interactive so it never eats the card's onClick. */}
+      <div style={{
+        position: "absolute", inset: 0, zIndex: 3, pointerEvents: "none",
+        borderRadius: "var(--radius-lg, 16px)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(0,0,0,0.35)",
+      }} />
     </div>
+   </div>
   );
 }

@@ -756,7 +756,7 @@ const CSS = `
   .stat-label{font-size:15px;color:var(--text-muted);font-weight:500;}
 
   /* ── TOGGLE ── */
-  .toggle-group{display:flex;background:var(--earth-100);border-radius:var(--radius-md);padding:3px;margin-bottom:16px;}
+  .toggle-group{display:flex;background:var(--earth-100);border-radius:var(--radius-md);padding:3px;margin-bottom:16px;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
   .toggle-btn{flex:1;padding:10px;border:none;border-radius:var(--radius-sm);background:transparent;font-size:14px;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all 0.2s;}
   .toggle-btn.active{background:var(--green-800);color:white;box-shadow:var(--shadow-sm);}
 
@@ -766,7 +766,7 @@ const CSS = `
   .toggle-group.has-pill .toggle-btn.active{background:transparent;box-shadow:none;color:white;}
   .toggle-group.has-pill .toggle-btn:active{transform:scale(0.97);}
   .toggle-group.has-pill .toggle-btn.active .tg-label{display:inline-block;animation:tg-pop 0.32s cubic-bezier(0.33,1.0,0.55,1);}
-  .toggle-pill{position:absolute;top:3px;bottom:3px;left:0;z-index:0;border-radius:var(--radius-sm);background:var(--green-800);box-shadow:var(--shadow-sm);}
+  .toggle-pill{position:absolute;top:3px;bottom:3px;left:0;z-index:0;border-radius:var(--radius-sm);background:linear-gradient(180deg,var(--green-700),var(--green-800));box-shadow:0 1px 2px rgba(0,0,0,0.18),0 2px 5px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
   .toggle-pill.animate{transition:left 0.34s cubic-bezier(0.34,1.12,0.5,1),width 0.34s cubic-bezier(0.34,1.12,0.5,1);}
   @keyframes tg-pop{0%{transform:scale(0.985);}60%{transform:scale(1.008);}100%{transform:scale(1);}}
 
@@ -1091,6 +1091,9 @@ const CSS = `
     flex:1;background:var(--surface);
     border-radius:16px;border:1px solid rgba(0,0,0,0.07);
     padding:16px 12px;text-align:center;
+    /* Light-card bezel: outer lift (negative-spread so it doesn't clip at the
+       content gutter) + bright top rim / faint dark bottom, matching the cards. */
+    box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);
   }
   .event-hero-pot-value{
     font-family:Georgia,serif;font-size:28px;font-weight:700;line-height:1;

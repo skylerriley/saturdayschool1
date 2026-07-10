@@ -6,6 +6,7 @@ import {
 } from "chart.js";
 ChartJS.register(LinearScale, PointElement, LineElement, ScatterController, LineController, Filler, Legend, Tooltip);
 import { ChartCanvas } from "./ChartCanvas";
+import { BEZEL_PILL_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 // Least-squares linear regression
 function linReg(points: {x:number,y:number}[]) {
@@ -196,7 +197,7 @@ export function ScatterChart({scatterData,flightWinData}:any){
   // Flight fill colors by band index
   const FLIGHT_COLORS=["#155c32","#1a7340","#c47800","#9a5a00","#6b5240"];
 
-  const darkCard={background:"var(--green-900)",borderRadius:"var(--radius-md)",padding:"16px"};
+  const darkCard={position:"relative" as const,background:"linear-gradient(180deg,var(--green-800),var(--green-900))",borderRadius:"var(--radius-md)",padding:"16px",boxShadow:BEZEL_PILL_SHADOW};
   const darkTitle={color:"#fff"};
   const darkSub={fontSize:14,color:"rgba(255,255,255,0.5)",marginBottom:6};
   const darkMuted={color:"rgba(255,255,255,0.4)"};
@@ -204,6 +205,7 @@ export function ScatterChart({scatterData,flightWinData}:any){
   if(scatterData.length<2) return(
     <div>
       <div style={darkCard}>
+        <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
         <div className="card-title" style={{...darkTitle,marginBottom:5}}>Handicap Index vs Avg Performance</div>
         <div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.4)",fontSize:14}}>
           📊 This chart needs at least 2 golfers with rounds this season to display.
@@ -216,6 +218,7 @@ export function ScatterChart({scatterData,flightWinData}:any){
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div ref={sentinelRef}/>
       <div style={darkCard}>
+        <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
         <div className="card-title" style={{...darkTitle,marginBottom:5}}>Handicap Index vs Avg Performance</div>
         <p style={{...darkSub,marginBottom:6}}>Higher scores for a given HCP = outperforming handicap. Tap a dot for name.</p>
         <div style={{
@@ -229,6 +232,7 @@ export function ScatterChart({scatterData,flightWinData}:any){
       </div>
 
       <div ref={flightCardRef} style={darkCard}>
+        <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
         <div className="card-title" style={{...darkTitle,marginBottom:4}}>Win % by Handicap Flight</div>
         <p style={{...darkSub,marginBottom:12}}>1st or 2nd place finish counts as a win. Based on paid buy-in entries only.</p>
         {hasFlightData?(

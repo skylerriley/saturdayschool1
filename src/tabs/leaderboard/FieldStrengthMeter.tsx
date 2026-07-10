@@ -92,7 +92,18 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
       border: "1px solid var(--border)",
       padding: "12px 14px",
       marginBottom: 12,
-      boxShadow: "var(--shadow-sm)",
+      // iOS-widget bezel: soft outer lift + bright inner top rim fading to a
+      // dark inner bottom edge, so the card reads as raised off the background.
+      // Outer shadows use negative spread so they contract horizontally and
+      // fade out before reaching .main-content's overflow-x:clip gutter,
+      // avoiding a hard sliced vertical edge on the left/right sides.
+      boxShadow: [
+        "0 1px 1px rgba(0,0,0,0.04)",
+        "0 4px 8px -2px rgba(0,0,0,0.10)",
+        "0 8px 16px -6px rgba(0,0,0,0.10)",
+        "inset 0 1px 0 rgba(255,255,255,0.55)",
+        "inset 0 -1px 0 rgba(0,0,0,0.10)",
+      ].join(", "),
     }}>
       {/* Label row */}
       <div style={{ marginBottom: 10 }}>

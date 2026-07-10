@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { X, ChevronRight, Sun } from "lucide-react";
 import { formatDate } from "../../lib/formatters";
 import { buildSeasonRounds, dedupeLeaderboard } from "../../lib/seasonStats";
+import { BEZEL_OUTER_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 // ── ProfileView ───────────────────────────────────────────────────────────────
 // Personal season snapshot for the identified member. Two homes:
@@ -155,10 +156,13 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
   };
 
   const cardStyle: any = {
+    position: "relative",
     background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)",
-    boxShadow: "var(--shadow-sm)", padding: "14px 16px", cursor: "pointer", textAlign: "left",
+    boxShadow: BEZEL_OUTER_SHADOW, padding: "14px 16px", cursor: "pointer", textAlign: "left",
     WebkitTapHighlightColor: "transparent",
   };
+  // Light-card bezel rim — dropped in as the first child of each cardStyle card.
+  const cardRim = <div style={bezelRimOverlay("var(--radius-md)", "light")} />;
   const labelStyle: any = { fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 6 };
 
   const attending = mySignup?.attending;
@@ -168,6 +172,7 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
 
   const nextEventCard = nextEvent && (
     <div style={{ ...cardStyle, marginBottom: 12 }} onClick={onNavigateRsvp} role="button">
+      {cardRim}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={labelStyle}>Next Event</div>
         <ChevronRight size={15} style={{ color: "var(--text-muted)", marginTop: -4 }} />
@@ -244,6 +249,7 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
       {/* Standings — two tappable cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
         <div style={cardStyle} onClick={onNavigateSeason} role="button">
+          {cardRim}
           <div style={labelStyle}>Season Avg</div>
           {seasonRow ? (
             <>
@@ -259,6 +265,7 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
           )}
         </div>
         <div style={cardStyle} onClick={onNavigateTop15} role="button">
+          {cardRim}
           <div style={labelStyle}>Top 15 Avg</div>
           {top15Row ? (
             <>
@@ -278,6 +285,7 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
       {/* Last round played */}
       {lastRound && (
         <div style={{ ...cardStyle, marginBottom: 12 }} onClick={() => onNavigateLastRound(lastRound.event.event_id)} role="button">
+          {cardRim}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={labelStyle}>Last Round</div>
             <ChevronRight size={15} style={{ color: "var(--text-muted)", marginTop: -4 }} />
