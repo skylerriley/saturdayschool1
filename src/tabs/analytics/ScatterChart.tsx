@@ -215,8 +215,10 @@ export function ScatterChart({scatterData,flightWinData}:any){
   );
 
   return(
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <div ref={sentinelRef}/>
+    <div style={{position:"relative",display:"flex",flexDirection:"column",gap:16}}>
+      {/* Reveal-trigger sentinel — absolutely positioned so it stays out of the
+          flex flow and doesn't add a `gap`-worth of padding above the first card. */}
+      <div ref={sentinelRef} style={{position:"absolute",top:0,left:0,width:1,height:1}}/>
       <div style={darkCard}>
         <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
         <div className="card-title" style={{...darkTitle,marginBottom:5}}>Handicap Index vs Avg Performance</div>
