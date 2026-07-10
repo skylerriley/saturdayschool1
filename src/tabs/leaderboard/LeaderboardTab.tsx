@@ -103,7 +103,7 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
         position:"relative",borderRadius:"var(--radius-lg)",overflow:"hidden",
         minHeight:230,marginBottom:14,cursor:"pointer",
         background:"linear-gradient(145deg,var(--green-900),var(--green-800))",
-        boxShadow:"0 4px 18px rgba(28,20,16,0.18)",
+        boxShadow:"0 2px 8px rgba(28,20,16,0.10)",
         WebkitTapHighlightColor:"transparent",
         flexShrink:0,
       }}

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { ToggleGroup, GlassPicker } from "../../components/common";
 import { computeScoringFingerprint } from "../../lib/scoringFingerprint";
 import { ScoringFingerprintRadar } from "../../components/charts/ScoringFingerprintRadar";
@@ -30,14 +30,40 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
   const [h2hA, setH2hA] = useState(() => initialH2H?.a || (golfers.some((g: any) => g.golfer_id === memberGolferId && !g.is_guest && g.status === "Active") ? String(memberGolferId) : ""));
   const [h2hB, setH2hB] = useState(() => initialH2H?.b || "");
 
+  // Scroll target: the Golfer A / B picker row. On a deep-link arrival we bring
+  // this into view so the pickers + matchup sit above the fold, rather than
+  // leaving the user parked at the page top staring at the mode toggle/event
+  // selector with the pickers scrolled off-screen below.
+  const h2hPickerRef = useRef<HTMLDivElement>(null);
+  const scrollToH2hPickers = () => {
+    // rAF ×2 so the h2h subtree has painted before we measure/scroll to it.
+    // Scroll `.main-content` directly (the app's sole scroll container) rather
+    // than scrollIntoView — the latter walks every scrollable ancestor and drags
+    // the fixed app shell (header into the notch, bottom nav off-screen).
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = h2hPickerRef.current;
+      const scroller = document.querySelector(".main-content") as HTMLElement | null;
+      if (!el || !scroller) return;
+      const GAP = 25; // leave a little breathing room above the pickers
+      const top = scroller.scrollTop + el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - GAP;
+      scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    }));
+  };
+  // Fresh mount via deep link: the lazy initializers already set mode + A/B,
+  // so just scroll the pickers into view once painted.
+  useEffect(() => {
+    if (initialH2H) scrollToH2hPickers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Apply a deep link that arrives after mount (component already showing Odds).
-  // On a fresh mount the lazy initializers above already handled it.
   useEffect(() => {
     if (!initialH2H) return;
     setOddsMode("h2h");
     if (initialH2H.a) setH2hA(initialH2H.a);
     if (initialH2H.b) setH2hB(initialH2H.b);
     onInitialH2HConsumed?.();
+    scrollToH2hPickers();
   }, [initialH2H]);
 
   const selEvent = events.find((e: any) => e.event_id === parseInt(selEventId));
@@ -390,7 +416,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
       {/* ── HEAD-TO-HEAD ── */}
       {oddsMode === "h2h" && (
         <div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+          <div ref={h2hPickerRef} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Golfer A</label>
               <GlassPicker<string>

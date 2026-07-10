@@ -16,11 +16,31 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
   const [selGolfer,setSelGolfer]=useState(()=>golfers.some((g:any)=>g.golfer_id===memberGolferId&&!g.is_guest&&g.status==="Active")?String(memberGolferId):"");
   const [initialPtsTab,setInitialPtsTab]=useState<string|undefined>(undefined);
 
+  // Scroll target: the "Select Golfer" picker on the By Golfer subtab. On a
+  // "View More Stats" deep-link we bring this into view (with breathing room)
+  // so the picker sits above the fold rather than parking the user at the top.
+  const golferPickerRef=useRef<HTMLDivElement|null>(null);
+  const scrollToGolferPicker=()=>{
+    // rAF ×2 so the golfer subtab has painted before we measure/scroll to it.
+    // Scroll `.main-content` directly (the app's sole scroll container) rather
+    // than scrollIntoView — the latter walks every scrollable ancestor and drags
+    // the fixed app shell (header into the notch, bottom nav off-screen).
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      const el=golferPickerRef.current;
+      const scroller=document.querySelector(".main-content") as HTMLElement|null;
+      if(!el||!scroller)return;
+      const GAP=25; // leave a little breathing room above the picker
+      const top=scroller.scrollTop+el.getBoundingClientRect().top-scroller.getBoundingClientRect().top-GAP;
+      scroller.scrollTo({top:Math.max(0,top),behavior:"smooth"});
+    }));
+  };
+
   useEffect(()=>{
     if(initialGolfer){
       setSelGolfer(String(initialGolfer));
       setSubTab("golfer");
       onInitialGolferConsumed?.();
+      scrollToGolferPicker();
     }
   },[initialGolfer]);
 
@@ -186,7 +206,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
             case "points-gained":return <PointsGained golfers={golfers} events={events} leaderboard={leaderboard} holeScores={holeScores} courses={courses} signups={signups} selSeason={selSeason} initialTab={initialPtsTab} seasonData={seasonData} memberGolferId={memberGolferId}/>;
             case "golfer":return(
               <>
-                <div className="form-group">
+                <div className="form-group" ref={golferPickerRef}>
                   <label className="form-label">Select Golfer</label>
                   <GlassPicker
                     value={selGolfer}

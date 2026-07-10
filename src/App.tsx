@@ -1124,8 +1124,13 @@ const CSS = `
 
   .success-banner{background:var(--green-100);border:1px solid var(--green-300);border-radius:var(--radius-md);padding:13px 16px;color:var(--green-800);font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:9px;position:relative;z-index:2;}
 
-  .tab-sub{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;position:sticky;top:-4px;z-index:10;background:var(--bg);padding-top:0px;}
-  .tab-sub.stuck{box-shadow:0 -40px 0 40px var(--bg);padding-top:0px;padding-bottom:8px;}
+  /* Mask color for the sticky pill row. The .main-content wash is
+     background-attachment:fixed, so at the viewport top — where the row freezes —
+     the gradient is at its lightest (color-mix surface 55% / --bg). Painting flat
+     --bg here read darker than the content behind it; match the gradient's top
+     stop instead so the frozen row blends in. */
+  .tab-sub{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;position:sticky;top:-4px;z-index:10;background:transparent;padding-top:0px;}
+  .tab-sub.stuck{background:color-mix(in srgb, var(--surface) 55%, var(--bg));box-shadow:0 -40px 0 40px color-mix(in srgb, var(--surface) 55%, var(--bg));padding-top:0px;padding-bottom:8px;}
   .tab-sub::-webkit-scrollbar{display:none;}
   .tab-sub-btn{flex-shrink:0;scroll-snap-align:center;padding:8px 16px;border-radius:20px;font-size:13px;text-transform: uppercase; font-weight:600;letter-spacing:0.03em;border:1px solid var(--border);background:color-mix(in srgb, var(--surface) 55%, var(--bg));color:var(--text-muted);cursor:pointer;transition:all 0.15s;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;box-shadow:0 1px 2px -1px rgba(0,0,0,0.05),0 2px 5px -3px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
   .tab-sub-btn.active{background:var(--green-800);border-color:var(--green-800);color:white;box-shadow:0 1px 2px -1px rgba(0,0,0,0.10),0 2px 5px -3px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
