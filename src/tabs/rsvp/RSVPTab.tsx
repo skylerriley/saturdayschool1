@@ -9,7 +9,7 @@ import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
 import { WeatherAmbience, getWeatherCardBg } from "../../components/WeatherAmbience";
 import { useWeatherReady } from "../../hooks/useWeatherReady";
-import { BEZEL_OUTER_SHADOW, CHIP_BEZEL, bezelRimOverlay } from "../leaderboard/bezelStyles";
+import { BEZEL_OUTER_SHADOW, CHIP_BEZEL, BEZEL_BTN_LIGHT, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 const swipeEarlyStyles = `
 .rsvp-swipe-outer {
@@ -750,12 +750,12 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
       Notify the group about the upcoming event and remind them to sign up.
     </p>
     <div style={{display:"flex",gap:8}}>
-      <a href={mailtoLink} className="btn btn-outline" style={{flex:1,textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+      <a href={mailtoLink} className="btn btn-outline" style={{flex:1,textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:6,boxShadow:BEZEL_BTN_LIGHT}}>
         ✉ Email
       </a>
       <button
         className="btn btn-outline"
-        style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
+        style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,boxShadow:BEZEL_BTN_LIGHT}}
         onClick={async () => {
           try {
             await sendPush(

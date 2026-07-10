@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { scrollMainTop, formatDate, uniqueCourseNames } from "../../lib/formatters";
 import { GlassPicker } from "../../components/common";
+import { BEZEL_BTN_LIGHT } from "../leaderboard/bezelStyles";
 
 export function EventCreator({ courses, events, setEvents, signups, setSignups, leaderboard, setLeaderboard, golfers, showSuccess }: any) {
   const formTopRef = useRef<HTMLDivElement>(null);
@@ -79,7 +80,7 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
       </div>
       <hr className="divider" />
       <div className="card-title" style={{ marginBottom: 8 }}>Invitation Email</div>
-      <a href={`mailto:?cc=${allEmails.join(",")}&subject=Saturday Golf Reminder&body=Hi all,%0D%0A%0D%0A Please make sure to sign up in the app for next Saturday's round.%0D%0A%0D%0A Sign up here: https://saturdayschool.vercel.app/?tab=rsvp`} className="btn btn-outline btn-full" style={{ textDecoration: "none", display: "flex", marginBottom: 20 }}>✉ Send Invitation</a>
+      <a href={`mailto:?cc=${allEmails.join(",")}&subject=Saturday Golf Reminder&body=Hi all,%0D%0A%0D%0A Please make sure to sign up in the app for next Saturday's round.%0D%0A%0D%0A Sign up here: https://saturdayschool.vercel.app/?tab=rsvp`} className="btn btn-outline btn-full" style={{ textDecoration: "none", display: "flex", marginBottom: 20, boxShadow: BEZEL_BTN_LIGHT }}>✉ Send Invitation</a>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <div className="card-title">All Events</div>

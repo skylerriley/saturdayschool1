@@ -37,6 +37,19 @@ export const BEZEL_TOGGLE_LIGHT =
 // soft outer drop + a light inset rim so the chip reads as raised.
 export const CHIP_BEZEL = BEZEL_TOGGLE_LIGHT;
 
+// Raised-button bezels — for action buttons (admin email/notify/reminder,
+// clear/regenerate pairings, send push, view scorecards). Same rim language as
+// the segmented control: bright top edge + faint bottom edge, plus a soft outer
+// lift, so the button reads as a physical raised key.
+//   BEZEL_BTN_LIGHT  — outline / transparent / cream buttons (dark-on-light).
+//   BEZEL_BTN_STRONG — filled colored buttons (green primary, red danger),
+//                      where the rim uses whites on both edges so it stays
+//                      legible against the saturated fill.
+export const BEZEL_BTN_LIGHT =
+  "0 1px 2px -1px rgba(0,0,0,0.06), 0 2px 6px -3px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.08)";
+export const BEZEL_BTN_STRONG =
+  "0 1px 2px rgba(0,0,0,0.12), 0 3px 7px -2px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(255,255,255,0.10)";
+
 // Rim overlay for DARK cards (green-900 surfaces / photos). Softer whites so the
 // highlight doesn't blow out against the dark body.
 //   radius:   corner radius to match the host card.

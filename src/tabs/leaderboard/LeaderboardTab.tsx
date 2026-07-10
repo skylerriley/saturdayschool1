@@ -13,7 +13,7 @@ import { UpcomingCourseCard } from "./UpcomingCourseCard";
 import { ensureShimmer } from "../../components/weather/WeatherSkeleton";
 import { useCachedImage, prefetchImages } from "../../lib/imageCache";
 import { FieldStrengthMeter } from "./FieldStrengthMeter";
-import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, bezelRimOverlay } from "./bezelStyles";
+import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, BEZEL_BTN_LIGHT, bezelRimOverlay } from "./bezelStyles";
 import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
 import { WinProbabilityChart } from "../../WinProbabilityChart";
@@ -2566,7 +2566,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             const subject=`Saturday ${md} Results`;
             const mailtoHref=`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
             return(
-              <a href={mailtoHref} className="btn btn-outline btn-full" style={{textDecoration:"none",marginTop:10,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+              <a href={mailtoHref} className="btn btn-outline btn-full" style={{textDecoration:"none",marginTop:10,display:"flex",alignItems:"center",justifyContent:"center",gap:6,boxShadow:BEZEL_BTN_LIGHT}}>
                 Send Round Recap
               </a>
             );
@@ -2619,7 +2619,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               <div style={{marginTop:18}}>
                 <button
                   className="btn btn-outline btn-full"
-                  style={{fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}
+                  style={{fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:BEZEL_BTN_LIGHT}}
                   onClick={()=>setShowScorecardModal(true)}
                 >
                   View Scorecards{imgs.length>0?" ("+imgs.length+")":""}

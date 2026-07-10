@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { SUPABASE_URL, SUPABASE_KEY, sendPush } from "../../lib/supabaseClient";
+import { BEZEL_BTN_LIGHT, BEZEL_BTN_STRONG } from "../leaderboard/bezelStyles";
 
 // ============================================================
 // ── MESSAGE BLAST ─────────────────────────────────────────────
@@ -68,14 +69,14 @@ export function MessageBlast({ golfers, showSuccess }: any) {
         <a
           href={canSend ? mailtoHref : "#"}
           className="btn btn-primary"
-          style={{ flex: 1, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: canSend ? 1 : 0.45, pointerEvents: canSend ? "auto" : "none" }}
+          style={{ flex: 1, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: canSend ? 1 : 0.45, pointerEvents: canSend ? "auto" : "none", boxShadow: BEZEL_BTN_STRONG }}
           onClick={e => { if (!canSend) e.preventDefault(); }}
         >
           ✉ Send Email
         </a>
         <button
           className="btn btn-outline"
-          style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: canSend ? 1 : 0.45 }}
+          style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: canSend ? 1 : 0.45, boxShadow: BEZEL_BTN_LIGHT }}
           disabled={!canSend || sending === "push"}
           onClick={handlePush}
         >

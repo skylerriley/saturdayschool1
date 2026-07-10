@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { scrollMainTop } from "../../lib/formatters";
+import { BEZEL_BTN_LIGHT } from "../leaderboard/bezelStyles";
 
 export function HandicapManager({ golfers, setGolfers, showSuccess }: any) {
   const [edits, setEdits] = useState<Record<number, string>>({});
@@ -37,7 +38,7 @@ export function HandicapManager({ golfers, setGolfers, showSuccess }: any) {
 
       {/* Inactive & Guest golfers */}
       <div style={{ marginTop: 20, borderTop: "2px solid var(--border)", paddingTop: 16 }}>
-        <button className="btn btn-outline btn-full" style={{ marginBottom: showInactive ? 12 : 0 }} onClick={() => setShowInactive(v => !v)}>
+        <button className="btn btn-outline btn-full" style={{ marginBottom: showInactive ? 12 : 0, boxShadow: BEZEL_BTN_LIGHT }} onClick={() => setShowInactive(v => !v)}>
           {showInactive ? "▲ Hide" : "▼ Show"} Inactive &amp; Guest Golfers
         </button>
         {showInactive && (

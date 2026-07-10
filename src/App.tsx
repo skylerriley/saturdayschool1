@@ -307,7 +307,17 @@ const CSS = `
         color-mix(in srgb, var(--green-500) 14%, var(--bg)) 100%);
     background-attachment:fixed;
     border-radius:20px 20px 0 0;
-    box-shadow:0 -2px 16px rgba(0,0,0,0.18);
+    /* Raised "sitting on the header" bezel at the top edge:
+       - outer drop shadow cast DOWNWARD from the top lip onto the content
+         surface below, so the rounded top edge reads as lifted above the header;
+       - a soft ambient halo above the lip;
+       - a bright inset top rim that catches light along the top edge, plus a
+         faint dark inset just under it to deepen the fold. */
+    box-shadow:
+      0 6px 14px -4px rgba(0,0,0,0.30),
+      0 -1px 10px rgba(0,0,0,0.20),
+      inset 0 1px 0 rgba(255,255,255,0.22),
+      inset 0 -1px 0 rgba(0,0,0,0.10);
   }
 
   /* Directional tab transition -- content enters from the side of the destination */
@@ -994,6 +1004,9 @@ const CSS = `
     background:var(--gold-500);color:var(--green-900);
     font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
     display:flex;align-items:center;gap:5px;
+    /* Raised bezel: soft outer lift + light rim on both edges (whites, so it
+       stays legible on the gold fill) — matches BEZEL_BTN_STRONG / chip bezels. */
+    box-shadow:0 1px 2px rgba(0,0,0,0.12),0 3px 7px -2px rgba(0,0,0,0.16),inset 0 1px 0 rgba(255,255,255,0.4),inset 0 -1px 0 rgba(0,0,0,0.12);
   }
   .event-hero-badge--live{background:var(--gold-500);color:var(--green-900);}
   .event-hero-badge-dot{

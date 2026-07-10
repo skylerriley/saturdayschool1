@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { runPairingEngine, buildPairingFrequencyMap } from "../../lib/golfMath";
 import { golferName, formatDate } from "../../lib/formatters";
 import { supabase, sendPush, reportWriteError } from "../../lib/supabaseClient";
+import { BEZEL_BTN_LIGHT, BEZEL_BTN_STRONG } from "../../tabs/leaderboard/bezelStyles";
 
 interface PairingPanelProps {
   golfers: any[];
@@ -198,7 +199,7 @@ export function PairingPanel({
       {adminMode && (
         <button
           className="btn btn-gold btn-full"
-          style={{ marginBottom: 14, fontWeight: 700 }}
+          style={{ marginBottom: 14, fontWeight: 700, boxShadow: BEZEL_BTN_STRONG }}
           onClick={generatePairings}
         >
           🎲 {hasPairings ? "Re-generate Pairings" : "Generate Pairings"}
@@ -400,13 +401,13 @@ export function PairingPanel({
                 "%0D%0A View pairings in the app: https://saturdayschool.vercel.app/?tab=rsvp%26subtab=pairings"
               }
               className="btn btn-outline"
-              style={{ flex: 1, textDecoration: "none" }}
+              style={{ flex: 1, textDecoration: "none", boxShadow: BEZEL_BTN_LIGHT }}
             >
               ✉ Email Pairings
             </a>
             <button
               className="btn btn-outline"
-              style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+              style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: BEZEL_BTN_LIGHT }}
               onClick={async () => {
                 try {
                   await sendPush(
@@ -427,7 +428,7 @@ export function PairingPanel({
 
           <button
             className="btn btn-outline btn-full"
-            style={{ color: "var(--red-600)", borderColor: "var(--red-300)", fontSize: 14 }}
+            style={{ color: "var(--red-600)", borderColor: "var(--red-300)", fontSize: 14, boxShadow: BEZEL_BTN_LIGHT }}
             onClick={clearPairings}
           >
             🗑 Clear All Pairings
