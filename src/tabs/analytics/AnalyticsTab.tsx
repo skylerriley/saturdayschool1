@@ -10,7 +10,7 @@ import { ChampionsView } from "./ChampionsView";
 import { GolferHistoryChart } from "./GolferHistoryChart";
 import { PointsGained } from "./PointsGained";
 
-export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase,refreshLiveData,initialGolfer,onInitialGolferConsumed,onBack,backLabel,charityDonations,memberGolferId}:any){
+export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeScores,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,supabase,refreshLiveData,initialGolfer,onInitialGolferConsumed,initialH2H,onInitialH2HConsumed,onBack,backLabel,charityDonations,memberGolferId}:any){
   const [subTab,setSubTab]=useState("overview");
   // By Golfer defaults to the signed-in member (when they're a pickable option)
   const [selGolfer,setSelGolfer]=useState(()=>golfers.some((g:any)=>g.golfer_id===memberGolferId&&!g.is_guest&&g.status==="Active")?String(memberGolferId):"");
@@ -23,6 +23,17 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
       onInitialGolferConsumed?.();
     }
   },[initialGolfer]);
+
+  // Deep link into Odds > Head-to-Head with A/B pre-selected (Profile group chip).
+  // Held in state and handed to OddsTab, which remounts with these as its initial picks.
+  const [pendingH2H,setPendingH2H]=useState<{a:string;b:string}|null>(null);
+  useEffect(()=>{
+    if(initialH2H){
+      setPendingH2H(initialH2H);
+      setSubTab("odds");
+      onInitialH2HConsumed?.();
+    }
+  },[initialH2H]);
   const allSeasons=[...new Set(events.map((e:any)=>e.season))].sort((a:any,b:any)=>b-a) as number[];
   const [selSeason,setSelSeason]=useState<number>(allSeasons[0]||new Date().getFullYear());
 
@@ -192,7 +203,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
                 {selG&&golferRounds.length===0&&<div className="empty-state"><div className="empty-text">No rounds recorded this season</div></div>}
               </>
             );
-            case "odds":return <OddsTab golfers={golfers} leaderboard={leaderboard} events={events} signups={signups} courses={courses} holeScores={holeScores} season={selSeason} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={onTriggerOdds} refreshLiveData={refreshLiveData}/>;
+            case "odds":return <OddsTab golfers={golfers} leaderboard={leaderboard} events={events} signups={signups} courses={courses} holeScores={holeScores} season={selSeason} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={onTriggerOdds} refreshLiveData={refreshLiveData} initialH2H={pendingH2H} onInitialH2HConsumed={()=>setPendingH2H(null)}/>;
             default:return null;
           }
         };

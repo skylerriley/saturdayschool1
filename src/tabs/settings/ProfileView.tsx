@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { X, ChevronRight, Sun } from "lucide-react";
 import { formatDate } from "../../lib/formatters";
 import { buildSeasonRounds, dedupeLeaderboard } from "../../lib/seasonStats";
-import { BEZEL_OUTER_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
+import { BEZEL_OUTER_SHADOW, BEZEL_TOGGLE_LIGHT, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 // ── ProfileView ───────────────────────────────────────────────────────────────
 // Personal season snapshot for the identified member. Two homes:
@@ -28,7 +28,7 @@ function memberStanding(rows: any[], memberId: number, key: string) {
   return { ...row, pos, tied, rank: idx + 1 };
 }
 
-export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, signups, onNavigateSeason, onNavigateTop15, onNavigateLastRound, onNavigateRsvp, onNavigateAnalytics, onClose }: any) {
+export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, signups, onNavigateSeason, onNavigateTop15, onNavigateLastRound, onNavigateRsvp, onNavigateGroup, onNavigateH2H, onNavigateAnalytics, onClose }: any) {
   const memberId = golfer.golfer_id;
 
   const data = useMemo(() => {
@@ -170,8 +170,12 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
   const rsvpFill = attending === "Yes" ? "var(--green-700)" : attending === "No" ? "var(--red-600)" : "var(--gold-600,#b8860b)";
   const rsvpText = attending === "Yes" ? "You're in" : attending === "No" ? "You're out" : "No response yet";
 
+  // When pairings are set, tapping the card jumps to the Upcoming board scrolled
+  // to the member's group; otherwise it goes to RSVP to sign up.
+  const onCardTap = pairingsSet && onNavigateGroup ? onNavigateGroup : onNavigateRsvp;
+
   const nextEventCard = nextEvent && (
-    <div style={{ ...cardStyle, marginBottom: 12 }} onClick={onNavigateRsvp} role="button">
+    <div style={{ ...cardStyle, marginBottom: 12 }} onClick={onCardTap} role="button">
       {cardRim}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={labelStyle}>Next Event</div>
@@ -196,19 +200,34 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
         )}
       </div>
       {pairingsSet && (
-        <div style={{ marginTop: 12, background: "var(--surface2)", borderRadius: "var(--radius-sm)", padding: "10px 12px" }}>
+        <div style={{ marginTop: 12, background: "var(--surface2)", borderRadius: "var(--radius-sm)", padding: "10px 12px", boxShadow: BEZEL_TOGGLE_LIGHT }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <span style={{ fontSize: 22, fontWeight: 800, color: "var(--green-700)", fontVariantNumeric: "tabular-nums" }}>{String(mySignup.assigned_tee_time).slice(0, 5)}</span>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>Your tee time</span>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>Tee time</span>
           </div>
           {groupMates.length > 0 && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-              {groupMates.map((g: any) => (
-                <span key={g.golfer_id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>
-                  {g.first_name} {g.last_name ? g.last_name[0] + "." : ""}
-                </span>
-              ))}
-            </div>
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                {groupMates.map((g: any) => (
+                  <button
+                    key={g.golfer_id}
+                    type="button"
+                    onClick={(e: any) => { e.stopPropagation(); onNavigateH2H?.(g.golfer_id); }}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 18,
+                      padding: "7px 13px", fontSize: 14, fontWeight: 700, color: "var(--text-primary)",
+                      boxShadow: "var(--shadow-sm)", cursor: "pointer", WebkitTapHighlightColor: "transparent",
+                    }}
+                  >
+                    {g.first_name} {g.last_name ? g.last_name[0] + "." : ""}
+                  </button>
+                ))}
+              </div>
+              {onNavigateH2H && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 7 }}>Tap a name to see your head-to-head odds</div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -300,7 +319,7 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
               { v: posLabel(lastRound.pos, lastRound.tied), l: "Finish" },
               { v: lastRound.skinsWon > 0 ? `$${Math.round(lastRound.skinsWon)}` : "$0", l: "Skins" },
             ].map((t, i) => (
-              <div key={i} style={{ background: "var(--surface2)", borderRadius: "var(--radius-sm)", padding: "8px 4px", textAlign: "center" }}>
+              <div key={i} style={{ background: "var(--surface2)", borderRadius: "var(--radius-sm)", padding: "8px 4px", textAlign: "center", boxShadow: BEZEL_TOGGLE_LIGHT }}>
                 <div style={{ fontSize: 22, fontWeight: 800, color: i === 3 && lastRound.skinsWon > 0 ? "var(--gold-600,#b8860b)" : "var(--green-700)" }}>{t.v}</div>
                 <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase", marginTop: 2 }}>{t.l}</div>
               </div>

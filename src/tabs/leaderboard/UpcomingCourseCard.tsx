@@ -43,16 +43,9 @@ export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldC
    <div style={{
      borderRadius: "var(--radius-lg, 16px)",
      marginBottom: 14,
-     // iOS-widget bezel — matches FieldStrengthMeter. Lives on this wrapper
-     // (not the image container below) because the inner div's overflow:hidden,
-     // needed to clip the photo to the rounded corners, would otherwise crop
-     // the outer drop shadow. Negative spread keeps the shadow from bleeding
-     // into .main-content's overflow-x:clip gutter and slicing a hard edge.
-     boxShadow: [
-       "0 1px 1px rgba(0,0,0,0.04)",
-       "0 4px 8px -2px rgba(0,0,0,0.10)",
-       "0 8px 16px -6px rgba(0,0,0,0.10)",
-     ].join(", "),
+     // Drop-shadow lift removed 2026-07-10 — the bezel rim (overlay on the inner
+     // div) provides the raised edge. To restore the lift, add here:
+     //   boxShadow: "0 1px 1px rgba(0,0,0,0.04), 0 4px 8px -2px rgba(0,0,0,0.10), 0 8px 16px -6px rgba(0,0,0,0.10)"
    }}>
     <div onClick={onClick} style={{ position: "relative", borderRadius: "var(--radius-lg, 16px)", overflow: "hidden", minHeight: 160, background: "linear-gradient(135deg,var(--green-900),var(--green-700))", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       {/* Shimmer placeholder — visible until the photo decodes */}

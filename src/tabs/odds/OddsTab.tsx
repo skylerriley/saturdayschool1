@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ToggleGroup, GlassPicker } from "../../components/common";
 import { computeScoringFingerprint } from "../../lib/scoringFingerprint";
 import { ScoringFingerprintRadar } from "../../components/charts/ScoringFingerprintRadar";
@@ -15,8 +15,9 @@ import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, bezelRimOverlay } from "../leade
 // ------------------------------------------------------------------
 // ODDS TAB COMPONENT
 // ------------------------------------------------------------------
-export function OddsTab({ golfers, leaderboard, events, signups, courses, holeScores, season, eventOdds, oddsLoading, oddsLastUpdated, onTriggerOdds, refreshLiveData, memberGolferId }: any) {
-  const [oddsMode, setOddsMode] = useState<"field" | "h2h">("field");
+export function OddsTab({ golfers, leaderboard, events, signups, courses, holeScores, season, eventOdds, oddsLoading, oddsLastUpdated, onTriggerOdds, refreshLiveData, memberGolferId, initialH2H, onInitialH2HConsumed }: any) {
+  // Deep link (Profile group chip) opens straight into Head-to-Head
+  const [oddsMode, setOddsMode] = useState<"field" | "h2h">(initialH2H ? "h2h" : "field");
   // Field odds state
   const completedAndUpcoming = events.filter((e: any) => e.status !== "Cancelled");
   const upcomingEvents = [...events.filter((e: any) => e.status === "Upcoming" || e.status === "Pairings Set" || e.status === "In-Progress")].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -25,9 +26,19 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
 
   const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set());
 
-  // H2H state — Golfer A defaults to the signed-in member (when pickable)
-  const [h2hA, setH2hA] = useState(() => golfers.some((g: any) => g.golfer_id === memberGolferId && !g.is_guest && g.status === "Active") ? String(memberGolferId) : "");
-  const [h2hB, setH2hB] = useState("");
+  // H2H state — Golfer A defaults to the deep-link A, else the signed-in member (when pickable)
+  const [h2hA, setH2hA] = useState(() => initialH2H?.a || (golfers.some((g: any) => g.golfer_id === memberGolferId && !g.is_guest && g.status === "Active") ? String(memberGolferId) : ""));
+  const [h2hB, setH2hB] = useState(() => initialH2H?.b || "");
+
+  // Apply a deep link that arrives after mount (component already showing Odds).
+  // On a fresh mount the lazy initializers above already handled it.
+  useEffect(() => {
+    if (!initialH2H) return;
+    setOddsMode("h2h");
+    if (initialH2H.a) setH2hA(initialH2H.a);
+    if (initialH2H.b) setH2hB(initialH2H.b);
+    onInitialH2HConsumed?.();
+  }, [initialH2H]);
 
   const selEvent = events.find((e: any) => e.event_id === parseInt(selEventId));
   const members = golfers.filter((g: any) => !g.is_guest && g.status === "Active").sort((a: any, b: any) => a.first_name.localeCompare(b.first_name));

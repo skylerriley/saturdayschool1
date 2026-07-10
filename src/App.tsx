@@ -662,7 +662,8 @@ const CSS = `
   .drawer-card-footer{padding:0 9px 10px;}
   .drawer-card-section-label{font-size:12px;font-weight:600;color:var(--text-muted,#6a6050);letter-spacing:0.07em;text-transform:uppercase;margin-bottom:5px;}
   /* profile pill: matches .tab-sub-btn style — pill shape, centred, shrinks to content */
-  .drawer-profile-pill{display:block;margin:8px auto 10px;padding:8px 24px;width:auto;background:transparent;border:1.5px solid var(--green-600,#2d7a4a);border-radius:999px;font-size:13px;font-weight:600;color:var(--green-600,#2d7a4a);cursor:pointer;letter-spacing:0.03em;text-align:center;-webkit-tap-highlight-color:transparent;}
+  .drawer-profile-pill{display:block;margin:8px auto 10px;padding:8px 24px;width:auto;background:color-mix(in srgb, var(--surface) 55%, var(--bg));border:1px solid var(--border);border-radius:999px;font-size:13px;font-weight:600;color:var(--green-600,#2d7a4a);cursor:pointer;letter-spacing:0.03em;text-align:center;-webkit-tap-highlight-color:transparent;box-shadow:0 1px 2px -1px rgba(0,0,0,0.05),0 2px 5px -3px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
+  .drawer-profile-pill:active{transform:scale(0.97);}
   .drawer-insight{display:flex;align-items:flex-start;gap:6px;background:#f8f6f0;border-radius:6px;padding:7px 8px;margin-top:8px;}
   .drawer-insight-label{font-size:9px;color:var(--text-muted,#6a6050);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;}
   .drawer-insight-text{font-size:11px;color:var(--green-900,#1e3320);line-height:1.4;}
@@ -809,10 +810,10 @@ const CSS = `
   .rsvp-name{font-size:16px;font-weight:500;flex:1;min-width:0;text-align:left;}
   .rsvp-actions{display:flex;gap:5px;flex-shrink:0;}
   .rsvp-btn{padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1.5px solid;cursor:pointer;transition:all 0.15s;background:transparent;}
-  .rsvp-btn.yes{border-color:var(--green-500);color:var(--green-700);}
-  .rsvp-btn.yes.active{background:var(--green-700);color:white;border-color:var(--green-700);}
-  .rsvp-btn.no{border-color:var(--red-400);color:var(--red-600);}
-  .rsvp-btn.no.active{background:var(--red-600);color:white;border-color:var(--red-600);}
+  .rsvp-btn.yes{border-color:var(--green-500);color:var(--green-700);background:color-mix(in srgb, var(--surface) 55%, var(--bg));box-shadow:inset 0 2px 4px rgba(0,0,0,0.16),inset 0 1px 2px rgba(0,0,0,0.12),inset 0 -1px 0 rgba(255,255,255,0.7);}
+  .rsvp-btn.yes.active{background:var(--green-700);color:white;border-color:var(--green-700);box-shadow:0 1px 2px rgba(0,0,0,0.10),0 3px 7px -2px rgba(0,0,0,0.14),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
+  .rsvp-btn.no{border-color:var(--red-400);color:var(--red-600);background:color-mix(in srgb, var(--surface) 55%, var(--bg));box-shadow:inset 0 2px 4px rgba(0,0,0,0.16),inset 0 1px 2px rgba(0,0,0,0.12),inset 0 -1px 0 rgba(255,255,255,0.7);}
+  .rsvp-btn.no.active{background:var(--red-600);color:white;border-color:var(--red-600);box-shadow:0 1px 2px rgba(0,0,0,0.10),0 3px 7px -2px rgba(0,0,0,0.14),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
 
   /* ── MISC ── */
   .divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
@@ -1101,9 +1102,10 @@ const CSS = `
     flex:1;background:var(--surface);
     border-radius:16px;border:1px solid rgba(0,0,0,0.07);
     padding:16px 12px;text-align:center;
-    /* Light-card bezel: outer lift (negative-spread so it doesn't clip at the
-       content gutter) + bright top rim / faint dark bottom, matching the cards. */
-    box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);
+    /* Light-card bezel rim (drop shadow removed 2026-07-10) — bright top rim /
+       faint dark bottom only. To restore lift, prepend the outer layers:
+       0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10), */
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);
   }
   .event-hero-pot-value{
     font-family:Georgia,serif;font-size:28px;font-weight:700;line-height:1;
@@ -1125,8 +1127,8 @@ const CSS = `
   .tab-sub{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;position:sticky;top:-4px;z-index:10;background:var(--bg);padding-top:0px;}
   .tab-sub.stuck{box-shadow:0 -40px 0 40px var(--bg);padding-top:0px;padding-bottom:8px;}
   .tab-sub::-webkit-scrollbar{display:none;}
-  .tab-sub-btn{flex-shrink:0;scroll-snap-align:center;padding:8px 16px;border-radius:20px;font-size:13px;text-transform: uppercase; font-weight:600;letter-spacing:0.03em;border:1.5px solid var(--border-md);background:transparent;color:var(--text-muted);cursor:pointer;transition:all 0.15s;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
-  .tab-sub-btn.active{background:var(--green-800);border-color:var(--green-800);color:white;}
+  .tab-sub-btn{flex-shrink:0;scroll-snap-align:center;padding:8px 16px;border-radius:20px;font-size:13px;text-transform: uppercase; font-weight:600;letter-spacing:0.03em;border:1px solid var(--border);background:color-mix(in srgb, var(--surface) 55%, var(--bg));color:var(--text-muted);cursor:pointer;transition:all 0.15s;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;box-shadow:0 1px 2px -1px rgba(0,0,0,0.05),0 2px 5px -3px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
+  .tab-sub-btn.active{background:var(--green-800);border-color:var(--green-800);color:white;box-shadow:0 1px 2px -1px rgba(0,0,0,0.10),0 2px 5px -3px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
 
   .empty-state{text-align:center;padding:40px 20px;color:var(--text-muted);}
   .empty-text{font-size:17px;margin-bottom:4px;color:var(--text-secondary);}
@@ -1355,6 +1357,8 @@ export default function App(){
   const [initialSubTab]=useState(_initSubTab);
   const [initialFeedOpen]=useState(_initOpenRecap);
   const [analyticsInitialGolfer,setAnalyticsInitialGolfer]=useState<string>("");
+  // Deep link: open Analytics > Odds > Head-to-Head with A/B pre-selected
+  const [analyticsInitialH2H,setAnalyticsInitialH2H]=useState<{a:string;b:string}|null>(null);
   const [analyticsBackLabel,setAnalyticsBackLabel]=useState<string>("");
   // Where the analytics back chip returns to ("leaderboard" | "settings")
   const [analyticsBackTarget,setAnalyticsBackTarget]=useState<string>("leaderboard");
@@ -1389,6 +1393,9 @@ export default function App(){
   const [lbOpenEventId,setLbOpenEventId]=useState<number>(0);
   // Deep link: scroll the season/top15 board to the member's own row
   const [lbScrollToMe,setLbScrollToMe]=useState(false);
+  // Deep link (Profile next-event card): open the Upcoming board scrolled to
+  // the member's pairing group
+  const [lbScrollToGroup,setLbScrollToGroup]=useState(false);
 
   // Tabs defined here (stable useMemo) so effects can safely depend on it
   const tabs=useMemo(()=>adminMode
@@ -2464,6 +2471,18 @@ export default function App(){
   const goLeaderboardSub=(sub:string)=>{setShowWelcome(false);setLbRestoreSubTab(sub);setLbScrollToMe(true);setActiveTab("leaderboard");scrollToTop(0);};
   const goLastRound=(eventId:number)=>{setShowWelcome(false);setLbOpenEventId(eventId);setLbRestoreSubTab("weekly");setActiveTab("leaderboard");scrollToTop(0);};
   const goRsvpFromProfile=()=>{setShowWelcome(false);setActiveTab("rsvp");scrollToTop(0);};
+  // Next-event card (pairings set): jump to the Upcoming board, scrolled to the member's group
+  const goUpcomingGroup=()=>{setShowWelcome(false);setLbRestoreSubTab("upcoming");setLbScrollToGroup(true);setActiveTab("leaderboard");scrollToTop(0);};
+  // Group chip: open Analytics > Odds > Head-to-Head, member as A, tapped golfer as B
+  const goH2H=(opponentId:number)=>{
+    if(memberGolferId==null)return;
+    setShowWelcome(false);
+    setAnalyticsInitialH2H({a:String(memberGolferId),b:String(opponentId)});
+    setAnalyticsBackLabel("Return to Profile");
+    setAnalyticsBackTarget(activeTab==="settings"?"settings":"leaderboard");
+    setActiveTab("analytics");
+    scrollToTop(0);
+  };
   const goMoreStats=()=>{
     if(memberGolferId==null)return;
     setShowWelcome(false);
@@ -2548,12 +2567,12 @@ export default function App(){
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
           {errorMsg&&<div className="error-banner"><span>⚠</span>{errorMsg}</div>}
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
-          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} memberGolferId={memberGolferId} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} initialOpenEventId={lbOpenEventId} onOpenEventConsumed={()=>setLbOpenEventId(0)} initialScrollToMe={lbScrollToMe} onScrollToMeConsumed={()=>setLbScrollToMe(false)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setAnalyticsBackTarget("leaderboard");setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
+          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} memberGolferId={memberGolferId} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} initialOpenEventId={lbOpenEventId} onOpenEventConsumed={()=>setLbOpenEventId(0)} initialScrollToMe={lbScrollToMe} onScrollToMeConsumed={()=>setLbScrollToMe(false)} initialScrollToGroup={lbScrollToGroup} onScrollToGroupConsumed={()=>setLbScrollToGroup(false)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setAnalyticsBackTarget("leaderboard");setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
           {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} setLeaderboardLocal={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} dbDeleteHoleScore={dbDeleteHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}
-          {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab(analyticsBackTarget);setAnalyticsBackTarget("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
-          {activeTab==="settings"&&<SettingsTab golfers={golfers} memberGolferId={memberGolferId} onChangeMember={chooseMember} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} onNavigateSeason={()=>goLeaderboardSub("season")} onNavigateTop15={()=>goLeaderboardSub("top15")} onNavigateLastRound={goLastRound} onNavigateRsvp={goRsvpFromProfile} onNavigateAnalytics={goMoreStats}/>}
+          {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} initialH2H={analyticsInitialH2H} onInitialH2HConsumed={()=>setAnalyticsInitialH2H(null)} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab(analyticsBackTarget);setAnalyticsBackTarget("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
+          {activeTab==="settings"&&<SettingsTab golfers={golfers} memberGolferId={memberGolferId} onChangeMember={chooseMember} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} onNavigateSeason={()=>goLeaderboardSub("season")} onNavigateTop15={()=>goLeaderboardSub("top15")} onNavigateLastRound={goLastRound} onNavigateRsvp={goRsvpFromProfile} onNavigateGroup={goUpcomingGroup} onNavigateH2H={goH2H} onNavigateAnalytics={goMoreStats}/>}
           </div>
         </main>
 
@@ -2693,6 +2712,8 @@ export default function App(){
             onNavigateTop15={()=>goLeaderboardSub("top15")}
             onNavigateLastRound={goLastRound}
             onNavigateRsvp={goRsvpFromProfile}
+            onNavigateGroup={goUpcomingGroup}
+            onNavigateH2H={goH2H}
             onNavigateAnalytics={goMoreStats}
             onClose={()=>setShowWelcome(false)}
           />

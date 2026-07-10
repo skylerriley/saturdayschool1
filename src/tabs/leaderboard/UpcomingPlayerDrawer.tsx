@@ -169,25 +169,9 @@ export function UpcomingPlayerDrawer({ golfer, leaderboard, events, nextEvent, s
       </div>
 
       {onViewMore && (
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
-          <button
-            onClick={onViewMore}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              background: "transparent",
-              border: "1.5px solid var(--green-600, #2d6a4f)",
-              borderRadius: 999,
-              padding: "6px 18px",
-              fontSize: 13, fontWeight: 700,
-              color: "var(--green-600, #2d6a4f)",
-              cursor: "pointer",
-              letterSpacing: "0.03em",
-            
-              WebkitTapHighlightColor: "transparent",
-            }}
-          >
+        <div style={{ marginTop: 14 }}>
+          <button className="drawer-profile-pill" onClick={onViewMore}>
             View Profile
-            
           </button>
         </div>
       )}

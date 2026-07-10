@@ -9,7 +9,7 @@ import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
 import { WeatherAmbience, getWeatherCardBg } from "../../components/WeatherAmbience";
 import { useWeatherReady } from "../../hooks/useWeatherReady";
-import { BEZEL_OUTER_SHADOW, bezelRimOverlay } from "../leaderboard/bezelStyles";
+import { BEZEL_OUTER_SHADOW, CHIP_BEZEL, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 const swipeEarlyStyles = `
 .rsvp-swipe-outer {
@@ -477,17 +477,17 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
             <div style={{fontWeight:700,fontSize:17}}>{shortCourseName(selEvent.course_name)}</div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
-              <span className="pill pill-green">✓ {yesCount}</span>
-              {noCount>0&&<span className="pill pill-red">✗ {noCount}</span>}
-              {unconfCount>0&&<span className="pill pill-gray">? {unconfCount}</span>}
+              <span className="pill pill-green" style={{boxShadow:CHIP_BEZEL}}>✓ {yesCount}</span>
+              {noCount>0&&<span className="pill pill-red" style={{boxShadow:CHIP_BEZEL}}>✗ {noCount}</span>}
+              {unconfCount>0&&<span className="pill pill-gray" style={{boxShadow:CHIP_BEZEL}}>? {unconfCount}</span>}
             </div>
           </div>
-          <div className="info-row"><span className="info-key">Status</span><span className="pill pill-gold" style={isJuly4&&selEvent.status==="Upcoming"?{backgroundImage:`linear-gradient(rgba(0,0,0,0.35),rgba(0,0,0,0.35)),${july4StarBg}`,backgroundSize:"auto,16px 16px",backgroundColor:"#3C3B6E",color:"#FFFFFF",border:"2px solid #B22234",fontWeight:800}:undefined}>{selEvent.status}</span></div>
+          <div className="info-row"><span className="info-key">Status</span><span className="pill pill-gold" style={isJuly4&&selEvent.status==="Upcoming"?{backgroundImage:`linear-gradient(rgba(0,0,0,0.35),rgba(0,0,0,0.35)),${july4StarBg}`,backgroundSize:"auto,16px 16px",backgroundColor:"#3C3B6E",color:"#FFFFFF",border:"2px solid #B22234",fontWeight:800,boxShadow:CHIP_BEZEL}:{boxShadow:CHIP_BEZEL}}>{selEvent.status}</span></div>
           <div className="info-row">
             <span className="info-key">Tee Times</span>
             <span className="info-val" style={{textAlign:"right"}}>
               {selEvent.tee_times.map((t:string,i:number)=>(
-                <span key={i} style={{display:"inline-block",background:"var(--green-50)",border:"1px solid var(--green-100)",borderRadius:6,padding:"2px 8px",marginLeft:4,fontSize:14,fontWeight:600,color:"var(--green-700)"}}>{t}</span>
+                <span key={i} style={{display:"inline-block",background:"var(--green-50)",border:"1px solid var(--green-100)",borderRadius:6,padding:"2px 8px",marginLeft:4,fontSize:14,fontWeight:600,color:"var(--green-700)",boxShadow:CHIP_BEZEL}}>{t}</span>
               ))}
             </span>
           </div>
@@ -518,7 +518,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                 <span className="info-key" style={{paddingTop:3}}>Field</span>
                 <span className="info-val" style={{textAlign:"right",display:"flex",flexWrap:"wrap",gap:4,justifyContent:"flex-end"}}>
                   {displayNames.map((d,i:number)=>(
-                    <span key={i} style={{display:"inline-flex",alignItems:"center",gap:5,background:"var(--green-50)",border:"1px solid var(--green-100)",borderRadius:14,padding:"3px 10px",fontSize:13,fontWeight:600,color:"var(--green-700)"}}>
+                    <span key={i} style={{display:"inline-flex",alignItems:"center",gap:5,background:"var(--green-50)",border:"1px solid var(--green-100)",borderRadius:14,padding:"3px 10px",fontSize:13,fontWeight:600,color:"var(--green-700)",boxShadow:CHIP_BEZEL}}>
                       {d.name}
                       {d.isGuest&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--green-700)",color:"white",fontSize:9,fontWeight:800,lineHeight:1,flexShrink:0}}>G</span>}
                       {d.early&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--gold-600)",color:"white",fontSize:8,fontWeight:800,lineHeight:1,flexShrink:0}}>E</span>}

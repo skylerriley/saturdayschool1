@@ -251,7 +251,7 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
   );
 }
 
-export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,memberGolferId,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab,restoreSubTab,onSubTabChange,initialFeedOpen,initialOpenEventId,onOpenEventConsumed,initialScrollToMe,onScrollToMeConsumed,onNavigateToAnalyticsGolfer}:any){
+export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,memberGolferId,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab,restoreSubTab,onSubTabChange,initialFeedOpen,initialOpenEventId,onOpenEventConsumed,initialScrollToMe,onScrollToMeConsumed,initialScrollToGroup,onScrollToGroupConsumed,onNavigateToAnalyticsGolfer}:any){
   // ── Golden Hour Mode ──────────────────────────────────────────────────
   // Fri/Sat 4-8pm PST: the leaderboard drifts toward amber-tinted greens and
   // warmer whites. Friday afternoon = anticipation; Saturday evening = the
@@ -317,6 +317,19 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   // frame adds it so the staggered entrance plays without competing with
   // the tab-switch click itself (see switchSubTab comment above -- this
   // was the cause of the dropped first tap with a full roster).
+  // Deep links (Profile cards) drive subTab via restoreSubTab. On a fresh mount
+  // the initial useState above picks it up; but if the leaderboard tab is already
+  // active (e.g. the welcome overlay sits over it), no remount happens, so react
+  // to restoreSubTab changing here. Guard on the previous value so this never
+  // fights a manual tab switch or the live-event auto-switch below.
+  const prevRestoreRef=useRef(restoreSubTab);
+  useEffect(()=>{
+    if(restoreSubTab!==prevRestoreRef.current){
+      prevRestoreRef.current=restoreSubTab;
+      if(validSubTabs.includes(restoreSubTab||""))setSubTab(restoreSubTab);
+    }
+  },[restoreSubTab]);
+
   const [cascadeOn,setCascadeOn]=useState(false);
   useEffect(()=>{
     setCascadeOn(false);
@@ -479,6 +492,30 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     timers.push(setTimeout(()=>attempt(0),600));
     return()=>timers.forEach(clearTimeout);
   },[initialScrollToMe]);
+
+  // Deep link (Profile next-event card, pairings set): scroll the Upcoming board
+  // to the top of the member's pairing group. Positions the group's first row
+  // near the top (not centered) so the whole group reads below it. Same
+  // .main-content-only scroll rule as initialScrollToMe (iOS PWA safe areas).
+  useEffect(()=>{
+    if(!initialScrollToGroup||memberGolferId==null)return;
+    const timers:any[]=[];
+    const attempt=(tries:number)=>{
+      const gid=myGroupStartRef.current;
+      const el=gid!=null?upRowRefs.current[gid]:null;
+      const main=el?.closest(".main-content") as HTMLElement|null;
+      if(el&&main){
+        const y=el.getBoundingClientRect().top-main.getBoundingClientRect().top+main.scrollTop-90;
+        main.scrollTo({top:Math.max(0,y),behavior:"smooth"});
+        onScrollToGroupConsumed?.();
+        return;
+      }
+      if(tries<6)timers.push(setTimeout(()=>attempt(tries+1),400));
+      else onScrollToGroupConsumed?.();
+    };
+    timers.push(setTimeout(()=>attempt(0),600));
+    return()=>timers.forEach(clearTimeout);
+  },[initialScrollToGroup]);
 
   const eventEntries=displayEvent
     ?dedupeLeaderboard(leaderboard.filter((e:any)=>e.event_id===displayEvent.event_id)).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)
@@ -862,6 +899,12 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
   // Measure collapsed row height once so reordered rows can animate via `top`
   const lbRowRefs=useRef<Record<number,HTMLDivElement|null>>({});
+  // Upcoming-board rows, keyed by golfer_id — used to deep-scroll to the
+  // member's pairing group from the Profile next-event card.
+  const upRowRefs=useRef<Record<number,HTMLDivElement|null>>({});
+  // golfer_id of the first row in the member's upcoming group (set during the
+  // upcoming render); the group-scroll effect reads it.
+  const myGroupStartRef=useRef<number|null>(null);
   const [lbRowH,setLbRowH]=useState<number|null>(null);
   useLayoutEffect(()=>{
     if(expandedId!=null)return; // don't measure while a row is expanded (taller)
@@ -2019,6 +2062,10 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
           const bp=seasonPosMap[b.golfer_id]?.pos??999;
           return ap-bp;
         });
+        // First row of the member's pairing group (same assigned tee time) —
+        // the deep-scroll target for the Profile next-event card.
+        const myTee=pairingsSet?rows.find((s:any)=>s.golfer_id===memberGolferId)?.assigned_tee_time:null;
+        myGroupStartRef.current=myTee?(rows.find((s:any)=>s.assigned_tee_time===myTee)?.golfer_id??null):null;
         return(
           <div>
             <UpcomingCourseCard event={nextEvent} courses={courses} holeImages={holeImages} onClick={()=>setUpcomingWeatherOpen(true)} fieldCount={upEntries.length} firstTeeTime={(nextEvent.tee_times||[]).slice().sort()[0]}/>
@@ -2046,7 +2093,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   const prevRow=rows[rowIdx-1];
                   const isGroupStart=pairingsSet&&rowIdx>0&&s.assigned_tee_time&&prevRow&&s.assigned_tee_time!==prevRow.assigned_tee_time;
                   return(
-                    <div key={s.signup_id} className={isExp?"lb-row-open":undefined} style={isGroupStart?{borderTop:"2px solid var(--green-700)"}:undefined}>
+                    <div key={s.signup_id} ref={el=>{upRowRefs.current[s.golfer_id]=el;}} className={isExp?"lb-row-open":undefined} style={isGroupStart?{borderTop:"2px solid var(--green-700)"}:undefined}>
                       <div className={`lb-live-row${s.golfer_id===memberGolferId?" me-row":""}`} onClick={()=>setUpcomingExpandedId(isExp?null:s.golfer_id)}>
                         <div style={{fontSize:16,fontWeight:700,color:"var(--text-secondary)"}}>{posLabel}</div>
                         <div style={{fontSize:16,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}</div>

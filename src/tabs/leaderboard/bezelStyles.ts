@@ -14,16 +14,28 @@
 import type { CSSProperties } from "react";
 
 // Outer lift — put this on a wrapper that does NOT clip overflow.
-export const BEZEL_OUTER_SHADOW =
-  "0 1px 1px rgba(0,0,0,0.04), 0 4px 8px -2px rgba(0,0,0,0.10), 0 8px 16px -6px rgba(0,0,0,0.10)";
+// NOTE (2026-07-10): drop shadows removed per request — the raised look now
+// comes from the gradient (dark cards) + inset rim alone. To restore the lift,
+// put these values back:
+//   OUTER: "0 1px 1px rgba(0,0,0,0.04), 0 4px 8px -2px rgba(0,0,0,0.10), 0 8px 16px -6px rgba(0,0,0,0.10)"
+//   PILL:  "0 1px 2px rgba(0,0,0,0.18), 0 2px 5px rgba(0,0,0,0.12)"
+export const BEZEL_OUTER_SHADOW = "none";
 
 // Tighter, crisper lift — matches the segmented-control (ToggleGroup) pill.
-// Two close positive-offset layers instead of a wide diffuse spread, so the
-// card sits just above the surface with a sharper edge. Pair with the "pill"
-// rim below. Can render directly on the card (no negative-spread gutter risk
-// since the blur radius stays small).
-export const BEZEL_PILL_SHADOW =
-  "0 1px 2px rgba(0,0,0,0.18), 0 2px 5px rgba(0,0,0,0.12)";
+// (Drop shadow removed 2026-07-10 — see note above for the original value.)
+export const BEZEL_PILL_SHADOW = "none";
+
+// The exact box-shadow on the ToggleGroup (Profile/Settings segmented control)
+// container in App.tsx (.toggle-group) — outer drop-shadow lift + a light inset
+// rim (bright top edge, faint dark bottom). Use on light/warm inner surfaces
+// that should read as raised the same way the segmented control does.
+export const BEZEL_TOGGLE_LIGHT =
+  "0 1px 2px -1px rgba(0,0,0,0.05), 0 2px 5px -3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.06)";
+
+// Same raised bezel as BEZEL_TOGGLE_LIGHT, meant for small colored chips/pills
+// (RSVP info-card status/tee/field chips) where the chip keeps its own tint —
+// soft outer drop + a light inset rim so the chip reads as raised.
+export const CHIP_BEZEL = BEZEL_TOGGLE_LIGHT;
 
 // Rim overlay for DARK cards (green-900 surfaces / photos). Softer whites so the
 // highlight doesn't blow out against the dark body.
