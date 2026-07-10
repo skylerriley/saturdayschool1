@@ -295,7 +295,17 @@ const CSS = `
     overflow-y:auto; overflow-x:clip;
     overscroll-behavior-y:contain;
     position:relative;
-    background:var(--bg);
+    /* Subtle top-to-bottom wash: starts a touch lighter than --bg (a hint of
+       the surface tone), settles into --bg, then drifts a shade toward the
+       league green at the base. Built from theme vars so it tracks golden-hour.
+       background-attachment:fixed keeps the gradient anchored to the viewport
+       so it doesn't scroll/tile as the content column grows. */
+    background:
+      linear-gradient(180deg,
+        color-mix(in srgb, var(--surface) 55%, var(--bg)) 0%,
+        var(--bg) 42%,
+        color-mix(in srgb, var(--green-500) 14%, var(--bg)) 100%);
+    background-attachment:fixed;
     border-radius:20px 20px 0 0;
     box-shadow:0 -2px 16px rgba(0,0,0,0.18);
   }
