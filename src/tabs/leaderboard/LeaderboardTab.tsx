@@ -2191,7 +2191,16 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
           style={{
             position:"fixed",
             top:0,left:0,right:0,bottom:0,
-            background:"var(--bg)",
+            // Same gradient wash as .main-content — warm/light near the top,
+            // settling into --bg, drifting toward league green at the base.
+            // Built from theme vars so it tracks golden-hour. Anchored to the
+            // viewport so it doesn't scroll/tile as the detail column grows.
+            background:
+              "linear-gradient(180deg,"+
+                "color-mix(in srgb, var(--surface) 55%, var(--bg)) 0%,"+
+                "var(--bg) 42%,"+
+                "color-mix(in srgb, var(--green-500) 20%, var(--bg)) 100%)",
+            backgroundAttachment:"fixed",
             zIndex:199,
             overflowY:"auto",
             overscrollBehaviorY:"contain",
