@@ -168,10 +168,10 @@ export function FieldStrengthMeter({ upEntries, golfers, leaderboard, events, se
       </div>
 
       {/* Zone labels */}
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 13, color: "var(--text-muted)", letterSpacing: "0.04em" }}>QUIET</span>
-        <span style={{ fontSize: 13, color: "var(--text-muted)", letterSpacing: "0.04em" }}>AVG</span>
-        <span style={{ fontSize: 13, color: "var(--text-muted)", letterSpacing: "0.04em" }}>LOADED</span>
+      <div style={{ display: "flex", alignItems: "baseline" }}>
+        <span style={{ flex: 1, textAlign: "left", fontSize: 13, color: "var(--text-muted)", letterSpacing: "0.04em" }}>QUIET</span>
+        <span style={{ flex: 1, textAlign: "center", fontSize: 13, color: "var(--text-muted)", letterSpacing: "0.04em" }}>AVG</span>
+        <span style={{ flex: 1, textAlign: "right", fontSize: 13, color: "var(--text-muted)", letterSpacing: "0.04em" }}>LOADED</span>
       </div>
     </div>
   );
