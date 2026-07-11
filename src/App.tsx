@@ -903,6 +903,13 @@ const CSS = `
   .rsvp-btn.yes.active{background:var(--green-700);color:white;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
   .rsvp-btn.no{color:var(--red-600);}
   .rsvp-btn.no.active{background:var(--red-600);color:white;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
+  @media (hover:hover){
+    .rsvp-btn.yes:not(.active):not(:disabled):hover{background:var(--green-100);}
+    .rsvp-btn.no:not(.active):not(:disabled):hover{background:var(--red-100);}
+  }
+  .rsvp-btn:not(:disabled):active{transform:scale(0.94);}
+  .rsvp-btn.active{animation:subBtnPress 0.34s cubic-bezier(0.34,1.16,0.5,1);}
+  @media (prefers-reduced-motion:reduce){.rsvp-btn.active{animation:none;}}
 
   /* ── MISC ── */
   .divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
