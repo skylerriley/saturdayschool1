@@ -1517,6 +1517,9 @@ export default function App(){
   // Welcome/profile overlay: shown after picking your name from the first-run
   // modal; afterwards the same view lives under Settings > Profile.
   const [showWelcome,setShowWelcome]=useState(false);
+  // Sign-up page: unidentified visitors scrolling past the fold trip this, which
+  // opens the "Who are you?" picker (see canPromptIdentity / RSVPTab).
+  const [rsvpIdentifyPrompt,setRsvpIdentifyPrompt]=useState(false);
   // Deep link: open a specific completed event's detail overlay on the weekly feed
   const [lbOpenEventId,setLbOpenEventId]=useState<number>(0);
   // Deep link: scroll the season/top15 board to the member's own row
@@ -2630,17 +2633,16 @@ export default function App(){
   const isStandalonePWA=typeof document!=="undefined"&&document.documentElement.classList.contains("is-pwa");
   const memberList=golfers.filter((g:any)=>!g.is_guest&&(g.status==null||g.status==="Active"))
     .sort((a:any,b:any)=>(a.first_name||"").localeCompare(b.first_name||"")||(a.last_name||"").localeCompare(b.last_name||""));
-  // Sign-up page hard gate: an unidentified visitor may NOT view the Sign Up
-  // tab until they pick a name (or dismiss). Unlike the soft prompt below this
-  // ignores the "Just browsing" dismissal (ss_member_skip) and fires in a plain
-  // browser too — you're always asked who you are before signing up. Dismissing
-  // it bounces you back to the leaderboard rather than re-opening in a loop.
-  // Admins bypass the gate entirely (they manage everyone's sign-ups).
-  const signupGate=memberGolferId==null&&!adminMode&&activeTab==="rsvp"&&!loading&&splashDone&&memberList.length>0&&!showPinModal;
   // Soft first-run prompt: PWA auto-show or Settings tab, respects dismissal.
   const softMemberPrompt=!memberPromptDismissed&&memberGolferId==null&&!loading&&splashDone&&memberList.length>0&&!showPinModal
     &&(isStandalonePWA||activeTab==="settings");
-  const showMemberPicker=signupGate||softMemberPrompt;
+  // Sign-up scroll prompt: an unidentified, non-admin visitor can read the top
+  // of the Sign Up page (everyone's rows are display-only for them), but the
+  // moment they scroll past the fold to sign up / add a guest, RSVPTab fires
+  // this and we ask who they are. Reuses the same picker; dismissing just closes
+  // it so they can keep browsing. Only meaningful while the picker can show.
+  const canPromptIdentity=memberGolferId==null&&!adminMode&&!loading&&splashDone&&memberList.length>0&&!showPinModal;
+  const showMemberPicker=softMemberPrompt||(rsvpIdentifyPrompt&&canPromptIdentity);
 
   return(
     <>
@@ -2705,7 +2707,7 @@ export default function App(){
           {errorMsg&&<div className="error-banner"><span>⚠</span>{errorMsg}</div>}
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} memberGolferId={memberGolferId} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} initialOpenEventId={lbOpenEventId} onOpenEventConsumed={()=>setLbOpenEventId(0)} initialScrollToMe={lbScrollToMe} onScrollToMeConsumed={()=>setLbScrollToMe(false)} initialScrollToGroup={lbScrollToGroup} onScrollToGroupConsumed={()=>setLbScrollToGroup(false)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setAnalyticsBackTarget("leaderboard");setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
-          {activeTab==="rsvp"&&!signupGate&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
+          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab} needsIdentify={canPromptIdentity} onRequestIdentify={()=>setRsvpIdentifyPrompt(true)}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} setLeaderboardLocal={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} dbDeleteHoleScore={dbDeleteHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} initialH2H={analyticsInitialH2H} onInitialH2HConsumed={()=>setAnalyticsInitialH2H(null)} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab(analyticsBackTarget);setAnalyticsBackTarget("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
@@ -2806,22 +2808,31 @@ export default function App(){
         })()}
 
         {/* First-run member picker — personalization only, no auth.
-            On the sign-up gate, dismissing bounces back to the leaderboard so
-            the unidentified visitor isn't trapped re-opening the picker. */}
+            Two entry paths: the soft first-run prompt (PWA/Settings) and the
+            Sign Up scroll prompt. On the scroll prompt "Just browsing" closes
+            the sheet and kicks the visitor back to the leaderboard (they can't
+            sign up without identifying); it does NOT set the permanent
+            ss_member_skip flag chooseMember(null) writes. */}
         {showMemberPicker&&(()=>{
-          const dismissPicker=()=>{chooseMember(null);if(signupGate)setActiveTab("leaderboard");};
+          const fromScrollPrompt=rsvpIdentifyPrompt&&!softMemberPrompt;
+          const pickMember=(id:number)=>{setRsvpIdentifyPrompt(false);chooseMember(id);setShowWelcome(true);};
+          const dismissPicker=()=>{
+            setRsvpIdentifyPrompt(false);
+            if(fromScrollPrompt){setActiveTab("leaderboard");}
+            else{chooseMember(null);}
+          };
           return(
           <div className="modal-overlay" onClick={dismissPicker}>
             <div className="modal-sheet" onClick={(e:any)=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",maxHeight:"72dvh"}}>
               <div style={{textAlign:"center",marginBottom:16}}>
                 <div style={{fontSize:18,fontWeight:700,color:"var(--green-800)",marginBottom:4}}>Who are you?</div>
-                <div style={{fontSize:13,color:"var(--text-muted)",lineHeight:1.5}}>Pick your name to get a personal greeting and have your rows highlighted on leaderboards and sign-ups. You can change this anytime in Settings.</div>
+                <div style={{fontSize:13,color:"var(--text-muted)",lineHeight:1.5}}>{fromScrollPrompt?"Pick your name to sign up and manage your RSVP. You can change this anytime in Settings.":"Pick your name to get a personal greeting and have your rows highlighted on leaderboards and sign-ups. You can change this anytime in Settings."}</div>
               </div>
               <div style={{flex:1,minHeight:0,overflowY:"auto",display:"flex",flexDirection:"column",gap:8,marginBottom:14,WebkitOverflowScrolling:"touch"}}>
                 {memberList.map((g:any)=>(
                   <button
                     key={g.golfer_id}
-                    onClick={()=>{chooseMember(g.golfer_id);setShowWelcome(true);}}
+                    onClick={()=>pickMember(g.golfer_id)}
                     style={{
                       padding:"13px 16px",textAlign:"left",fontSize:16,fontWeight:600,
                       borderRadius:"var(--radius-md)",border:"1px solid var(--border)",

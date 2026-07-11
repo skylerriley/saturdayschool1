@@ -244,7 +244,7 @@ const GLASS_PICKER_SURFACE:React.CSSProperties={
   boxShadow:"0 1px 2px rgba(28,20,16,0.06),0 6px 16px rgba(28,20,16,0.08),inset 0 1px 0 rgba(255,255,255,0.6)",
 };
 
-export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,showSuccess,showError,adminMode,memberGolferId,scrollToTop,dbUpsertGolfer,setGolfers,initialSubTab}:any){
+export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,showSuccess,showError,adminMode,memberGolferId,scrollToTop,dbUpsertGolfer,setGolfers,initialSubTab,needsIdentify,onRequestIdentify}:any){
   const upcomingEvents=[...events].filter((e:any)=>e.status!=="Completed").sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
   const [selEventId,setSelEventId]=useState<number>(upcomingEvents[0]?.event_id||0);
   const [subTab,setSubTab]=useState(()=>{
@@ -252,7 +252,13 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
     return "rsvp";
   });
   const [guestName,setGuestName]=useState("");
-  const [guestSponsor,setGuestSponsor]=useState("");
+  // Default the guest's sponsor to the identified member (they're the one most
+  // likely bringing a guest). Only when they're a valid active, non-guest golfer
+  // — mirrors the sponsor picker's own filter below. Empty otherwise.
+  const [guestSponsor,setGuestSponsor]=useState(()=>{
+    const me=golfers.find((g:any)=>g.golfer_id===memberGolferId);
+    return me&&!me.is_guest&&me.status==="Active"?String(memberGolferId):"";
+  });
   const [guestHcp,setGuestHcp]=useState("18");
   const [guestSelectedId,setGuestSelectedId]=useState<number|null>(null); // null = create new; number = reuse existing
   const [guestSaving,setGuestSaving]=useState(false); // blocks double-taps while the insert is in flight
@@ -278,6 +284,40 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   useEffect(()=>{
     if(cardRef.current)setCardHeight(cardRef.current.offsetHeight);
   },[selEventId,forecastWx]);
+
+  // Keep the sponsor defaulted to the member when they identify while this tab
+  // is already open (lazy init above only covers the first mount). Only fills an
+  // empty field so an in-progress selection is never clobbered.
+  useEffect(()=>{
+    const me=golfers.find((g:any)=>g.golfer_id===memberGolferId);
+    if(me&&!me.is_guest&&me.status==="Active"){
+      setGuestSponsor((cur:string)=>cur===""?String(memberGolferId):cur);
+    }
+  },[memberGolferId,golfers]);
+
+  // Sign-up scroll prompt: an unidentified visitor can read the top of the page
+  // (event summary + read-only field), but the moment they scroll the interactive
+  // sign-up area into view we ask who they are. The sentinel sits just above the
+  // "Member Sign Ups" list; when it enters the viewport we fire onRequestIdentify
+  // once. Re-armed whenever identity is still needed (e.g. after "Just browsing").
+  const foldSentinelRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(!needsIdentify||!onRequestIdentify)return;
+    const el=foldSentinelRef.current;
+    if(!el||typeof IntersectionObserver==="undefined")return;
+    // Only prompt once the sentinel has genuinely scrolled INTO view after
+    // starting off-screen — so a short page that shows the sentinel from the
+    // start (e.g. a tall desktop viewport) doesn't prompt before any scroll.
+    let wasOffscreen=false;
+    const io=new IntersectionObserver((entries)=>{
+      for(const e of entries){
+        if(!e.isIntersecting){wasOffscreen=true;}
+        else if(wasOffscreen){onRequestIdentify();}
+      }
+    },{rootMargin:"0px 0px -25% 0px"});
+    io.observe(el);
+    return ()=>io.disconnect();
+  },[needsIdentify,onRequestIdentify,subTab,selEventId]);
 
   const yesCount=eventSignups.filter((s:any)=>s.attending==="Yes").length;
   const noCount=eventSignups.filter((s:any)=>s.attending==="No").length;
@@ -579,6 +619,9 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
       {subTab==="rsvp"&&(
         <>
+          {/* Fold sentinel — scrolling this into view prompts an unidentified
+              visitor to say who they are before they interact below. */}
+          {needsIdentify&&<div ref={foldSentinelRef} aria-hidden="true" style={{height:1,width:"100%"}}/>}
           <div className="card-title" style={{marginBottom:4}}>Member Sign Ups</div>
           <div className="early-tee-hint">
             Swipe name left <svg width="16" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}><line x1="15" y1="7" x2="1" y2="7" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><polyline points="7,1 1,7 7,13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg> for an early tee time 
@@ -599,8 +642,10 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             const myGuests=eventSignups.filter((s:any)=>s.is_guest_entry&&s.sponsor_golfer_id===g.golfer_id);
             // Once a member has identified themselves (and isn't in admin mode),
             // only their own row + their guests stay editable; everyone else's
-            // In/Out is display-only. Admins and unidentified users edit anyone.
-            const editable=adminMode||!memberGolferId||g.golfer_id===memberGolferId;
+            // In/Out is display-only. Admins edit anyone. Unidentified visitors
+            // (needsIdentify) get a fully read-only field until they say who they
+            // are — the scroll sentinel below prompts them to identify.
+            const editable=adminMode||(!needsIdentify&&(!memberGolferId||g.golfer_id===memberGolferId));
             return(
               <SwipeMemberRow
                 key={signup.signup_id}
