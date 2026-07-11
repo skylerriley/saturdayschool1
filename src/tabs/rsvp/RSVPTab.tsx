@@ -581,7 +581,14 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
           <div className="early-tee-hint">
             Swipe name left <svg width="16" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}><line x1="15" y1="7" x2="1" y2="7" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><polyline points="7,1 1,7 7,13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg> for an early tee time 
           </div>
-          {[...eventSignups.filter((s:any)=>!s.is_guest_entry)].sort((a:any,b:any)=>{
+          {[...eventSignups.filter((s:any)=>!s.is_guest_entry)]
+          // When a member has identified themselves (and isn't in admin mode),
+          // restrict the sign-up list to just their own row — admins keep the
+          // full list so they can toggle anyone. Their guests still nest under
+          // their row below. Everyone else's status is still visible via the
+          // "Field" chips on the event summary card above.
+          .filter((s:any)=>adminMode||!memberGolferId||s.golfer_id===memberGolferId)
+          .sort((a:any,b:any)=>{
             // Signed-in member (and their nested guests) float to the top so
             // they never have to scroll to find themselves
             if(a.golfer_id===memberGolferId&&b.golfer_id!==memberGolferId)return -1;
