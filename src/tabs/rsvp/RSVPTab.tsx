@@ -179,6 +179,7 @@ interface SwipeMemberRowProps {
   golfer: any;
   isEarly: boolean;
   isMe: boolean;
+  editable: boolean;
   myGuests: any[];
   allGolfers: any[];
   onToggleEarly: () => void;
@@ -186,8 +187,9 @@ interface SwipeMemberRowProps {
   onToggleGuestAttending: (guestSignupId: number, guestGolferId: number, val: string, current: string) => void;
 }
 
-function SwipeMemberRow({ signup, golfer, isEarly, isMe, myGuests, allGolfers, onToggleEarly, onToggleAttending, onToggleGuestAttending }: SwipeMemberRowProps) {
-  const swipeEnabled = signup.attending === "Yes";
+function SwipeMemberRow({ signup, golfer, isEarly, isMe, editable, myGuests, allGolfers, onToggleEarly, onToggleAttending, onToggleGuestAttending }: SwipeMemberRowProps) {
+  // Swipe-for-early and In/Out toggles only work on rows the viewer owns.
+  const swipeEnabled = editable && signup.attending === "Yes";
   const rowRef = useSwipeEarly(onToggleEarly, swipeEnabled);
 
   return (
@@ -206,9 +208,9 @@ function SwipeMemberRow({ signup, golfer, isEarly, isMe, myGuests, allGolfers, o
           {isEarly && (
             <span className="early-badge"><Sun size={11} strokeWidth={2.5} style={{flexShrink:0}} /> EARLY ✓</span>
           )}
-          <div className="rsvp-actions" style={{display:"flex",alignItems:"center",gap:4}}>
-            <button className={`rsvp-btn yes${signup.attending === "Yes" ? " active" : ""}`} onClick={() => onToggleAttending("Yes")}>In</button>
-            <button className={`rsvp-btn no${signup.attending === "No" ? " active" : ""}`} onClick={() => onToggleAttending("No")}>Out</button>
+          <div className="rsvp-actions" style={{display:"flex",alignItems:"center",gap:4,...(editable?{}:{opacity:0.55})}}>
+            <button className={`rsvp-btn yes${signup.attending === "Yes" ? " active" : ""}`} disabled={!editable} onClick={() => onToggleAttending("Yes")}>In</button>
+            <button className={`rsvp-btn no${signup.attending === "No" ? " active" : ""}`} disabled={!editable} onClick={() => onToggleAttending("No")}>Out</button>
           </div>
         </div>
       </div>
@@ -217,9 +219,9 @@ function SwipeMemberRow({ signup, golfer, isEarly, isMe, myGuests, allGolfers, o
         return (
           <div key={gs.signup_id} className="rsvp-row" style={{paddingLeft:20,paddingRight:14,background:"var(--gold-50)"}}>
             <div className="rsvp-name" style={{fontSize:15,color:"var(--gold-800)",flex:1,minWidth:0}}>↳ {gg ? `${gg.first_name} ${gg.last_name}` : "Guest"} <span style={{fontSize:11,fontWeight:600,background:"var(--gold-100)",borderRadius:4,padding:"1px 5px"}}>guest</span></div>
-            <div className="rsvp-actions">
-              <button className={`rsvp-btn yes${gs.attending === "Yes" ? " active" : ""}`} onClick={() => onToggleGuestAttending(gs.signup_id, gs.golfer_id, "Yes", gs.attending)}>In</button>
-              <button className={`rsvp-btn no${gs.attending === "No" ? " active" : ""}`} onClick={() => onToggleGuestAttending(gs.signup_id, gs.golfer_id, "No", gs.attending)}>Out</button>
+            <div className="rsvp-actions" style={editable?undefined:{opacity:0.55}}>
+              <button className={`rsvp-btn yes${gs.attending === "Yes" ? " active" : ""}`} disabled={!editable} onClick={() => onToggleGuestAttending(gs.signup_id, gs.golfer_id, "Yes", gs.attending)}>In</button>
+              <button className={`rsvp-btn no${gs.attending === "No" ? " active" : ""}`} disabled={!editable} onClick={() => onToggleGuestAttending(gs.signup_id, gs.golfer_id, "No", gs.attending)}>Out</button>
             </div>
           </div>
         );
@@ -582,12 +584,6 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             Swipe name left <svg width="16" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}><line x1="15" y1="7" x2="1" y2="7" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><polyline points="7,1 1,7 7,13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg> for an early tee time 
           </div>
           {[...eventSignups.filter((s:any)=>!s.is_guest_entry)]
-          // When a member has identified themselves (and isn't in admin mode),
-          // restrict the sign-up list to just their own row — admins keep the
-          // full list so they can toggle anyone. Their guests still nest under
-          // their row below. Everyone else's status is still visible via the
-          // "Field" chips on the event summary card above.
-          .filter((s:any)=>adminMode||!memberGolferId||s.golfer_id===memberGolferId)
           .sort((a:any,b:any)=>{
             // Signed-in member (and their nested guests) float to the top so
             // they never have to scroll to find themselves
@@ -601,6 +597,10 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             const g=golfers.find((x:any)=>x.golfer_id===signup.golfer_id);
             if(!g)return null;
             const myGuests=eventSignups.filter((s:any)=>s.is_guest_entry&&s.sponsor_golfer_id===g.golfer_id);
+            // Once a member has identified themselves (and isn't in admin mode),
+            // only their own row + their guests stay editable; everyone else's
+            // In/Out is display-only. Admins and unidentified users edit anyone.
+            const editable=adminMode||!memberGolferId||g.golfer_id===memberGolferId;
             return(
               <SwipeMemberRow
                 key={signup.signup_id}
@@ -608,6 +608,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                 golfer={g}
                 isEarly={!!signup.early_tee_request}
                 isMe={g.golfer_id===memberGolferId}
+                editable={editable}
                 myGuests={myGuests}
                 allGolfers={golfers}
                 onToggleEarly={()=>toggleEarlyTee(signup.signup_id)}

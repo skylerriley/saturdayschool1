@@ -894,6 +894,7 @@ const CSS = `
      depressed (inset shadow, pressed-in), the active one reads as raised (the same
      layered drop shadow + inset top-highlight/bottom-shadow as .tab-sub-btn.active). */
   .rsvp-btn{padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:all 0.15s;background:var(--earth-50);box-shadow:inset 0 2px 4px rgba(0,0,0,0.16),inset 0 1px 2px rgba(0,0,0,0.12),inset 0 -1px 0 rgba(255,255,255,0.7);}
+  .rsvp-btn:disabled{cursor:default;}
   .rsvp-btn.yes{color:var(--green-700);}
   .rsvp-btn.yes.active{background:var(--green-700);color:white;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
   .rsvp-btn.no{color:var(--red-600);}
