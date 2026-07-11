@@ -744,6 +744,8 @@ const CSS = `
   .drawer-card-section-label{font-size:12px;font-weight:600;color:var(--text-muted,#6a6050);letter-spacing:0.07em;text-transform:uppercase;margin-bottom:5px;}
   /* profile pill: matches .tab-sub-btn style — pill shape, centred, shrinks to content */
   .drawer-profile-pill{display:block;margin:8px auto 14px;padding:9px 25px;width:auto;background:var(--earth-50);border:none;border-radius:999px;font-size:13px;font-weight:600;color:var(--green-600,#2d7a4a);cursor:pointer;letter-spacing:0.03em;text-align:center;-webkit-tap-highlight-color:transparent;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
+  .drawer-profile-pill{transition:background 0.15s ease,color 0.15s ease;}
+  @media (hover:hover){.drawer-profile-pill:hover{background:var(--green-100);color:var(--green-800);}}
   .drawer-profile-pill:active{transform:scale(0.97);}
   .drawer-insight{display:flex;align-items:flex-start;gap:6px;background:#f8f6f0;border-radius:6px;padding:7px 8px;margin-top:8px;}
   .drawer-insight-label{font-size:9px;color:var(--text-muted,#6a6050);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;}
@@ -1225,6 +1227,10 @@ const CSS = `
   .tab-sub-btn{flex-shrink:0;scroll-snap-align:center;padding:9px 17px;border-radius:20px;font-size:13px;text-transform: uppercase; font-weight:600;letter-spacing:0.03em;border:none;background:var(--earth-50);color:var(--text-muted);cursor:pointer;transition:all 0.15s;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
   .tab-sub-btn.active{background:var(--green-800);color:white;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
   @media (hover:hover){.tab-sub-btn:not(.active):hover{background:var(--green-100);color:var(--green-800);}}
+  .tab-sub-btn:active{transform:scale(0.94);}
+  .tab-sub-btn.active{animation:subBtnPress 0.34s cubic-bezier(0.34,1.16,0.5,1);}
+  @keyframes subBtnPress{0%{transform:scale(0.92);}55%{transform:scale(1.03);}100%{transform:scale(1);}}
+  @media (prefers-reduced-motion:reduce){.tab-sub-btn.active{animation:none;}}
 
   .empty-state{text-align:center;padding:40px 20px;color:var(--text-muted);}
   .empty-text{font-size:17px;margin-bottom:4px;color:var(--text-secondary);}
