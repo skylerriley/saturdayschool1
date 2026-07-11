@@ -1,6 +1,13 @@
 import { useState, useRef } from "react";
 import { scrollMainTop, scrollMainToEl, formatDate, uniqueCourseNames } from "../../lib/formatters";
 import { GlassPicker } from "../../components/common";
+import { SUPABASE_URL, SUPABASE_KEY } from "../../lib/supabaseClient";
+
+// Admins can regenerate the AI recap once per event, within 24h of the round
+// date — for cases where players were added/removed after the round was
+// finalized. The single-use limit is tracked client-side in localStorage.
+const RECAP_WINDOW_MS = 24 * 60 * 60 * 1000;
+const recapResentKey = (evId: number) => `ss_recap_resent_${evId}`;
 
 export function EventCreator({ courses, events, setEvents, signups, setSignups, leaderboard, setLeaderboard, golfers, showSuccess }: any) {
   const formTopRef = useRef<HTMLDivElement>(null);
@@ -56,6 +63,41 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
     showSuccess("Event reopened");
   };
 
+  // Track which events have already used their one-time recap regeneration so
+  // the button disables immediately (re-render), not just on next mount.
+  const [recapResent, setRecapResent] = useState<Record<number, boolean>>({});
+  const [recapRunning, setRecapRunning] = useState<number | null>(null);
+
+  const regenerateRecap = async (evId: number, evDate: string) => {
+    if (recapRunning !== null) return;
+    if (typeof localStorage !== "undefined" && localStorage.getItem(recapResentKey(evId))) {
+      showSuccess("Recap already regenerated once for this event.");
+      return;
+    }
+    if (!window.confirm(`Regenerate the AI recap for "${formatDate(evDate)}"? This can only be done once, and rewrites the existing recap. Use it if players were added or removed after the round was finalized.`)) return;
+    setRecapRunning(evId);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-event-recap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPABASE_KEY },
+        body: JSON.stringify({ event_id: evId, force: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        showSuccess(`Recap failed: ${data.error || res.status}`);
+        return;
+      }
+      // Success — burn the one-time allowance.
+      if (typeof localStorage !== "undefined") localStorage.setItem(recapResentKey(evId), String(Date.now()));
+      setRecapResent(prev => ({ ...prev, [evId]: true }));
+      showSuccess("AI recap regenerated!");
+    } catch (err: any) {
+      showSuccess(`Recap failed: ${err.message}`);
+    } finally {
+      setRecapRunning(null);
+    }
+  };
+
   const currentYear = new Date().getFullYear();
   const allSeasonsList = [...new Set(events.map((e: any) => e.season))].sort((a: any, b: any) => b - a) as number[];
   const [filterSeason, setFilterSeason] = useState<number | "all">(allSeasonsList[0] || currentYear);
@@ -90,18 +132,32 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
           style={{ fontSize: 13, padding: "4px 8px" }}
         />
       </div>
-      {filteredEvents.map((ev: any) => (
-        <div key={ev.event_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
+      {filteredEvents.map((ev: any) => {
+        const withinRecapWindow = ev.status === "Completed" && (Date.now() - new Date(ev.date).getTime() < RECAP_WINDOW_MS);
+        const alreadyResent = recapResent[ev.event_id] || (typeof localStorage !== "undefined" && !!localStorage.getItem(recapResentKey(ev.event_id)));
+        const isRunning = recapRunning === ev.event_id;
+        return (
+        <div key={ev.event_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 15 }}>{formatDate(ev.date)}</div>
             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{ev.course_name} · <span className={`pill ${ev.status === "Completed" ? "pill-green" : ev.status === "Upcoming" ? "pill-gold" : "pill-blue"}`} style={{ fontSize: 10 }}>{ev.status}</span></div>
           </div>
           {ev.season === currentYear && <button className="btn btn-sm btn-outline" onClick={() => startEdit(ev)}>Edit</button>}
           {ev.season === currentYear && ev.status === "Completed" && (Date.now() - new Date(ev.date).getTime() < 7 * 24 * 60 * 60 * 1000) && <button className="btn btn-sm btn-outline" style={{ color: "var(--gold-600)" }} onClick={() => reopenEvent(ev.event_id, ev.date)}>Reopen</button>}
+          {ev.season === currentYear && withinRecapWindow && (
+            <button
+              className="btn btn-sm btn-outline"
+              style={{ color: "var(--green-700)", opacity: (alreadyResent || isRunning) ? 0.55 : 1 }}
+              disabled={alreadyResent || isRunning || recapRunning !== null}
+              title={alreadyResent ? "Recap already regenerated once for this event" : "Regenerate the AI recap (once per event, if players changed after finalizing)"}
+              onClick={() => regenerateRecap(ev.event_id, ev.date)}
+            >{isRunning ? "Regenerating…" : alreadyResent ? "Recap redone" : "Redo Recap"}</button>
+          )}
           {ev.season === currentYear && ev.status !== "Completed" && <button className="btn btn-sm btn-danger" onClick={() => deleteEvent(ev.event_id, ev.date)}>Del</button>}
           {ev.season !== currentYear && <span style={{ fontSize: 11, color: "var(--text-muted)", padding: "4px 8px" }}>view only</span>}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
