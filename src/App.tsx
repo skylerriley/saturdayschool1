@@ -2630,8 +2630,17 @@ export default function App(){
   const isStandalonePWA=typeof document!=="undefined"&&document.documentElement.classList.contains("is-pwa");
   const memberList=golfers.filter((g:any)=>!g.is_guest&&(g.status==null||g.status==="Active"))
     .sort((a:any,b:any)=>(a.first_name||"").localeCompare(b.first_name||"")||(a.last_name||"").localeCompare(b.last_name||""));
-  const showMemberPicker=!memberPromptDismissed&&memberGolferId==null&&!loading&&splashDone&&memberList.length>0&&!showPinModal
+  // Sign-up page hard gate: an unidentified visitor may NOT view the Sign Up
+  // tab until they pick a name (or dismiss). Unlike the soft prompt below this
+  // ignores the "Just browsing" dismissal (ss_member_skip) and fires in a plain
+  // browser too — you're always asked who you are before signing up. Dismissing
+  // it bounces you back to the leaderboard rather than re-opening in a loop.
+  // Admins bypass the gate entirely (they manage everyone's sign-ups).
+  const signupGate=memberGolferId==null&&!adminMode&&activeTab==="rsvp"&&!loading&&splashDone&&memberList.length>0&&!showPinModal;
+  // Soft first-run prompt: PWA auto-show or Settings tab, respects dismissal.
+  const softMemberPrompt=!memberPromptDismissed&&memberGolferId==null&&!loading&&splashDone&&memberList.length>0&&!showPinModal
     &&(isStandalonePWA||activeTab==="settings");
+  const showMemberPicker=signupGate||softMemberPrompt;
 
   return(
     <>
@@ -2696,7 +2705,7 @@ export default function App(){
           {errorMsg&&<div className="error-banner"><span>⚠</span>{errorMsg}</div>}
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} memberGolferId={memberGolferId} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} initialOpenEventId={lbOpenEventId} onOpenEventConsumed={()=>setLbOpenEventId(0)} initialScrollToMe={lbScrollToMe} onScrollToMeConsumed={()=>setLbScrollToMe(false)} initialScrollToGroup={lbScrollToGroup} onScrollToGroupConsumed={()=>setLbScrollToGroup(false)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setAnalyticsBackTarget("leaderboard");setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
-          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
+          {activeTab==="rsvp"&&!signupGate&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} setLeaderboardLocal={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} dbDeleteHoleScore={dbDeleteHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} initialH2H={analyticsInitialH2H} onInitialH2HConsumed={()=>setAnalyticsInitialH2H(null)} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab(analyticsBackTarget);setAnalyticsBackTarget("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
@@ -2796,9 +2805,13 @@ export default function App(){
           );
         })()}
 
-        {/* First-run member picker — personalization only, no auth */}
-        {showMemberPicker&&(
-          <div className="modal-overlay" onClick={()=>chooseMember(null)}>
+        {/* First-run member picker — personalization only, no auth.
+            On the sign-up gate, dismissing bounces back to the leaderboard so
+            the unidentified visitor isn't trapped re-opening the picker. */}
+        {showMemberPicker&&(()=>{
+          const dismissPicker=()=>{chooseMember(null);if(signupGate)setActiveTab("leaderboard");};
+          return(
+          <div className="modal-overlay" onClick={dismissPicker}>
             <div className="modal-sheet" onClick={(e:any)=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",maxHeight:"72dvh"}}>
               <div style={{textAlign:"center",marginBottom:16}}>
                 <div style={{fontSize:18,fontWeight:700,color:"var(--green-800)",marginBottom:4}}>Who are you?</div>
@@ -2821,11 +2834,12 @@ export default function App(){
               <button
                 className="btn btn-outline btn-full"
                 style={{fontSize:15}}
-                onClick={()=>chooseMember(null)}
+                onClick={dismissPicker}
               >Just browsing</button>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Welcome overlay — personal season snapshot after picking your name */}
         {showWelcome&&memberGolfer&&(
