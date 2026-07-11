@@ -851,11 +851,13 @@ const CSS = `
   .toggle-group{display:flex;background:var(--earth-100);border-radius:var(--radius-md);padding:3px;margin-bottom:16px;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
   .toggle-btn{flex:1;padding:10px;border:none;border-radius:var(--radius-sm);background:transparent;font-size:14px;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all 0.2s;}
   .toggle-btn.active{background:var(--green-800);color:white;box-shadow:var(--shadow-sm);}
+  @media (hover:hover){.toggle-btn:not(.active):hover{color:var(--green-700);}}
 
   /* Spring-pill toggle (animated variant) */
   .toggle-group.has-pill{position:relative;}
   .toggle-group.has-pill .toggle-btn{position:relative;z-index:1;background:transparent;transition:color 0.25s ease,transform 0.12s ease;-webkit-tap-highlight-color:transparent;}
   .toggle-group.has-pill .toggle-btn.active{background:transparent;box-shadow:none;color:white;}
+  @media (hover:hover){.toggle-group.has-pill .toggle-btn:not(.active):hover{color:var(--green-700);}}
   .toggle-group.has-pill .toggle-btn:active{transform:scale(0.97);}
   .toggle-group.has-pill .toggle-btn.active .tg-label{display:inline-block;animation:tg-pop 0.32s cubic-bezier(0.33,1.0,0.55,1);}
   .toggle-pill{position:absolute;top:3px;bottom:3px;left:0;z-index:0;border-radius:var(--radius-sm);background:linear-gradient(180deg,var(--green-700),var(--green-800));box-shadow:0 1px 2px rgba(0,0,0,0.18),0 2px 5px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
@@ -1222,6 +1224,7 @@ const CSS = `
   .tab-sub::-webkit-scrollbar{display:none;}
   .tab-sub-btn{flex-shrink:0;scroll-snap-align:center;padding:9px 17px;border-radius:20px;font-size:13px;text-transform: uppercase; font-weight:600;letter-spacing:0.03em;border:none;background:var(--earth-50);color:var(--text-muted);cursor:pointer;transition:all 0.15s;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
   .tab-sub-btn.active{background:var(--green-800);color:white;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
+  @media (hover:hover){.tab-sub-btn:not(.active):hover{background:var(--green-100);color:var(--green-800);}}
 
   .empty-state{text-align:center;padding:40px 20px;color:var(--text-muted);}
   .empty-text{font-size:17px;margin-bottom:4px;color:var(--text-secondary);}
