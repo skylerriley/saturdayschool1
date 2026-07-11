@@ -44,7 +44,7 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
       const el = h2hPickerRef.current;
       const scroller = document.querySelector(".main-content") as HTMLElement | null;
       if (!el || !scroller) return;
-      const GAP = 25; // leave a little breathing room above the pickers
+      const GAP = 37; // leave a little breathing room above the pickers (was 25; +12 so the picker isn't clipped)
       const top = scroller.scrollTop + el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - GAP;
       scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     }));

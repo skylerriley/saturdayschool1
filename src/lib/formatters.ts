@@ -14,6 +14,20 @@ export function scrollMainTop() {
   (document.querySelector(".main-content") as HTMLElement | null)?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+// Scroll .main-content so `el` lands near the top of the visible area.
+// Use this INSTEAD of el.scrollIntoView(): scrollIntoView scrolls every
+// scrollable ancestor including the window, and on iOS that pans the visual
+// viewport past the fixed app shell and leaves it stuck shifted up (same
+// failure mode as the keyboard pan). The offset leaves room for the sticky
+// sub-tab pill row so the target isn't hidden underneath it.
+export function scrollMainToEl(el: HTMLElement | null, offset = 64) {
+  if (!el) return;
+  const main = document.querySelector(".main-content") as HTMLElement | null;
+  if (!main) return;
+  const top = main.scrollTop + el.getBoundingClientRect().top - main.getBoundingClientRect().top - offset;
+  main.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
+
 export function formatDate(d: string) {
   if (!d) return "";
   const dt = new Date(d + "T00:00:00");

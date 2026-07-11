@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { scrollMainTop } from "../../lib/formatters";
+import { scrollMainTop, scrollMainToEl } from "../../lib/formatters";
 import { fuzzyMatchCourseName } from "../../lib/courseNameUtils";
 import { supabase, GCAPI_KEY, reportWriteError } from "../../lib/supabaseClient";
 
@@ -81,7 +81,7 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
     setShowLookup(true);
     setLookupQuery(""); setLookupResults([]); setLookupError("");
     setSelectedCourse(null); setCourseDetail(null); setSelectedTees(new Set());
-    setTimeout(() => lookupRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    setTimeout(() => scrollMainToEl(lookupRef.current), 50);
   };
 
   const searchCourses = async () => {
@@ -160,8 +160,8 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
   };
 
   // ── Manual edit form ───────────────────────────────────────────────
-  const startNew = () => { setEditing("new"); setForm(blank); setParStr("4,4,3,5,4,4,3,5,4,4,3,5,4,4,3,5,4,4"); setSiStr("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18"); setYardsStr(""); setShowLookup(false); setTimeout(() => editFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); };
-  const startEdit = (c: any) => { setEditing(c.course_id); setForm({ ...c }); setParStr(c.hole_pars.join(",")); setSiStr(c.hole_stroke_indices.join(",")); setYardsStr(c.hole_yards ? c.hole_yards.join(",") : ""); setShowLookup(false); setTimeout(() => editFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); };
+  const startNew = () => { setEditing("new"); setForm(blank); setParStr("4,4,3,5,4,4,3,5,4,4,3,5,4,4,3,5,4,4"); setSiStr("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18"); setYardsStr(""); setShowLookup(false); setTimeout(() => scrollMainToEl(editFormRef.current), 50); };
+  const startEdit = (c: any) => { setEditing(c.course_id); setForm({ ...c }); setParStr(c.hole_pars.join(",")); setSiStr(c.hole_stroke_indices.join(",")); setYardsStr(c.hole_yards ? c.hole_yards.join(",") : ""); setShowLookup(false); setTimeout(() => scrollMainToEl(editFormRef.current), 50); };
 
   const save = () => {
     const pars = parStr.split(",").map(v => parseInt(v.trim())).filter(v => !isNaN(v));
@@ -287,7 +287,7 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
             <input className="form-input" list="cname-list" value={form.course_name} onChange={e => setForm((p: any) => ({ ...p, course_name: e.target.value }))} placeholder="e.g. Strawberry Farms GC" />
             <datalist id="cname-list">{courseNames.map(n => <option key={n} value={n} />)}</datalist>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8 }}>
             <div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Tee Name</label><input className="form-input" value={form.tee_box_name} onChange={e => setForm((p: any) => ({ ...p, tee_box_name: e.target.value }))} /></div>
             <div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Par</label><input className="form-input" type="number" value={form.par} onChange={e => setForm((p: any) => ({ ...p, par: e.target.value }))} /></div>
             <div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Slope</label><input className="form-input" type="number" value={form.tee_slope} onChange={e => setForm((p: any) => ({ ...p, tee_slope: e.target.value }))} /></div>
@@ -346,7 +346,7 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
               <button onClick={() => setImgModalCourse(null)} style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "white", borderRadius: "50%", width: 32, height: 32, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>✕</button>
             </div>
             {/* Hole grid */}
-            <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, maxHeight: "70vh", overflowY: "auto" }}>
+            <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, maxHeight: "70vh", overflowY: "auto" }}>
               {Array.from({ length: 18 }, (_, i) => {
                 const hole = i + 1;
                 const existing = (holeImages || []).find((r: any) => r.course_name === imgModalCourse && r.hole_number === hole);

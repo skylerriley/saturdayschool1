@@ -292,8 +292,8 @@ const CSS = `
   .main-content{
     flex:1; min-height:0;
     padding:16px 12px 96px; width:100%; min-width:0;
-    overflow-y:auto; overflow-x:clip;
-    overscroll-behavior-y:contain;
+    overflow-y:auto; overflow-x:hidden;
+    overscroll-behavior:contain;
     position:relative;
     /* Subtle top-to-bottom wash: starts a touch lighter than --bg (a hint of
        the surface tone), settles into --bg, then drifts a shade toward the
@@ -382,12 +382,83 @@ const CSS = `
   .btn-full{width:100%;}
   .btn:disabled{opacity:0.45;cursor:not-allowed;transform:none!important;}
 
+  /* ── ADMIN SUBTABS: subtab-pill bezel language ──────────────────────────
+     Inputs adopt the frosted GlassPicker surface (matches the RSVP Add-Guest
+     fields); buttons adopt the raised subtab-pill bezel — outline/light buttons
+     sit on --earth-50, filled buttons keep their fill. Scoped to .admin-styled
+     so the rest of the app is untouched. */
+  .admin-styled .form-input,.admin-styled .form-select,.admin-styled textarea.form-input{
+    border:1px solid rgba(255,255,255,0.35);
+    background:linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,255,255,0.28));
+    -webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%);
+    box-shadow:0 1px 2px rgba(28,20,16,0.06),0 6px 16px rgba(28,20,16,0.08),inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+  /* Inputs sitting ON white cards (Courses tee-box form, Payouts donation
+     forms): the translucent glass surface vanishes against the card's solid
+     --surface white, so switch to an opaque warm earth gradient — prominent
+     against the white card while staying in the same bezel language. */
+  .admin-styled .card .form-input,.admin-styled .card .form-select,.admin-styled .card textarea.form-input{
+    background:linear-gradient(180deg,var(--earth-50),var(--earth-100));
+    -webkit-backdrop-filter:none;backdrop-filter:none;
+  }
+  .admin-styled .form-input:focus,.admin-styled .form-select:focus{
+    border-color:var(--green-500);
+    box-shadow:0 0 0 3px rgba(34,139,80,0.12),0 1px 2px rgba(28,20,16,0.06),0 6px 16px rgba(28,20,16,0.08),inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+  .admin-styled .btn{border:none;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
+  .admin-styled .btn-outline{background:var(--earth-50);color:var(--green-700);}
+  .admin-styled .btn-outline:hover{background:var(--earth-100);}
+  /* Filled buttons keep their saturated fill but take the whites-on-fill rim. */
+  .admin-styled .btn-primary,.admin-styled .btn-gold,.admin-styled .btn-danger{box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
+
   /* ── FORMS ── */
   .form-group{margin-bottom:16px;}
   .form-label{display:block;font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px;}
   .form-input,.form-select{width:100%;padding:11px 14px;border:1.5px solid var(--border-md);border-radius:var(--radius-md);font-family:'DM Sans',sans-serif;font-size:16px;color:var(--text-primary);background:var(--surface);transition:border-color 0.15s;outline:none;}
   .form-input:focus,.form-select:focus{border-color:var(--green-500);box-shadow:0 0 0 3px rgba(34,139,80,0.12);}
-  textarea.form-input{font-size:15px;}
+  /* Must be ≥16px: iOS auto-zooms the viewport into any focused field whose
+     font-size is under 16px, and that zoom state gets stuck when the keyboard
+     dismisses (single-line .form-input was already 16px, which is why only the
+     textareas — Tee Times, Message — shifted the shell). */
+  textarea.form-input{font-size:16px;}
+  /* iOS Safari gives input[type=date] a NATIVE appearance with a fixed intrinsic
+     width that ignores width/max-width entirely, pushing the page's horizontal
+     scroll (Chromium respects the box model, so this only reproduces on-device).
+     -webkit-appearance:none strips the native sizing so the field obeys width:100%
+     like every other input — the tap-to-open picker still works. With appearance
+     stripped, an EMPTY date value has zero content height on iOS, so pin
+     min-height to match the other .form-input fields. */
+  input[type="date"].form-input{
+    -webkit-appearance:none;appearance:none;
+    display:flex;align-items:center;
+    min-width:0;max-width:100%;width:100%;overflow:hidden;
+    min-height:45px;
+  }
+  /* Empty-state placeholder. Date inputs ignore the placeholder attribute, but
+     with appearance stripped the field renders ::before content — show the
+     placeholder text while empty (required + :invalid = no value; these inputs
+     aren't in real forms so required has no side effect). The datetime-edit is
+     hidden while empty so Chromium's own mm/dd/yyyy doesn't double up. */
+  input[type="date"].form-input:not(:focus):invalid::before{content:attr(placeholder);color:var(--text-primary);white-space:nowrap;text-align:left;}
+  input[type="date"].form-input:not(:focus):invalid::-webkit-datetime-edit{display:none;}
+  input[type="date"].form-input::-webkit-date-and-time-value{text-align:left;min-width:0;margin:0;}
+  input[type="date"].form-input::-webkit-calendar-picker-indicator{margin-left:auto;flex-shrink:0;}
+  /* iOS renders the date field's inner box as a flex row that ignores the host's
+     width; force it to fill and allow its children to shrink so the value text
+     truncates instead of pushing the field (and the page) wider. */
+  input[type="date"].form-input::-webkit-datetime-edit{width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+  input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper{min-width:0;}
+  /* Keep glass-bezel inputs on the frosted GlassPicker surface even when the
+     browser autofills them (autofill otherwise paints its own yellow/blue
+     background). The translucent inset fill matches .glass-picker-btn; the outer
+     shadows restore its bezel. */
+  .form-input.glass-bezel:-webkit-autofill,
+  .form-input.glass-bezel:-webkit-autofill:hover,
+  .form-input.glass-bezel:-webkit-autofill:focus{
+    -webkit-text-fill-color:var(--text-primary);
+    box-shadow:inset 0 0 0 100px rgba(255,255,255,0.42),0 1px 2px rgba(28,20,16,0.06),0 6px 16px rgba(28,20,16,0.08),inset 0 1px 0 rgba(255,255,255,0.6);
+    transition:background-color 9999s ease-in-out 0s;
+  }
 
   /* ── GLASS PICKER (Apple-style frosted dropdown) ── */
   .glass-picker-btn{
@@ -672,7 +743,7 @@ const CSS = `
   .drawer-card-footer{padding:0 9px 10px;}
   .drawer-card-section-label{font-size:12px;font-weight:600;color:var(--text-muted,#6a6050);letter-spacing:0.07em;text-transform:uppercase;margin-bottom:5px;}
   /* profile pill: matches .tab-sub-btn style — pill shape, centred, shrinks to content */
-  .drawer-profile-pill{display:block;margin:8px auto 10px;padding:8px 24px;width:auto;background:color-mix(in srgb, var(--surface) 55%, var(--bg));border:1px solid var(--border);border-radius:999px;font-size:13px;font-weight:600;color:var(--green-600,#2d7a4a);cursor:pointer;letter-spacing:0.03em;text-align:center;-webkit-tap-highlight-color:transparent;box-shadow:0 1px 2px -1px rgba(0,0,0,0.05),0 2px 5px -3px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
+  .drawer-profile-pill{display:block;margin:8px auto 14px;padding:9px 25px;width:auto;background:var(--earth-50);border:none;border-radius:999px;font-size:13px;font-weight:600;color:var(--green-600,#2d7a4a);cursor:pointer;letter-spacing:0.03em;text-align:center;-webkit-tap-highlight-color:transparent;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
   .drawer-profile-pill:active{transform:scale(0.97);}
   .drawer-insight{display:flex;align-items:flex-start;gap:6px;background:#f8f6f0;border-radius:6px;padding:7px 8px;margin-top:8px;}
   .drawer-insight-label{font-size:9px;color:var(--text-muted,#6a6050);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;}
@@ -739,7 +810,7 @@ const CSS = `
   .score-table td:nth-child(1){left:0;}
   .score-table td:nth-child(2){left:36px;}
   .score-table tr:nth-child(even) td:nth-child(1),.score-table tr:nth-child(even) td:nth-child(2){background:var(--surface2);}
-  .score-input-cell input{width:40px;padding:5px 2px;text-align:center;border:1.5px solid var(--border-md);border-radius:5px;font-size:15px;font-family:'DM Sans',sans-serif;}
+  .score-input-cell input{width:40px;padding:5px 2px;text-align:center;border:1.5px solid var(--border-md);border-radius:5px;font-size:16px;font-family:'DM Sans',sans-serif;}/* 16px min: sub-16px focused fields make iOS zoom-and-stick the viewport */
   .score-input-cell input::-webkit-outer-spin-button,
   .score-input-cell input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
   .score-input-cell input[type=number]{-moz-appearance:textfield;appearance:textfield;}
@@ -819,11 +890,14 @@ const CSS = `
   .rsvp-row:last-child{border-bottom:none;}
   .rsvp-name{font-size:16px;font-weight:500;flex:1;min-width:0;text-align:left;}
   .rsvp-actions{display:flex;gap:5px;flex-shrink:0;}
-  .rsvp-btn{padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1.5px solid;cursor:pointer;transition:all 0.15s;background:transparent;}
-  .rsvp-btn.yes{border-color:var(--green-500);color:var(--green-700);background:color-mix(in srgb, var(--surface) 55%, var(--bg));box-shadow:inset 0 2px 4px rgba(0,0,0,0.16),inset 0 1px 2px rgba(0,0,0,0.12),inset 0 -1px 0 rgba(255,255,255,0.7);}
-  .rsvp-btn.yes.active{background:var(--green-700);color:white;border-color:var(--green-700);box-shadow:0 1px 2px rgba(0,0,0,0.10),0 3px 7px -2px rgba(0,0,0,0.14),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
-  .rsvp-btn.no{border-color:var(--red-400);color:var(--red-600);background:color-mix(in srgb, var(--surface) 55%, var(--bg));box-shadow:inset 0 2px 4px rgba(0,0,0,0.16),inset 0 1px 2px rgba(0,0,0,0.12),inset 0 -1px 0 rgba(255,255,255,0.7);}
-  .rsvp-btn.no.active{background:var(--red-600);color:white;border-color:var(--red-600);box-shadow:0 1px 2px rgba(0,0,0,0.10),0 3px 7px -2px rgba(0,0,0,0.14),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
+  /* In/Out toggles share the subtab-pill bezel language: unselected pills read as
+     depressed (inset shadow, pressed-in), the active one reads as raised (the same
+     layered drop shadow + inset top-highlight/bottom-shadow as .tab-sub-btn.active). */
+  .rsvp-btn{padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:all 0.15s;background:var(--earth-50);box-shadow:inset 0 2px 4px rgba(0,0,0,0.16),inset 0 1px 2px rgba(0,0,0,0.12),inset 0 -1px 0 rgba(255,255,255,0.7);}
+  .rsvp-btn.yes{color:var(--green-700);}
+  .rsvp-btn.yes.active{background:var(--green-700);color:white;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
+  .rsvp-btn.no{color:var(--red-600);}
+  .rsvp-btn.no.active{background:var(--red-600);color:white;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
 
   /* ── MISC ── */
   .divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
@@ -1142,11 +1216,11 @@ const CSS = `
      the gradient is at its lightest (color-mix surface 55% / --bg). Painting flat
      --bg here read darker than the content behind it; match the gradient's top
      stop instead so the frozen row blends in. */
-  .tab-sub{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;position:sticky;top:-4px;z-index:10;background:transparent;padding-top:0px;}
-  .tab-sub.stuck{background:color-mix(in srgb, var(--surface) 55%, var(--bg));box-shadow:0 -40px 0 40px color-mix(in srgb, var(--surface) 55%, var(--bg));padding-top:0px;padding-bottom:8px;}
+  .tab-sub{display:flex;gap:8px;margin-bottom:4px;overflow-x:auto;overflow-y:visible;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;position:sticky;top:-4px;z-index:10;background:transparent;padding-top:2px;padding-bottom:12px;}
+  .tab-sub.stuck{background:color-mix(in srgb, var(--surface) 55%, var(--bg));box-shadow:0 -40px 0 40px color-mix(in srgb, var(--surface) 55%, var(--bg));padding-top:2px;padding-bottom:12px;}
   .tab-sub::-webkit-scrollbar{display:none;}
-  .tab-sub-btn{flex-shrink:0;scroll-snap-align:center;padding:8px 16px;border-radius:20px;font-size:13px;text-transform: uppercase; font-weight:600;letter-spacing:0.03em;border:1px solid var(--border);background:color-mix(in srgb, var(--surface) 55%, var(--bg));color:var(--text-muted);cursor:pointer;transition:all 0.15s;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;box-shadow:0 1px 2px -1px rgba(0,0,0,0.05),0 2px 5px -3px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
-  .tab-sub-btn.active{background:var(--green-800);border-color:var(--green-800);color:white;box-shadow:0 1px 2px -1px rgba(0,0,0,0.10),0 2px 5px -3px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
+  .tab-sub-btn{flex-shrink:0;scroll-snap-align:center;padding:9px 17px;border-radius:20px;font-size:13px;text-transform: uppercase; font-weight:600;letter-spacing:0.03em;border:none;background:var(--earth-50);color:var(--text-muted);cursor:pointer;transition:all 0.15s;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
+  .tab-sub-btn.active{background:var(--green-800);color:white;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
 
   .empty-state{text-align:center;padding:40px 20px;color:var(--text-muted);}
   .empty-text{font-size:17px;margin-bottom:4px;color:var(--text-secondary);}
@@ -1364,6 +1438,41 @@ export default function App(){
       return()=>clearTimeout(t);
     }
   },[loading]);
+  // ── iOS keyboard scroll restore ──────────────────────────────
+  // When the on-screen keyboard opens, iOS Safari force-pans the WINDOW (not
+  // .main-content) to reveal the focused input — the fixed-height shell
+  // (html/body overflow:hidden) can't prevent it. On dismiss, Safari often
+  // leaves that pan behind, so the whole app shell stays shifted up. Snap the
+  // window back once focus leaves a field (also on visualViewport resize, for
+  // keyboard dismissals that don't blur, e.g. the iPad collapse button). The
+  // activeElement check skips the snap while hopping between fields, when the
+  // keyboard is still up. The snap RETRIES at staggered delays because the
+  // keyboard's dismiss animation runs ~250-300ms and Safari re-clamps any
+  // scroll reset issued mid-animation — a single early snap works for the
+  // small pans of top-of-form fields but silently loses to the big pans of
+  // lower fields (e.g. the Tee Times / Message textareas).
+  useEffect(()=>{
+    let timers:any[]=[];
+    const clearTimers=()=>{timers.forEach(clearTimeout);timers=[];};
+    const snap=()=>{
+      const ae=document.activeElement;
+      if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))return;
+      window.scrollTo(0,0);
+      document.documentElement.scrollTop=0;
+      document.body.scrollTop=0;
+    };
+    const snapBack=()=>{
+      clearTimers();
+      [100,300,700].forEach(d=>timers.push(setTimeout(snap,d)));
+    };
+    window.addEventListener("focusout",snapBack);
+    window.visualViewport?.addEventListener("resize",snapBack);
+    return()=>{
+      clearTimers();
+      window.removeEventListener("focusout",snapBack);
+      window.visualViewport?.removeEventListener("resize",snapBack);
+    };
+  },[]);
   const [dbError,setDbError]=useState<string|null>(null);
   const [activeTab,setActiveTab]=useState(_initTab);
   // Directional tab-transition state

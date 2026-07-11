@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { scrollMainTop } from "../../lib/formatters";
-import { BEZEL_BTN_LIGHT } from "../leaderboard/bezelStyles";
+
+// Frosted GlassPicker surface shared with the RSVP Add-Guest inputs, applied to
+// the compact HCP number cells (which aren't .form-input, so scoped CSS misses them).
+const GLASS_INPUT: React.CSSProperties = {
+  width: 80, padding: "8px 10px", borderRadius: "var(--radius-md)",
+  fontFamily: "var(--font-sans)", fontSize: 16, textAlign: "center", fontWeight: 700,
+  border: "1px solid rgba(255,255,255,0.35)",
+  background: "linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,255,255,0.28))",
+  WebkitBackdropFilter: "blur(18px) saturate(180%)", backdropFilter: "blur(18px) saturate(180%)",
+  boxShadow: "0 1px 2px rgba(28,20,16,0.06),0 6px 16px rgba(28,20,16,0.08),inset 0 1px 0 rgba(255,255,255,0.6)",
+};
 
 export function HandicapManager({ golfers, setGolfers, showSuccess }: any) {
   const [edits, setEdits] = useState<Record<number, string>>({});
@@ -30,7 +40,7 @@ export function HandicapManager({ golfers, setGolfers, showSuccess }: any) {
                 {g.handicap_updated_at ? `Updated ${new Date(g.handicap_updated_at).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit" })}` : "Never updated"}
               </div>
             </div>
-            <input type="number" step="0.1" min="0" max="54" style={{ width: 80, padding: "8px 10px", border: "1.5px solid var(--border-md)", borderRadius: "var(--radius-md)", fontFamily: "var(--font-sans)", fontSize: 16, textAlign: "center", fontWeight: 700 }} value={edits[g.golfer_id] !== undefined ? edits[g.golfer_id] : g.current_handicap_index} onChange={e => setEdits(p => ({ ...p, [g.golfer_id]: e.target.value }))} />
+            <input type="number" step="0.1" min="0" max="54" style={GLASS_INPUT} value={edits[g.golfer_id] !== undefined ? edits[g.golfer_id] : g.current_handicap_index} onChange={e => setEdits(p => ({ ...p, [g.golfer_id]: e.target.value }))} />
           </div>
         ))}
       </div>
@@ -38,7 +48,7 @@ export function HandicapManager({ golfers, setGolfers, showSuccess }: any) {
 
       {/* Inactive & Guest golfers */}
       <div style={{ marginTop: 20, borderTop: "2px solid var(--border)", paddingTop: 16 }}>
-        <button className="btn btn-outline btn-full" style={{ marginBottom: showInactive ? 12 : 0, boxShadow: BEZEL_BTN_LIGHT }} onClick={() => setShowInactive(v => !v)}>
+        <button className="btn btn-outline btn-full" style={{ marginBottom: showInactive ? 12 : 0 }} onClick={() => setShowInactive(v => !v)}>
           {showInactive ? "▲ Hide" : "▼ Show"} Inactive &amp; Guest Golfers
         </button>
         {showInactive && (
@@ -57,7 +67,7 @@ export function HandicapManager({ golfers, setGolfers, showSuccess }: any) {
                       </div>
                     </div>
                     <input type="number" step="0.1" min="0" max="54"
-                      style={{ width: 80, padding: "8px 10px", border: "1.5px solid var(--border-md)", borderRadius: "var(--radius-md)", fontFamily: "var(--font-sans)", fontSize: 16, textAlign: "center", fontWeight: 700 }}
+                      style={GLASS_INPUT}
                       value={edits[g.golfer_id] !== undefined ? edits[g.golfer_id] : g.current_handicap_index}
                       onChange={e => setEdits((p: any) => ({ ...p, [g.golfer_id]: e.target.value }))} />
                   </div>

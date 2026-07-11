@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
-import { scrollMainTop, formatDate, uniqueCourseNames } from "../../lib/formatters";
+import { scrollMainTop, scrollMainToEl, formatDate, uniqueCourseNames } from "../../lib/formatters";
 import { GlassPicker } from "../../components/common";
-import { BEZEL_BTN_LIGHT } from "../leaderboard/bezelStyles";
 
 export function EventCreator({ courses, events, setEvents, signups, setSignups, leaderboard, setLeaderboard, golfers, showSuccess }: any) {
   const formTopRef = useRef<HTMLDivElement>(null);
@@ -17,7 +16,7 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
   const startEdit = (ev: any) => {
     setEditId(ev.event_id); setDate(ev.date); setCourseName(ev.course_name);
     setTeeTimes(ev.tee_times.join("\n")); setSeason(ev.season);
-    setTimeout(() => formTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    setTimeout(() => scrollMainToEl(formTopRef.current), 50);
   };
 
   const handleSave = () => {
@@ -69,7 +68,7 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
       <div ref={formTopRef} className="card-title" style={{ marginBottom: 12 }}>{editId ? "Edit Event" : "Create New Event"}</div>
       <div className="form-group"><label className="form-label">Season (Year)</label><input className="form-input" type="number" min="2020" max="2040" value={season} onChange={e => setSeason(parseInt(e.target.value))} /></div>
       <div className="form-group"><label className="form-label">Date</label>
-        <input className="form-input" type="date" value={date} onChange={e => setDate(e.target.value)} style={{ cursor: "pointer" }} />
+        <input className="form-input" type="date" placeholder="Select date…" required value={date} onChange={e => setDate(e.target.value)} style={{ cursor: "pointer" }} />
         {date && <div style={{ fontSize: 12, color: "var(--green-700)", marginTop: 4, fontWeight: 500 }}>📅 {formatDate(date)}</div>}
       </div>
       <div className="form-group"><label className="form-label">Golf Course</label><GlassPicker value={courseName} onChange={v => setCourseName(v)} options={[{ value: "", label: "Select course…" }, ...courseNames.map(n => ({ value: n, label: n }))]} /></div>
@@ -80,7 +79,7 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
       </div>
       <hr className="divider" />
       <div className="card-title" style={{ marginBottom: 8 }}>Invitation Email</div>
-      <a href={`mailto:?cc=${allEmails.join(",")}&subject=Saturday Golf Reminder&body=Hi all,%0D%0A%0D%0A Please make sure to sign up in the app for next Saturday's round.%0D%0A%0D%0A Sign up here: https://saturdayschool.vercel.app/?tab=rsvp`} className="btn btn-outline btn-full" style={{ textDecoration: "none", display: "flex", marginBottom: 20, boxShadow: BEZEL_BTN_LIGHT }}>✉ Send Invitation</a>
+      <a href={`mailto:?cc=${allEmails.join(",")}&subject=Saturday Golf Reminder&body=Hi all,%0D%0A%0D%0A Please make sure to sign up in the app for next Saturday's round.%0D%0A%0D%0A Sign up here: https://saturdayschool.vercel.app/?tab=rsvp`} className="btn btn-outline btn-full" style={{ textDecoration: "none", display: "flex", marginBottom: 20 }}>✉ Send Invitation</a>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <div className="card-title">All Events</div>
@@ -98,7 +97,7 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{ev.course_name} · <span className={`pill ${ev.status === "Completed" ? "pill-green" : ev.status === "Upcoming" ? "pill-gold" : "pill-blue"}`} style={{ fontSize: 10 }}>{ev.status}</span></div>
           </div>
           {ev.season === currentYear && <button className="btn btn-sm btn-outline" onClick={() => startEdit(ev)}>Edit</button>}
-          {ev.season === currentYear && ev.status === "Completed" && (Date.now() - new Date(ev.date).getTime() < 7 * 24 * 60 * 60 * 1000) && <button className="btn btn-sm btn-outline" style={{ color: "var(--gold-500)", borderColor: "var(--gold-500)" }} onClick={() => reopenEvent(ev.event_id, ev.date)}>Reopen</button>}
+          {ev.season === currentYear && ev.status === "Completed" && (Date.now() - new Date(ev.date).getTime() < 7 * 24 * 60 * 60 * 1000) && <button className="btn btn-sm btn-outline" style={{ color: "var(--gold-600)" }} onClick={() => reopenEvent(ev.event_id, ev.date)}>Reopen</button>}
           {ev.season === currentYear && ev.status !== "Completed" && <button className="btn btn-sm btn-danger" onClick={() => deleteEvent(ev.event_id, ev.date)}>Del</button>}
           {ev.season !== currentYear && <span style={{ fontSize: 11, color: "var(--text-muted)", padding: "4px 8px" }}>view only</span>}
         </div>

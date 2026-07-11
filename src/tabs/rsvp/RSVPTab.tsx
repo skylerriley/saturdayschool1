@@ -9,7 +9,7 @@ import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
 import { WeatherAmbience, getWeatherCardBg } from "../../components/WeatherAmbience";
 import { useWeatherReady } from "../../hooks/useWeatherReady";
-import { BEZEL_OUTER_SHADOW, CHIP_BEZEL, BEZEL_BTN_LIGHT, BADGE_DEPRESSED_BEZEL, bezelRimOverlay } from "../leaderboard/bezelStyles";
+import { BEZEL_OUTER_SHADOW, CHIP_BEZEL, BEZEL_SUBTAB_RAISED, BADGE_DEPRESSED_BEZEL, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 const swipeEarlyStyles = `
 .rsvp-swipe-outer {
@@ -227,6 +227,20 @@ function SwipeMemberRow({ signup, golfer, isEarly, isMe, myGuests, allGolfers, o
     </div>
   );
 }
+
+// Shared glass-bezel surface used by the subtab pills app-wide: light earth
+// background, no border, layered drop shadow + inset top-highlight/bottom-shadow.
+const GLASS_BEZEL_SHADOW="0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06)";
+
+// Matches the Sponsor GlassPicker trigger exactly, so the guest inputs share its
+// frosted-glass surface whether filled in or empty (see .glass-picker-btn).
+const GLASS_PICKER_SURFACE:React.CSSProperties={
+  border:"1px solid rgba(255,255,255,0.35)",
+  background:"linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,255,255,0.28))",
+  WebkitBackdropFilter:"blur(18px) saturate(180%)",
+  backdropFilter:"blur(18px) saturate(180%)",
+  boxShadow:"0 1px 2px rgba(28,20,16,0.06),0 6px 16px rgba(28,20,16,0.08),inset 0 1px 0 rgba(255,255,255,0.6)",
+};
 
 export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,showSuccess,showError,adminMode,memberGolferId,scrollToTop,dbUpsertGolfer,setGolfers,initialSubTab}:any){
   const upcomingEvents=[...events].filter((e:any)=>e.status!=="Completed").sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
@@ -619,9 +633,11 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                           // default would overwrite the guest's real index on save
                           else{setGuestName(label);setGuestSelectedId(g.golfer_id);setGuestHcp(String(g.current_handicap_index??18));}
                         }}
-                        style={{padding:"7px 14px",borderRadius:"var(--radius-md)",border:`2px solid ${isActive?"var(--gold-500)":"var(--border)"}`,
+                        style={{padding:"8px 15px",borderRadius:"var(--radius-md)",
+                          border:isActive?"2px solid var(--gold-500)":"none",
                           background:isActive?"var(--gold-50)":"var(--surface)",color:isActive?"var(--gold-800)":"var(--text-primary)",
-                          fontWeight:isActive?700:500,fontSize:14,cursor:"pointer",transition:"all .15s"}}>
+                          fontWeight:isActive?700:500,fontSize:14,cursor:"pointer",transition:"all .15s",
+                          boxShadow:isActive?undefined:GLASS_BEZEL_SHADOW}}>
                         {label}
                       </button>
                     );
@@ -665,7 +681,8 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             return(
               <div className="form-group" style={{marginBottom:suggestions.length?4:undefined}}>
                 <label className="form-label">Guest Full Name</label>
-                <input className="form-input" placeholder="First Last"
+                <input className="form-input glass-bezel" placeholder="First Last" autoComplete="off"
+                  style={GLASS_PICKER_SURFACE}
                   value={guestName}
                   onChange={e=>{setGuestName(e.target.value);setGuestSelectedId(null);}}/>
 
@@ -719,7 +736,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
               ]}
             />
           </div>
-          <div className="form-group"><label className="form-label">Guest Handicap Index</label><input className="form-input" type="number" step="0.1" min="0" max="54" value={guestHcp} onChange={e=>setGuestHcp(e.target.value)}/></div>
+          <div className="form-group"><label className="form-label">Guest Handicap Index</label><input className="form-input glass-bezel" style={GLASS_PICKER_SURFACE} type="number" step="0.1" min="0" max="54" value={guestHcp} onChange={e=>setGuestHcp(e.target.value)}/></div>
 
           {/* Button is blocked when there's a strong fuzzy match but no selection made */}
           {(()=>{
@@ -750,12 +767,12 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
       Notify the group about the upcoming event and remind them to sign up.
     </p>
     <div style={{display:"flex",gap:8}}>
-      <a href={mailtoLink} className="btn btn-outline" style={{flex:1,textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:6,boxShadow:BEZEL_BTN_LIGHT}}>
+      <a href={mailtoLink} className="btn btn-outline" style={{flex:1,textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:"none",background:"var(--earth-50)",boxShadow:BEZEL_SUBTAB_RAISED}}>
         ✉ Email
       </a>
       <button
         className="btn btn-outline"
-        style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,boxShadow:BEZEL_BTN_LIGHT}}
+        style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:"none",background:"var(--earth-50)",boxShadow:BEZEL_SUBTAB_RAISED}}
         onClick={async () => {
           try {
             await sendPush(

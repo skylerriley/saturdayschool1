@@ -458,11 +458,11 @@ export function FinanceView({golfers,leaderboard,events,charityDonations,setChar
           {editDonationId===d.id?(
             <div className="card" style={{padding:"12px 14px",marginBottom:8}}>
               <div style={{fontSize:13,fontWeight:700,color:"var(--green-800)",marginBottom:8}}>Edit Donation</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:8,marginBottom:8}}>
                 <div className="form-group" style={{marginBottom:0}}><label className="form-label">Amount ($)</label><input className="form-input" type="number" value={editDonationAmt} onChange={e=>setEditDonationAmt(e.target.value)}/></div>
                 <div className="form-group" style={{marginBottom:0}}><label className="form-label">Note</label><input className="form-input" value={editDonationNote} onChange={e=>setEditDonationNote(e.target.value)}/></div>
               </div>
-              <div className="form-group" style={{marginBottom:8}}><label className="form-label">Date</label><input className="form-input" type="date" value={editDonationDate} onChange={e=>setEditDonationDate(e.target.value)}/></div>
+              <div className="form-group" style={{marginBottom:8}}><label className="form-label">Date</label><input className="form-input" type="date" placeholder="Select date…" required value={editDonationDate} onChange={e=>setEditDonationDate(e.target.value)}/></div>
               <div style={{display:"flex",gap:8}}>
                 <button className="btn btn-primary" style={{flex:1}} onClick={saveEditDonation}>Save</button>
                 <button className="btn btn-outline" onClick={()=>setEditDonationId(null)}>Cancel</button>
@@ -482,11 +482,11 @@ export function FinanceView({golfers,leaderboard,events,charityDonations,setChar
       ))}
       <div className="card" style={{marginTop:10}}>
         <div className="card-title" style={{marginBottom:10}}>Add Donation</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:8,marginBottom:8}}>
           <div className="form-group" style={{marginBottom:0}}><label className="form-label">Amount ($)</label><input className="form-input" type="number" min="0" placeholder="50" value={newDonationAmt} onChange={e=>setNewDonationAmt(e.target.value)}/></div>
           <div className="form-group" style={{marginBottom:0}}><label className="form-label">Note</label><input className="form-input" placeholder="e.g. Birthday" value={newDonationNote} onChange={e=>setNewDonationNote(e.target.value)}/></div>
         </div>
-        <div className="form-group" style={{marginBottom:10}}><label className="form-label">Date</label><input className="form-input" type="date" value={newDonationDate} onChange={e=>setNewDonationDate(e.target.value)}/></div>
+        <div className="form-group" style={{marginBottom:10}}><label className="form-label">Date</label><input className="form-input" type="date" placeholder="Select date…" required value={newDonationDate} onChange={e=>setNewDonationDate(e.target.value)}/></div>
         <button className="btn btn-primary btn-full" onClick={addDonation} disabled={!newDonationAmt}>Record Donation</button>
       </div>
 

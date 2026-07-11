@@ -50,6 +50,16 @@ export const BEZEL_BTN_LIGHT =
 export const BEZEL_BTN_STRONG =
   "0 1px 2px rgba(0,0,0,0.12), 0 3px 7px -2px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(255,255,255,0.10)";
 
+// Deeper, floatier "raised key" bezel matching the leaderboard subtab pills
+// (.tab-sub-btn) — a three-layer outer drop shadow so the button lifts further
+// off the surface than the BEZEL_BTN_* pair above.
+//   BEZEL_SUBTAB_RAISED        — light/cream buttons (dark-on-light rim).
+//   BEZEL_SUBTAB_RAISED_STRONG — filled colored buttons (whites on both edges).
+export const BEZEL_SUBTAB_RAISED =
+  "0 1px 1px rgba(0,0,0,0.04), 0 4px 8px -2px rgba(0,0,0,0.10), 0 8px 16px -6px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.06)";
+export const BEZEL_SUBTAB_RAISED_STRONG =
+  "0 1px 1px rgba(0,0,0,0.04), 0 4px 8px -2px rgba(0,0,0,0.10), 0 8px 16px -6px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(255,255,255,0.10)";
+
 // Depressed (pressed-in) bezel for tiny circular badges — the G (guest) / E
 // (early) badges on the RSVP "Field" player chips. The inverse of the raised
 // rim: a dark inset at the TOP edge + a light inset at the BOTTOM edge makes the

@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { scrollMainTop } from "../../lib/formatters";
+import { scrollMainTop, scrollMainToEl } from "../../lib/formatters";
 
 // -- 3a) GOLFER ROSTER ----------------------------------------
 export function GolferRoster({ golfers, setGolfers, showSuccess }: any) {
@@ -32,7 +32,7 @@ export function GolferRoster({ golfers, setGolfers, showSuccess }: any) {
   const startEdit = (g: any) => {
     setEditId(g.golfer_id);
     setForm({ first_name: g.first_name, last_name: g.last_name, email_address: g.email_address || "", current_handicap_index: String(g.current_handicap_index), season_fee_paid: !!g.season_fee_paid });
-    setTimeout(() => editFormTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    setTimeout(() => scrollMainToEl(editFormTopRef.current), 50);
   };
 
   const toggleStatus = (id: number, cur: string) => {
@@ -47,12 +47,12 @@ export function GolferRoster({ golfers, setGolfers, showSuccess }: any) {
   return (
     <div>
       <div ref={editFormTopRef} className="card-title" style={{ marginBottom: 12 }}>{editId ? "Edit Golfer" : "Add New Golfer"}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8, marginBottom: 8 }}>
         <div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">First Name</label><input className="form-input" value={form.first_name} onChange={e => setForm((p: any) => ({ ...p, first_name: e.target.value }))} /></div>
         <div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Last Name</label><input className="form-input" value={form.last_name} onChange={e => setForm((p: any) => ({ ...p, last_name: e.target.value }))} /></div>
       </div>
       <div className="form-group"><label className="form-label">Email</label><input className="form-input" type="email" value={form.email_address} onChange={e => setForm((p: any) => ({ ...p, email_address: e.target.value }))} /></div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8, marginBottom: 12 }}>
         <div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">HCP Index</label><input className="form-input" type="number" step="0.1" min="0" max="54" value={form.current_handicap_index} onChange={e => setForm((p: any) => ({ ...p, current_handicap_index: e.target.value }))} /></div>
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
           <label className="form-label">Season Fee ($300)</label>

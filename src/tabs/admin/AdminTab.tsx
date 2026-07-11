@@ -101,7 +101,7 @@ export function AdminTab({ golfers, setGolfers, courses, setCourses, events, set
     { id: "events" }, { id: "pairings" }, { id: "hcp" }, { id: "coursehcp" }, { id: "scores" }, { id: "payouts" }, { id: "courses" }, { id: "roster" }, { id: "message" },
   ];
   return (
-    <div>
+    <div className="admin-styled">
       <div className="section-title">Admin</div>
       <div className="section-sub">League management tools</div>
       <div ref={pillSentinelRef} style={{height:1,marginBottom:-1}}/>

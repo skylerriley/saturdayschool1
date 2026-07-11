@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { runPairingEngine, buildPairingFrequencyMap } from "../../lib/golfMath";
 import { golferName, formatDate } from "../../lib/formatters";
 import { supabase, sendPush, reportWriteError } from "../../lib/supabaseClient";
-import { BEZEL_BTN_LIGHT, BEZEL_BTN_STRONG, BADGE_DEPRESSED_BEZEL } from "../../tabs/leaderboard/bezelStyles";
+import { BADGE_DEPRESSED_BEZEL, BEZEL_SUBTAB_RAISED, BEZEL_SUBTAB_RAISED_STRONG } from "../../tabs/leaderboard/bezelStyles";
 
 interface PairingPanelProps {
   golfers: any[];
@@ -199,7 +199,7 @@ export function PairingPanel({
       {adminMode && (
         <button
           className="btn btn-gold btn-full"
-          style={{ marginBottom: 14, fontWeight: 700, boxShadow: BEZEL_BTN_STRONG }}
+          style={{ marginBottom: 14, fontWeight: 700, boxShadow: BEZEL_SUBTAB_RAISED_STRONG }}
           onClick={generatePairings}
         >
           🎲 {hasPairings ? "Re-generate Pairings" : "Generate Pairings"}
@@ -385,7 +385,7 @@ export function PairingPanel({
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
           <button
             className="btn btn-primary"
-            style={{ opacity: (pairingsConfirmed && !pairingsChanged) ? 0.45 : 1, cursor: (pairingsConfirmed && !pairingsChanged) ? "default" : "pointer" }}
+            style={{ opacity: (pairingsConfirmed && !pairingsChanged) ? 0.45 : 1, cursor: (pairingsConfirmed && !pairingsChanged) ? "default" : "pointer", boxShadow: BEZEL_SUBTAB_RAISED_STRONG }}
             disabled={pairingsConfirmed && !pairingsChanged}
             onClick={confirmPairings}
           >
@@ -401,13 +401,13 @@ export function PairingPanel({
                 "%0D%0A View pairings in the app: https://saturdayschool.vercel.app/?tab=rsvp%26subtab=pairings"
               }
               className="btn btn-outline"
-              style={{ flex: 1, textDecoration: "none", boxShadow: BEZEL_BTN_LIGHT }}
+              style={{ flex: 1, textDecoration: "none", border: "none", background: "var(--earth-50)", boxShadow: BEZEL_SUBTAB_RAISED }}
             >
               ✉ Email Pairings
             </a>
             <button
               className="btn btn-outline"
-              style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: BEZEL_BTN_LIGHT }}
+              style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "none", background: "var(--earth-50)", boxShadow: BEZEL_SUBTAB_RAISED }}
               onClick={async () => {
                 try {
                   await sendPush(
@@ -428,7 +428,7 @@ export function PairingPanel({
 
           <button
             className="btn btn-outline btn-full"
-            style={{ color: "var(--red-600)", borderColor: "var(--red-300)", fontSize: 14, boxShadow: BEZEL_BTN_LIGHT }}
+            style={{ color: "var(--red-600)", border: "none", background: "var(--earth-50)", fontSize: 14, boxShadow: BEZEL_SUBTAB_RAISED }}
             onClick={clearPairings}
           >
             🗑 Clear All Pairings

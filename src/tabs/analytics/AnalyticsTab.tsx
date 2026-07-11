@@ -29,7 +29,7 @@ export function AnalyticsTab({golfers,courses,events,leaderboard,signups,holeSco
       const el=golferPickerRef.current;
       const scroller=document.querySelector(".main-content") as HTMLElement|null;
       if(!el||!scroller)return;
-      const GAP=25; // leave a little breathing room above the picker
+      const GAP=37; // leave a little breathing room above the picker (was 25; +12 so the picker isn't clipped by the sticky pill row)
       const top=scroller.scrollTop+el.getBoundingClientRect().top-scroller.getBoundingClientRect().top-GAP;
       scroller.scrollTo({top:Math.max(0,top),behavior:"smooth"});
     }));
