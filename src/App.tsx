@@ -910,6 +910,27 @@ const CSS = `
   .rsvp-btn:not(:disabled):active{transform:scale(0.94);}
   .rsvp-btn.active{animation:subBtnPress 0.34s cubic-bezier(0.34,1.16,0.5,1);}
   @media (prefers-reduced-motion:reduce){.rsvp-btn.active{animation:none;}}
+  /* Second-row In/Out for the identified member: large, centered, split the width.
+     Carries the same gold me-row wash + left accent bar as the name row above so
+     the two rows read as one connected block. */
+  /* Bottom padding = name-row bottom padding (10px) + this row's top padding (5px),
+     so the gap under the pills mirrors the gap between them and the name above. */
+  .rsvp-my-actions{display:flex;gap:10px;padding:5px 44px 15px;background:var(--surface);}
+  .rsvp-my-actions.me-row{
+    background:color-mix(in srgb,var(--gold-500) 9%,var(--surface));
+    box-shadow:inset 3px 0 0 var(--gold-500);
+  }
+  /* Full pill; appearance:none kills the native button chrome that squared off
+     the bottom edge over the shadow. Depressed/raised bezels are re-scaled for
+     the bigger surface — the base .rsvp-btn 1px insets read as flat here. */
+  .rsvp-btn-lg{
+    flex:1;padding:8px 0;border-radius:999px;font-size:16px;letter-spacing:0.02em;
+    -webkit-appearance:none;appearance:none;
+    box-shadow:inset 0 3px 6px rgba(0,0,0,0.16),inset 0 1px 2px rgba(0,0,0,0.12),inset 0 -1.5px 0 rgba(255,255,255,0.7);
+  }
+  .rsvp-btn-lg.yes.active,.rsvp-btn-lg.no.active{
+    box-shadow:0 1px 2px rgba(0,0,0,0.10),0 3px 6px -1px rgba(0,0,0,0.16),0 6px 12px -4px rgba(0,0,0,0.14),inset 0 1.5px 0 rgba(255,255,255,0.38),inset 0 -2px 0 rgba(0,0,0,0.20);
+  }
 
   /* ── MISC ── */
   .divider{border:none;border-top:1px solid var(--border);margin:18px 0;}

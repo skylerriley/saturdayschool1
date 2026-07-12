@@ -202,18 +202,30 @@ function SwipeMemberRow({ signup, golfer, isEarly, isMe, editable, myGuests, all
           </div>
         )}
         <div ref={rowRef} className={`rsvp-swipe-row${isEarly ? ' early-active' : ''}${isMe ? ' me-row' : ''}`}>
-          <div className="rsvp-name" style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
+          {/* Member's own name is centered + heavier; the EARLY badge is pulled out
+              of flow so it doesn't push the name off-center. */}
+          <div className="rsvp-name" style={{display:"flex",alignItems:"center",gap:6,flex:1,...(isMe?{justifyContent:"center",fontWeight:700,fontSize:17}:{})}}>
             {golfer.first_name} {golfer.last_name}
           </div>
           {isEarly && (
-            <span className="early-badge"><Sun size={11} strokeWidth={2.5} style={{flexShrink:0}} /> EARLY ✓</span>
+            <span className="early-badge" style={isMe?{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)"}:undefined}><Sun size={11} strokeWidth={2.5} style={{flexShrink:0}} /> EARLY ✓</span>
           )}
-          <div className="rsvp-actions" style={{display:"flex",alignItems:"center",gap:4,...(editable?{}:{opacity:0.55})}}>
-            <button className={`rsvp-btn yes${signup.attending === "Yes" ? " active" : ""}`} disabled={!editable} onClick={() => onToggleAttending("Yes")}>In</button>
-            <button className={`rsvp-btn no${signup.attending === "No" ? " active" : ""}`} disabled={!editable} onClick={() => onToggleAttending("No")}>Out</button>
-          </div>
+          {/* The identified member gets large In/Out on a dedicated row below (see
+              .rsvp-my-actions); everyone else keeps the inline toggles here. */}
+          {!isMe && (
+            <div className="rsvp-actions" style={{display:"flex",alignItems:"center",gap:4,...(editable?{}:{opacity:0.55})}}>
+              <button className={`rsvp-btn yes${signup.attending === "Yes" ? " active" : ""}`} disabled={!editable} onClick={() => onToggleAttending("Yes")}>In</button>
+              <button className={`rsvp-btn no${signup.attending === "No" ? " active" : ""}`} disabled={!editable} onClick={() => onToggleAttending("No")}>Out</button>
+            </div>
+          )}
         </div>
       </div>
+      {isMe && (
+        <div className={`rsvp-my-actions${isMe ? ' me-row' : ''}`} style={editable?undefined:{opacity:0.55}}>
+          <button className={`rsvp-btn rsvp-btn-lg yes${signup.attending === "Yes" ? " active" : ""}`} disabled={!editable} onClick={() => onToggleAttending("Yes")}>In</button>
+          <button className={`rsvp-btn rsvp-btn-lg no${signup.attending === "No" ? " active" : ""}`} disabled={!editable} onClick={() => onToggleAttending("No")}>Out</button>
+        </div>
+      )}
       {myGuests.map((gs: any) => {
         const gg = allGolfers.find((x: any) => x.golfer_id === gs.golfer_id);
         return (
