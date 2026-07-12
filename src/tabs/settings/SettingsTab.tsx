@@ -191,8 +191,8 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
   const typeBg:any={NEW:"var(--green-50)",IMPROVED:"#eaf4fb",FIXED:"#fdf0f0"};
   return(
     <div className="tab-content">
-      <div className="section-title" style={{marginBottom:4}}>{profileHeader?`Welcome, ${memberGolfer.first_name}`:"Settings"}</div>
-      <p style={{fontSize:14,color:"var(--text-muted)",marginBottom:14}}>{profileHeader?`Your ${season} season at a glance`:"Manage your app preferences."}</p>
+      <div className={"section-title"+(profileHeader?" profile-greeting-fade":"")} style={{marginBottom:4}}>{profileHeader?`Welcome, ${memberGolfer.first_name}`:"Settings"}</div>
+      <p className={profileHeader?"profile-greeting-fade":undefined} style={{fontSize:14,color:"var(--text-muted)",marginBottom:14}}>{profileHeader?`Your ${season} season at a glance`:"Manage your app preferences."}</p>
 
       <ToggleGroup
         options={[{value:"profile",label:"Profile"},{value:"settings",label:"Settings"}]}

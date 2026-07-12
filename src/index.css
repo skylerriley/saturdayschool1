@@ -103,3 +103,15 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .settings-subtab-panel { animation: none; }
 }
+
+/* Profile "Welcome, X" greeting fade-in */
+@keyframes profileGreetingFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.profile-greeting-fade {
+  animation: profileGreetingFadeIn 0.8s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .profile-greeting-fade { animation: none; }
+}

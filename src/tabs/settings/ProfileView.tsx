@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { X, ChevronRight, Sun } from "lucide-react";
 import { formatDate } from "../../lib/formatters";
+import { CountUp } from "../../components/common";
 import { buildSeasonRounds, dedupeLeaderboard } from "../../lib/seasonStats";
 import { BEZEL_OUTER_SHADOW, BEZEL_TOGGLE_LIGHT, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
@@ -244,7 +245,7 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
     <div style={{ maxWidth: 480, margin: "0 auto", padding: onClose ? "0 18px 40px" : "0 0 8px" }}>
       {/* Greeting — overlay mode only; in Settings the tab header carries it */}
       {onClose && (
-        <div style={{ textAlign: "center", margin: "10px 0 4px" }}>
+        <div className="profile-greeting-fade" style={{ textAlign: "center", margin: "10px 0 4px" }}>
           <div style={{ fontFamily: "var(--font-serif)", fontSize: 30, fontWeight: 700, color: "var(--green-800)", lineHeight: 1.15 }}>
             Welcome, {golfer.first_name}
           </div>
@@ -255,15 +256,15 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
       {/* Quick stats strip — equal grid columns so the middle stat sits dead-center */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", maxWidth: 300, margin: "14px auto 16px" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{golfer.current_handicap_index?.toFixed(1) ?? "--"}</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{golfer.current_handicap_index != null ? <CountUp value={golfer.current_handicap_index} decimals={1} /> : "--"}</div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>HCP</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{seasonRow?.rounds ?? 0}</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}><CountUp value={seasonRow?.rounds ?? 0} /></div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Rounds</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{lastRound ? lastRound.pts : "--"}</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{lastRound ? <CountUp value={lastRound.pts} /> : "--"}</div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Last Pts</div>
         </div>
       </div>
@@ -320,10 +321,10 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>
             {[
-              { v: lastRound.gross ?? "--", l: "Gross" },
-              { v: lastRound.pts, l: "Pts" },
+              { v: lastRound.gross != null ? <CountUp value={lastRound.gross} /> : "--", l: "Gross" },
+              { v: <CountUp value={lastRound.pts} />, l: "Pts" },
               { v: posLabel(lastRound.pos, lastRound.tied), l: "Finish" },
-              { v: lastRound.skinsWon > 0 ? `$${Math.round(lastRound.skinsWon)}` : "$0", l: "Skins" },
+              { v: <CountUp value={Math.round(lastRound.skinsWon)} prefix="$" />, l: "Skins" },
             ].map((t, i) => (
               <div key={i} style={{ background: "var(--surface2)", borderRadius: "var(--radius-sm)", padding: "8px 4px", textAlign: "center", boxShadow: BEZEL_TOGGLE_LIGHT }}>
                 <div style={{ fontSize: 22, fontWeight: 800, color: i === 3 && lastRound.skinsWon > 0 ? "var(--gold-600,#b8860b)" : "var(--green-700)" }}>{t.v}</div>
