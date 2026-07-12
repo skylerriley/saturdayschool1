@@ -914,6 +914,38 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     }
   },[seasonAvgWithTiesReplay.length,top15AvgWithTiesReplay.length,expandedId,subTab]);
 
+  // When a leaderboard row's drawer opens, lift that row toward the top of its
+  // scroll container so the whole drawer is in view. We leave a couple collapsed
+  // rows of space above the selected row (2 on the main board so it clears the
+  // frozen subtab pills, 1 in the pill-less weekly-detail overlay) so the row
+  // lands just below the top with surrounding standings still in context. A raw
+  // px offset (not a "scroll to the row N above") keeps this correct when the
+  // selection is at the very top of the board and there are no rows above it. Scrolls ONLY the owning container (.feed-overlay
+  // in the weekly-detail overlay, else .main-content) -- scrollIntoView also
+  // scrolls the window in an iOS standalone PWA, lifting the app shell out of its
+  // safe areas. Overlay targets also clear the status bar via the top safe-area
+  // inset (measured via a fixed probe).
+  const scrollExpandedRowToTop=(rowEl:HTMLElement)=>{
+    if(!rowEl)return;
+    const overlay=rowEl.closest(".feed-overlay") as HTMLElement|null;
+    const scroller=overlay??(rowEl.closest(".main-content") as HTMLElement|null);
+    if(!scroller)return;
+    let safeTop=0;
+    if(overlay){
+      const probe=document.createElement("div");
+      probe.style.cssText="position:fixed;top:env(safe-area-inset-top,0px);height:0;pointer-events:none;";
+      document.body.appendChild(probe);
+      safeTop=probe.getBoundingClientRect().top;
+      probe.remove();
+    }
+    const rowH=lbRowH??52;
+    // Main board has frozen subtab pills to clear -> leave two rows above the
+    // selection; the weekly-detail overlay has no pills, so one row suffices.
+    const topGap=rowH*(overlay?1:2);
+    const y=rowEl.getBoundingClientRect().top-scroller.getBoundingClientRect().top+scroller.scrollTop-safeTop-topGap;
+    scroller.scrollTo({top:Math.max(0,y),behavior:"smooth"});
+  };
+
   // ScoreSymbol moved to module scope — see below LeaderboardTab
 
   // Render ESPN-style leaderboard row
@@ -969,13 +1001,24 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
         <div
           className={`lb-row${isExpanded?" expanded lb-row-open":""}${decayOpacity>0?" post-win":""}${gid===memberGolferId?" me-row":""}`}
           style={decayOpacity>0?{["--decay-opacity" as any]:decayOpacity.toFixed(3)}:undefined}
-          onClick={()=>{
+          onClick={(e:any)=>{
+            const willExpand=!isExpanded;
+            const rowEl=e.currentTarget as HTMLElement;
             // Preserve overlay scroll position -- expanding a row changes layout
             // height which can cause the overlay scroll container to jump.
             const savedScroll=overlayScrollRef.current?.scrollTop??0;
-            setExpandedId(isExpanded?null:gid);
+            setExpandedId(willExpand?gid:null);
             requestAnimationFrame(()=>{
               if(overlayScrollRef.current)overlayScrollRef.current.scrollTop=savedScroll;
+              if(!willExpand)return;
+              // On expand, lift the selected row near the top so the whole
+              // drawer is visible. Scroll ONLY the owning container -- never
+              // scrollIntoView (it also scrolls the window in an iOS standalone
+              // PWA, lifting the app shell out of the safe areas). The row can
+              // live in the feed overlay (.feed-overlay) or the main board
+              // (.main-content); scroll whichever one it belongs to. Wait for
+              // the drawer to lay out so measurements settle before scrolling.
+              setTimeout(()=>scrollExpandedRowToTop(rowEl),60);
             });
           }}
         >
