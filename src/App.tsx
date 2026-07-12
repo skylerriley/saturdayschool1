@@ -1101,12 +1101,19 @@ const CSS = `
     /* Offset below the status bar */
     position:absolute;top:calc(var(--safe-area-top) + 14px);left:14px;
     width:36px;height:36px;border-radius:50%;
-    background:rgba(0,0,0,0.35);border:none;
+    background:rgba(255,255,255,0.22);
+    backdrop-filter:blur(12px) saturate(1.4);
+    -webkit-backdrop-filter:blur(12px) saturate(1.4);
+    border:1px solid rgba(255,255,255,0.35);
     color:#fff;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 2px 8px rgba(0,0,0,0.18);
     cursor:pointer;-webkit-tap-highlight-color:transparent;z-index:4;
   }
   .event-hero-badge{
-    position:absolute;top:calc(var(--safe-area-top) + 14px);right:14px;z-index:4;
+    /* Natural pill size; its vertical center pinned to the back button's
+       center line (button top +14px, height 36px → equator at +32px) */
+    position:absolute;top:calc(var(--safe-area-top) + 32px);right:14px;z-index:4;
+    transform:translateY(-50%);
     padding:5px 13px;border-radius:20px;
     background:var(--gold-500);color:var(--green-900);
     font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;

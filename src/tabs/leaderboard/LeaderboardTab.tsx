@@ -1304,7 +1304,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                         <div className={`drawer-tile-value${(hasLiveSkins?(liveSkinPayouts[gid]||0):Number(weeklyEntry?.skins_payout_won||0))>0?" val-gold":""}`}>
                           {(()=>{const s=hasLiveSkins?(liveSkinPayouts[gid]||0):Number(weeklyEntry?.skins_payout_won||0);return s>0?`$${s.toFixed(0)}`:"--";})()}
                         </div>
-                        <div className="drawer-tile-label">Skins</div>
+                        <div className="drawer-tile-label">{(()=>{const n=Object.values(skinHoleWinners).filter((id:any)=>id===gid).length;return n>0?`Skins (${n})`:"Skins";})()}</div>
                       </div>
                     </div>
 
