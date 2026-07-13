@@ -109,7 +109,21 @@ export async function outboxPut(op: OutboxOp): Promise<void> {
 export async function outboxAdd(op: OutboxOp): Promise<void> {
   // Newest write wins for the same logical target (e.g. repeated RSVP
   // toggles or running-total updates) — drop the superseded queued op.
-  if (op.dedupeKey) await outboxRemoveWhere((o) => o.dedupeKey === op.dedupeKey);
+  // PATCHes to the same row may touch DIFFERENT columns (attending vs
+  // early_tee_request on one signup), so merge the queued bodies under the
+  // new one instead of dropping them — replacing wholesale would silently
+  // discard the older column's intent.
+  if (op.dedupeKey) {
+    if (op.kind === "PATCH" && op.body && !Array.isArray(op.body)) {
+      const queued = (await outboxAll()).filter(
+        (o) => o.dedupeKey === op.dedupeKey && o.kind === "PATCH" && o.body && !Array.isArray(o.body)
+      );
+      if (queued.length) {
+        op = { ...op, body: Object.assign({}, ...queued.map((o) => o.body), op.body) };
+      }
+    }
+    await outboxRemoveWhere((o) => o.dedupeKey === op.dedupeKey);
+  }
 
   const db = await openDb();
   if (!db) {

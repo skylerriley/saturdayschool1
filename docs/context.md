@@ -17,6 +17,17 @@ _Last updated: 2026-07-07. Update this file when starting/finishing features or 
 Active focus: 2026-07-06 full-app audit → three fix batches (2026-07-07):
 (1) payouts/dedupe, offline score entry, RSVP crash, odds vig/staleness/memoization, weather races, StrictMode double-inserts, dead-code removal;
 (2) offline-first PWA (vite-plugin-pwa precache + IndexedDB write outbox + sync pill), silent-catch sweep → reportWriteError, fonts to index.html, reduced-motion support, WindParticles DPR/pause, Saturday Handicap chart windowing;
+(4) 2026-07-12: RSVP "EARLY badge resurrection" fix (removed early-tee request came back
+after reload — root cause: stale queued outbox op replaying over a newer successful write,
+plus same-row PATCH dedupe dropping the other column's intent). Changes: outbox same-row
+PATCH dedupe now MERGES bodies per column instead of replacing; a successful direct
+PATCH/DELETE/UPSERT supersedes queued ops for the same row (per-column strip, full void on
+DELETE); replay max-age (event_signups 6h, other tables 48h) discards stale ops with a toast;
+all write fetches use keepalive so iOS can't abort them at app-close; dbUpsertSignup PATCHes
+only changed columns (setSignupsDB passes the prev row) so a stale device can't echo a whole
+row over concurrent edits. Behavioral test of all scenarios passed (scratchpad harness, in-memory
+outbox + mocked fetch). Note: RSVPTab intentionally still receives setSignupsDB — PairingPanel's
+generate/move/swap rely on its diff-writes for persistence.
 (3) vig only in payout odds (Win % now raw, sums to 100% — applyVig() in monteCarlo), charity edit persistence (dbUpdateCharity PATCH path), outbox hardening (pre-mount error buffer + 5xx/429 retry w/ attempts counter, drop only on 4xx), scratch-handicap 0→18 coercions (GolferRoster + guest quick-add), ScoreCorrection add-golfer double-insert/temp-summary_id fix, hole-image insert array-vs-row fix, estimateHolePts weight inversion, pairing engine player-unit sizing + waiting-room overflow (no more 5-7 player groups) + assignLateAdd latest-tee behavior, chart deps include plotted values, event delete now removes its leaderboard rows.
 
 ---

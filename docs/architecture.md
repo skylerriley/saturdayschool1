@@ -191,6 +191,16 @@ No CSS framework (no Tailwind, no Bootstrap).
   Inserts are NOT queued (callers need the returned id) — they fail fast and
   surface via `reportWriteError` → App's error toast. A pending-sync pill in
   the App shell shows the queued count / offline state.
+  Staleness protection (2026-07-12): same-row PATCH dedupe merges bodies per
+  column (newest wins per column, so attending vs early_tee_request writes to
+  one signup can't drop each other); a write that succeeds directly supersedes
+  queued ops for the same row (just-written columns stripped from queued
+  PATCH bodies, all ops voided on DELETE); replay discards ops older than a
+  per-table max age (event_signups 6h, default 48h) with a toast; write
+  fetches use `keepalive: true` so iOS can't abort them at app-close. App's
+  `dbUpsertSignup` PATCHes only the columns that changed (prev row passed by
+  `setSignupsDB`) so a device with stale state never echoes a full row over
+  concurrent edits from other sessions.
 - `public/apple-touch-icon.png` — iOS home screen
 - `index.html` — inline script detects `standalone` mode → adds `is-pwa` class to `<html>`
 - Safe area insets handled via CSS env() vars

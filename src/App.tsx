@@ -2267,7 +2267,7 @@ export default function App(){
     catch(e:any){setEvents(prev);setSignups(prevSu);showError(`Delete failed: ${e.message}`);}
   },[events,signups,showError]);
 
-  const dbUpsertSignup=useCallback(async(signup:any)=>{
+  const dbUpsertSignup=useCallback(async(signup:any,prevRow?:any)=>{
     const prev=signups;
     try{
       const {signup_id,created_at,...rest}=signup;
@@ -2281,7 +2281,16 @@ export default function App(){
           setSignups(p=>p.map(s=>s.signup_id===signup.signup_id?{...s,signup_id:inserted.signup_id}:s));
         }
       }else{
-        await supabase.from("event_signups").update(rest,{signup_id});
+        // PATCH only the columns that actually changed. Writing the whole row
+        // echoes this device's possibly-stale copy over concurrent edits from
+        // other sessions (e.g. resurrects an early_tee_request another phone
+        // just cleared).
+        let body=rest;
+        if(prevRow){
+          body=Object.fromEntries(Object.entries(rest).filter(([k,v])=>JSON.stringify(v)!==JSON.stringify(prevRow[k])));
+          if(!Object.keys(body).length)return;
+        }
+        await supabase.from("event_signups").update(body,{signup_id});
       }
     }catch(e:any){setSignups(prev);showError(`RSVP save failed: ${e.message}`);}
   },[signups,showError]);
@@ -2481,13 +2490,13 @@ export default function App(){
           return s;
         });
       }
-      const changed=next.filter((n:any)=>{
-        const old=prev.find((o:any)=>o.signup_id===n.signup_id);
-        return !old||JSON.stringify(old)!==JSON.stringify(n);
-      });
+      const changed=next
+        .map((n:any)=>({n,old:prev.find((o:any)=>o.signup_id===n.signup_id)}))
+        .filter(({n,old}:any)=>!old||JSON.stringify(old)!==JSON.stringify(n));
       // Don't sync signups whose event_id or signup_id is still a temp value --
       // they'll be persisted by setEventsDB once the event insert resolves.
-      changed.filter((s:any)=>!(s.event_id>1e12)&&!(s.signup_id>1e12)).forEach((s:any)=>dbUpsertSignup(s));
+      // The old row rides along so dbUpsertSignup can PATCH only what changed.
+      changed.filter(({n}:any)=>!(n.event_id>1e12)&&!(n.signup_id>1e12)).forEach(({n,old}:any)=>dbUpsertSignup(n,old));
       return next;
     });
   },[dbUpsertSignup]);

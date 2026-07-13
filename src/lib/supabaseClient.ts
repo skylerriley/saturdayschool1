@@ -92,7 +92,10 @@ const restHeaders = {
 
 const doRpcFetch = async (table: string, method: string, body?: any, query = "") => {
   const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
-  const res = await fetch(url, { method, headers: restHeaders, body: body ? JSON.stringify(body) : undefined });
+  // keepalive: fire-and-forget writes are often issued right as the user
+  // backgrounds/quits the PWA — without it iOS aborts the in-flight request
+  // and the write silently evaporates.
+  const res = await fetch(url, { method, headers: restHeaders, body: body ? JSON.stringify(body) : undefined, keepalive: true });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const e: any = new Error(err.message || `${method} ${table} failed (${res.status})`);
@@ -110,7 +113,7 @@ const doUpsertFetch = async (table: string, data: any, onConflict?: string) => {
   const upsertHeaders = { ...restHeaders, "Prefer": "resolution=merge-duplicates,return=representation" };
   const url = `${SUPABASE_URL}/rest/v1/${table}${onConflict ? `?on_conflict=${onConflict}` : ""}`;
   const body = Array.isArray(data) ? data : [data];
-  const res = await fetch(url, { method: "POST", headers: upsertHeaders, body: JSON.stringify(body) });
+  const res = await fetch(url, { method: "POST", headers: upsertHeaders, body: JSON.stringify(body), keepalive: true });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const e: any = new Error(err.message || `upsert ${table} failed (${res.status})`);
@@ -120,6 +123,39 @@ const doUpsertFetch = async (table: string, data: any, onConflict?: string) => {
   if (res.status === 204) return [];
   return res.json();
 };
+
+// ── Queued-op supersede ─────────────────────────────────────
+// A write that succeeds DIRECTLY supersedes older queued ops for the same
+// row. Without this, an op queued during an earlier network blip (e.g.
+// "early_tee_request: true") survives in IndexedDB and replays at next boot,
+// resurrecting state the user has since changed from a working connection.
+// PATCH: strip the just-written columns from queued bodies (other columns in
+// a queued op are still valid intent); drop the op if nothing remains.
+// DELETE: the row is gone — any queued write to it is moot.
+async function supersedeQueuedOps(table: string, kind: "PATCH" | "DELETE", query: string, body: any) {
+  try {
+    let changed = false;
+    for (const op of await outboxAll()) {
+      if (op.table !== table || op.query !== query) continue;
+      if (kind === "DELETE") {
+        await outboxRemove(op.id!);
+        changed = true;
+        continue;
+      }
+      if (op.kind !== "PATCH" || !op.body || Array.isArray(op.body) || !body || Array.isArray(body)) continue;
+      const remaining = Object.fromEntries(Object.entries(op.body).filter(([k]) => !(k in body)));
+      const remainingCount = Object.keys(remaining).length;
+      if (remainingCount === 0) {
+        await outboxRemove(op.id!);
+        changed = true;
+      } else if (remainingCount !== Object.keys(op.body).length) {
+        await outboxPut({ ...op, body: remaining });
+        changed = true;
+      }
+    }
+    if (changed) notifyOutbox();
+  } catch { /* pruning is best-effort — a failed prune only risks a redundant replay */ }
+}
 
 // ── Outbox replay ───────────────────────────────────────────
 // FIFO replay of queued writes. Network failure stops the pass (still
@@ -131,6 +167,13 @@ const MAX_REPLAY_ATTEMPTS = 5;
 const isTransientServerError = (e: any) =>
   e?.status === 429 || (e?.status >= 500 && e?.status < 600);
 
+// Queued ops don't stay valid forever: yesterday's RSVP toggle must not
+// replay over what the user has since changed from a working connection.
+// Scores get a long window — an offline round's scores still need to sync
+// the next morning when the phone finds wifi.
+const OP_MAX_AGE_MS: Record<string, number> = { event_signups: 6 * 3600_000 };
+const DEFAULT_OP_MAX_AGE_MS = 48 * 3600_000;
+
 let flushingOutbox = false;
 export async function flushOutbox() {
   if (flushingOutbox) return;
@@ -139,6 +182,12 @@ export async function flushOutbox() {
   try {
     const ops = await outboxAll();
     for (const op of ops) {
+      const ageMs = Date.now() - op.ts;
+      if (ageMs > (OP_MAX_AGE_MS[op.table] ?? DEFAULT_OP_MAX_AGE_MS)) {
+        await outboxRemove(op.id!);
+        writeErrorReporter(`Discarded an unsynced ${op.table} change from ${Math.round(ageMs / 3600_000)}h ago — too old to sync safely`);
+        continue;
+      }
       try {
         if (op.kind === "UPSERT") await doUpsertFetch(op.table, op.body, op.onConflict);
         else await doRpcFetch(op.table, op.kind, op.body, op.query);
@@ -171,7 +220,9 @@ if (typeof window !== "undefined") {
 export const supabase = (() => {
   const rpc = async (table: string, method: string, body?: any, query = "") => {
     try {
-      return await doRpcFetch(table, method, body, query);
+      const result = await doRpcFetch(table, method, body, query);
+      if (method === "PATCH" || method === "DELETE") await supersedeQueuedOps(table, method, query, body);
+      return result;
     } catch (e: any) {
       // Offline-first: idempotent writes are queued and replayed when the
       // network returns. Inserts are NOT queued — callers need the returned
@@ -228,7 +279,12 @@ export const supabase = (() => {
       insert: (data: any) => rpc(table, "POST", Array.isArray(data) ? data : [data]),
       upsert: async (data: any, onConflict?: string) => {
         try {
-          return await doUpsertFetch(table, data, onConflict);
+          const result = await doUpsertFetch(table, data, onConflict);
+          // A direct upsert carries the full row — any queued op for the
+          // same logical target is fully superseded.
+          const key = opDedupeKey({ table, kind: "UPSERT", body: data, query: "", onConflict } as any);
+          if (key) { await outboxRemoveWhere((o) => o.dedupeKey === key); notifyOutbox(); }
+          return result;
         } catch (e: any) {
           // Upserts are idempotent — queue on network failure and replay later.
           if (isNetworkFailure(e)) {
