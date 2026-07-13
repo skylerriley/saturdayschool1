@@ -800,19 +800,30 @@ const CSS = `
   .scorecard-table tr:nth-child(even) td:not(.label-col){background:var(--surface2);}
 
   /* ── SCORE GRID ── */
-  .score-grid{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;position:relative;}
-  .score-table{min-width:300px;border-collapse:separate;border-spacing:0;font-size:14px;width:100%;}
-  .score-table th{background:var(--green-900);color:var(--gold-300);font-size:13px;font-weight:700;letter-spacing:0.06em;padding:6px 3px;text-align:center;white-space:nowrap;position:sticky;top:0;z-index:2;}
-  .score-table td{padding:6px 2px;text-align:center;border-bottom:1px solid var(--border);font-size:14px;}
+  /* No overflow-x here: a scroll container would trap the sticky thead so it
+     never pins to .main-content's scroll. Tables are sized to fit phone width. */
+  .score-grid{width:100%;position:relative;}
+  .score-table{min-width:300px;border-collapse:separate;border-spacing:0;font-size:16px;width:100%;}
+  .score-table th{background:var(--green-900);color:var(--gold-300);font-size:15px;font-weight:700;letter-spacing:0.06em;padding:6px 3px;text-align:center;white-space:nowrap;position:sticky;top:0;z-index:2;}
+  /* Rounded top corners to match the leaderboard header (.lb-header). Kept
+     while pinned — the stuck mask (::before below) fills the corner notches. */
+  .score-table thead tr:first-child th:first-child{border-top-left-radius:var(--radius-md);}
+  .score-table thead tr:first-child th:last-child{border-top-right-radius:var(--radius-md);}
+  /* Second header row (#/Par/SI + tee info) scrolls away; only names freeze. */
+  .score-table thead tr.score-subhead th{position:static;padding:0 3px 6px;}
+  .score-table td{padding:14px 2px;text-align:center;border-bottom:1px solid var(--border);font-size:16px;}
   .score-table tr:nth-child(even) td{background:var(--surface2);}
-  /* Frozen first two columns (Hole + Par) */
-  .score-table th:nth-child(1),.score-table th:nth-child(2){position:sticky;left:0;z-index:3;}
-  .score-table th:nth-child(2){left:36px;}
-  .score-table td:nth-child(1),.score-table td:nth-child(2){position:sticky;z-index:1;background:var(--surface);}
-  .score-table td:nth-child(1){left:0;}
-  .score-table td:nth-child(2){left:36px;}
-  .score-table tr:nth-child(even) td:nth-child(1),.score-table tr:nth-child(even) td:nth-child(2){background:var(--surface2);}
-  .score-input-cell input{width:40px;padding:5px 2px;text-align:center;border:1.5px solid var(--border-md);border-radius:5px;font-size:16px;font-family:'DM Sans',sans-serif;}/* 16px min: sub-16px focused fields make iOS zoom-and-stick the viewport */
+  /* Pinned-header mask: a 0-height sticky sibling that pins at the same offset
+     as the header row (same issue as .tab-sub.stuck — rows peek through the
+     strip above the pinned row). Its ::before paints the page's top-stop tone
+     above the row and dips 14px under the header's top edge to backfill the
+     rounded corner notches. It sits at z-index:1 — above scrolled rows, below
+     the th's z-index:2 — so the green header paints over it and keeps its
+     rounded corners while frozen. (A ::before on the th itself can't work: th
+     is its own stacking context, so even z-index:-1 paints over the green.) */
+  .score-head-mask{position:sticky;top:0;height:0;z-index:1;}
+  .score-grid.stuck .score-head-mask::before{content:"";position:absolute;left:0;right:0;bottom:-14px;height:72px;background:color-mix(in srgb, var(--surface) 55%, var(--bg));}
+  .score-input-cell input{width:40px;padding:5px 2px;text-align:center;border:1.5px solid var(--border-md);border-radius:5px;font-size:18px;font-family:'DM Sans',sans-serif;}/* 16px min: sub-16px focused fields make iOS zoom-and-stick the viewport */
   .score-input-cell input::-webkit-outer-spin-button,
   .score-input-cell input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
   .score-input-cell input[type=number]{-moz-appearance:textfield;appearance:textfield;}
@@ -820,7 +831,15 @@ const CSS = `
   .pts-eagle{font-weight:700;}
   .pts-birdie{font-weight:700;}
   /* Tappable cell that opens the score-entry modal */
-  .score-tap-cell{width:36px;height:30px;display:flex;align-items:center;justify-content:center;border:1.5px dashed var(--border-md);border-radius:5px;background:var(--surface);cursor:pointer;margin:0 auto;font-size:20px;font-weight:600;color:var(--text-muted);transition:background 0.15s,border-color 0.15s;}
+  .score-tap-cell{width:36px;height:30px;display:flex;align-items:center;justify-content:center;border:1.5px dashed var(--border-md);border-radius:5px;background:var(--surface);cursor:pointer;margin:0 auto;font-size:22px;font-weight:600;color:var(--text-muted);transition:background 0.15s,border-color 0.15s;}
+  /* Tighter symbol box + outline gap than the global .sc-score, so the ring
+     hugs the gross number and the pts superscript can sit closer. */
+  .score-table .sc-score{font-size:23px;width:25px;height:25px;}
+  .score-table .sc-eagle,.score-table .sc-dbl{outline-offset:1px;}
+  /* Single-ring symbols (birdie/bogey) and the triple chip get a larger box so
+     their edge sits at the same distance from the digit as the OUTER ring of
+     the double symbols (25px box + 2px border + 1px offset + 2px outline). */
+  .score-table .sc-birdie,.score-table .sc-bogey,.score-table .sc-triple{width:31px;height:31px;}
   .score-tap-cell:hover{border-color:var(--green-500);color:var(--green-600);background:var(--green-50);}
   .score-tap-cell.filled{border-style:solid;border-color:transparent;background:transparent;}
   /* Minimized golfer row shown once scoring has started */
@@ -830,11 +849,16 @@ const CSS = `
   .scorer-row-mini .sub{font-size:12px;color:var(--text-muted);}
   .scorer-row-mini .chev{font-size:12px;color:var(--text-muted);}
   /* Score entry modal grid */
-  .score-modal-title{font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;text-align:center;margin-bottom:2px;}
-  .score-modal-name{font-size:19px;font-weight:700;text-align:center;margin-bottom:18px;}
+  .score-modal-title{font-size:18px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;text-align:center;margin-bottom:2px;}
+  .score-modal-name{font-size:24px;font-weight:700;text-align:center;margin-bottom:18px;}
   .score-btn-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;}
-  .score-pick-btn{display:flex;align-items:center;justify-content:center;height:54px;border-radius:var(--radius-md);border:1.5px solid var(--border-md);background:var(--surface);font-size:20px;font-weight:700;cursor:pointer;color:var(--text-primary);}
-  .score-pick-btn .sc-score{font-size:20px;width:36px;height:36px;}
+  /* Score pick "cards" + modal action buttons share the admin-styled raised
+     bezel (see .admin-styled .btn): earth surface, layered drop + inset rims. */
+  .score-pick-btn{display:flex;align-items:center;justify-content:center;height:62px;border-radius:var(--radius-md);border:none;background:var(--earth-50);font-size:25px;font-weight:700;cursor:pointer;color:var(--text-primary);box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
+  .score-pick-btn .sc-score{font-size:25px;width:44px;height:44px;}
+  .score-modal-sheet .btn{border:none;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.9),inset 0 -1px 0 rgba(0,0,0,0.06);}
+  .score-modal-sheet .btn-outline{background:var(--earth-50);color:var(--green-700);}
+  .score-modal-sheet .btn-danger{box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
   /* Skin-reveal winner badge -- larger scale to match the golfer name beside it. */
   .skin-reveal-score{font-size:26px;width:40px;height:40px;}
   .skin-reveal-score.sc-par{border:2px solid transparent;border-radius:50%;}
