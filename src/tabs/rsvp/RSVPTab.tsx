@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { Sun } from "lucide-react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { Sun, ChevronDown } from "lucide-react";
 import { ToggleGroup, GlassPicker } from "../../components/common";
 import { PairingPanel } from "../../components/common/PairingPanel";
 import { golferName, formatDate, eventPickerLabel, shortCourseName } from "../../lib/formatters";
@@ -9,7 +9,7 @@ import { useWeather } from "../../hooks/useWeather";
 import { wmoToDesc, degToCompass } from "../../components/weather/weatherUtils";
 import { WeatherAmbience, getWeatherCardBg } from "../../components/WeatherAmbience";
 import { useWeatherReady } from "../../hooks/useWeatherReady";
-import { BEZEL_OUTER_SHADOW, CHIP_BEZEL, BEZEL_SUBTAB_RAISED, BADGE_DEPRESSED_BEZEL, bezelRimOverlay } from "../leaderboard/bezelStyles";
+import { BEZEL_OUTER_SHADOW, CHIP_BEZEL, BEZEL_SUBTAB_RAISED, BEZEL_BTN_LIGHT, BADGE_DEPRESSED_BEZEL, bezelRimOverlay } from "../leaderboard/bezelStyles";
 
 const swipeEarlyStyles = `
 .rsvp-swipe-outer {
@@ -274,6 +274,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   const [guestHcp,setGuestHcp]=useState("18");
   const [guestSelectedId,setGuestSelectedId]=useState<number|null>(null); // null = create new; number = reuse existing
   const [guestSaving,setGuestSaving]=useState(false); // blocks double-taps while the insert is in flight
+  const [fieldOpen,setFieldOpen]=useState(true); // collapsible Field section in the event summary card
 
   // Re-validate the selection if the chosen event disappears (e.g. finalized
   // while this tab is open) — a stale selEvent crashed downstream renders.
@@ -286,6 +287,12 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   const cardRef=useRef<HTMLDivElement>(null);
   const [cardHeight,setCardHeight]=useState(340);
 
+  // Tee-time separator dots: hide any dot that lands at the start of a wrapped
+  // row (the line break already supplies the visual separation). Layout-driven,
+  // so we measure offsetTop of each time and toggle its preceding dot.
+  const teeRowRef=useRef<HTMLDivElement>(null);
+  const [dotHidden,setDotHidden]=useState<Record<number,boolean>>({});
+
   const selEvent=events.find((e:any)=>e.event_id===selEventId);
   const eventSignups=signups.filter((s:any)=>s.event_id===selEventId);
   const firstTeeTimes=(selEvent?.tee_times||[]).slice().sort();
@@ -296,6 +303,34 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   useEffect(()=>{
     if(cardRef.current)setCardHeight(cardRef.current.offsetHeight);
   },[selEventId,forecastWx]);
+
+  // Recompute which separator dots to hide (first-of-row dots) after layout and
+  // on resize. A dot is hidden when its time sits on a different row than the
+  // previous time — the line break already separates them.
+  const teeTimesKey=(selEvent?.tee_times||[]).join(",");
+  useLayoutEffect(()=>{
+    const row=teeRowRef.current;
+    if(!row)return;
+    const measure=()=>{
+      const times=Array.from(row.querySelectorAll<HTMLElement>("[data-tee-time]"));
+      const hidden:Record<number,boolean>={};
+      let prevTop:number|null=null;
+      times.forEach((el,i)=>{
+        const top=el.offsetTop;
+        if(i>0&&prevTop!=null&&top>prevTop+1)hidden[i]=true;
+        prevTop=top;
+      });
+      setDotHidden(prev=>{
+        const keys=new Set([...Object.keys(prev),...Object.keys(hidden)]);
+        for(const k of keys){if(!!prev[+k]!==!!hidden[+k])return hidden;}
+        return prev;
+      });
+    };
+    measure();
+    const ro=new ResizeObserver(measure);
+    ro.observe(row);
+    return()=>ro.disconnect();
+  },[teeTimesKey]);
 
   // Keep the sponsor defaulted to the member when they identify while this tab
   // is already open (lazy init above only covers the first mount). Only fills an
@@ -540,25 +575,50 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
       {/* Event summary card -- status, tee times, and inline weather row */}
       {selEvent&&(
-        <div ref={cardRef} className="card" style={{padding:"12px 16px",marginBottom:16,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
+        <div ref={cardRef} className="card" style={{padding:"16px 18px",marginBottom:16,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
           <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-            <div style={{fontWeight:700,fontSize:17}}>{shortCourseName(selEvent.course_name)}</div>
-            <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
-              <span className="pill pill-green" style={{boxShadow:CHIP_BEZEL}}>✓ {yesCount}</span>
-              {noCount>0&&<span className="pill pill-red" style={{boxShadow:CHIP_BEZEL}}>✗ {noCount}</span>}
-              {unconfCount>0&&<span className="pill pill-gray" style={{boxShadow:CHIP_BEZEL}}>? {unconfCount}</span>}
+
+          {/* Header: course name + status pill */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+            <div style={{fontWeight:800,fontSize:24,lineHeight:1.1,letterSpacing:"-0.01em"}}>{shortCourseName(selEvent.course_name)}</div>
+            <span className="pill pill-gold" style={{flexShrink:0,textTransform:"uppercase",letterSpacing:"0.04em",fontSize:11,...(isJuly4&&selEvent.status==="Upcoming"?{backgroundImage:`linear-gradient(rgba(0,0,0,0.35),rgba(0,0,0,0.35)),${july4StarBg}`,backgroundSize:"auto,16px 16px",backgroundColor:"#3C3B6E",color:"#FFFFFF",border:"2px solid #B22234",fontWeight:800,boxShadow:CHIP_BEZEL}:{boxShadow:CHIP_BEZEL})}}>{selEvent.status}</span>
+          </div>
+
+          {/* Weather */}
+          {(()=>{
+            const d=forecastWx?wmoToDesc(forecastWx.code):null;
+            return(
+              <div style={{
+                marginTop:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",
+                filter:wxReady?"blur(0px)":"blur(6px)",
+                transition:"filter 0.35s ease",
+                pointerEvents:wxReady?"auto":"none",
+              }}>
+                {d?<>
+                  <span style={{fontSize:18,lineHeight:1}}>{d.emoji}</span>
+                  <span style={{fontWeight:700,fontSize:15,color:"var(--text-primary)"}}>{forecastWx.temp}°</span>
+                  <span style={{fontSize:14,color:"var(--text-secondary)"}}>{d.label}</span>
+                  <span style={{color:"var(--text-muted)",fontSize:13}}>·</span>
+                  <span style={{fontSize:14,color:"var(--text-secondary)"}}>{forecastWx.wind} mph {degToCompass(forecastWx.windDeg)}</span>
+                </>:wxReady&&<span style={{fontSize:14,color:"var(--text-muted)"}}>Forecast TBD</span>}
+              </div>
+            );
+          })()}
+
+          {/* Tee times */}
+          <div style={{marginTop:16,paddingTop:14,borderTop:"1px solid var(--border)",textAlign:"left"}}>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:8,textAlign:"left"}}>Tee Times</div>
+            <div ref={teeRowRef} style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:"6px 14px"}}>
+              {selEvent.tee_times.map((t:string,i:number)=>(
+                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:dotHidden[i]?0:14}}>
+                  {i>0&&!dotHidden[i]&&<span style={{color:"var(--text-muted)",fontSize:22,fontWeight:900,lineHeight:1}}>·</span>}
+                  <span data-tee-time style={{fontSize:22,fontWeight:800,color:"var(--green-700)",letterSpacing:"-0.01em"}}>{t}</span>
+                </span>
+              ))}
             </div>
           </div>
-          <div className="info-row"><span className="info-key">Status</span><span className="pill pill-gold" style={isJuly4&&selEvent.status==="Upcoming"?{backgroundImage:`linear-gradient(rgba(0,0,0,0.35),rgba(0,0,0,0.35)),${july4StarBg}`,backgroundSize:"auto,16px 16px",backgroundColor:"#3C3B6E",color:"#FFFFFF",border:"2px solid #B22234",fontWeight:800,boxShadow:CHIP_BEZEL}:{boxShadow:CHIP_BEZEL}}>{selEvent.status}</span></div>
-          <div className="info-row">
-            <span className="info-key">Tee Times</span>
-            <span className="info-val" style={{textAlign:"right"}}>
-              {selEvent.tee_times.map((t:string,i:number)=>(
-                <span key={i} style={{display:"inline-block",background:"var(--green-50)",border:"1px solid var(--green-100)",borderRadius:6,padding:"2px 8px",marginLeft:4,fontSize:14,fontWeight:600,color:"var(--green-700)",boxShadow:CHIP_BEZEL}}>{t}</span>
-              ))}
-            </span>
-          </div>
+
+          {/* Field (collapsible) */}
           {(()=>{
             const fieldSignups=[...eventSignups.filter((s:any)=>s.attending==="Yes")]
               .sort((a:any,b:any)=>{
@@ -582,43 +642,35 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
               return{name,early:!!s.early_tee_request,isGuest:!!g.is_guest};
             }).filter(Boolean) as {name:string,early:boolean,isGuest:boolean}[];
             return(
-              <div className="info-row" style={{alignItems:"flex-start"}}>
-                <span className="info-key" style={{paddingTop:3}}>Field</span>
-                <span className="info-val" style={{textAlign:"right",display:"flex",flexWrap:"wrap",gap:4,justifyContent:"flex-end"}}>
-                  {displayNames.map((d,i:number)=>(
-                    <span key={i} style={{display:"inline-flex",alignItems:"center",gap:5,background:"var(--green-50)",border:"1px solid var(--green-100)",borderRadius:14,padding:"3px 10px",fontSize:13,fontWeight:600,color:"var(--green-700)",boxShadow:CHIP_BEZEL}}>
-                      {d.name}
-                      {d.isGuest&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--green-700)",color:"white",fontSize:9,fontWeight:800,lineHeight:1,flexShrink:0,boxShadow:BADGE_DEPRESSED_BEZEL}}>G</span>}
-                      {d.early&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--gold-600)",color:"white",fontSize:8,fontWeight:800,lineHeight:1,flexShrink:0,boxShadow:BADGE_DEPRESSED_BEZEL}}>E</span>}
-                    </span>
-                  ))}
-                </span>
+              <div style={{marginTop:18}}>
+                <button
+                  onClick={()=>setFieldOpen(o=>!o)}
+                  style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"flex-start",width:"100%",background:"none",border:"none",padding:0,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}
+                >
+                  <span style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--text-muted)"}}>Field</span>
+                  <ChevronDown size={18} color="var(--text-muted)" style={{position:"absolute",right:0,transform:fieldOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease"}}/>
+                </button>
+                {fieldOpen&&(
+                  <div style={{display:"flex",flexWrap:"wrap",justifyContent:"flex-start",gap:8,marginTop:10}}>
+                    {displayNames.map((d,i:number)=>(
+                      <span key={i} style={{display:"inline-flex",alignItems:"center",gap:5,background:"var(--green-50)",border:"none",borderRadius:16,padding:"6px 13px",fontSize:14,fontWeight:600,color:"var(--green-700)",boxShadow:BEZEL_BTN_LIGHT}}>
+                        {d.name}
+                        {d.isGuest&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--green-700)",color:"white",fontSize:9,fontWeight:800,lineHeight:1,flexShrink:0,boxShadow:BADGE_DEPRESSED_BEZEL}}>G</span>}
+                        {d.early&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--gold-600)",color:"white",fontSize:8,fontWeight:800,lineHeight:1,flexShrink:0,boxShadow:BADGE_DEPRESSED_BEZEL}}>E</span>}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}
-          {(()=>{
-            const d=forecastWx?wmoToDesc(forecastWx.code):null;
-            return(
-              <div className="info-row" style={{marginTop:2,paddingTop:8}}>
-                <span className="info-key">Forecast</span>
-                <span className="info-val" style={{flex:1}}>
-                  <span style={{
-                    display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",justifyContent:"flex-end",
-                    filter:wxReady?"blur(0px)":"blur(6px)",
-                    transition:"filter 0.35s ease",
-                    pointerEvents:wxReady?"auto":"none",
-                  }}>
-                    {d?<>
-                      <span style={{fontSize:18,lineHeight:1}}>{d.emoji}</span>
-                      <span style={{fontWeight:600,fontSize:14,color:"var(--text-primary)"}}>{forecastWx.temp}°F</span>
-                      <span style={{fontSize:13,color:"var(--text-secondary)"}}>{d.label}</span>
-                      <span style={{fontSize:13,color:"var(--text-muted)"}}>{forecastWx.wind} mph {degToCompass(forecastWx.windDeg)}</span>
-                    </>:wxReady&&<span style={{fontSize:14,color:"var(--text-muted)"}}>TBD</span>}
-                  </span>
-                </span>
-              </div>
-            );
-          })()}
+
+          {/* Summary line: in / out / pending (centered footer) */}
+          <div style={{marginTop:16,paddingTop:14,borderTop:"1px solid var(--border)",fontSize:15,fontWeight:600,display:"flex",flexWrap:"wrap",alignItems:"baseline",justifyContent:"center",gap:2}}>
+            <span style={{color:"var(--green-600)"}}>{yesCount} in</span>
+            {noCount>0&&<><span style={{color:"var(--text-muted)",fontWeight:500,margin:"0 2px"}}>·</span><span style={{color:"var(--red-600)"}}>{noCount} out</span></>}
+            {unconfCount>0&&<><span style={{color:"var(--text-muted)",fontWeight:500,margin:"0 2px"}}>·</span><span style={{color:"var(--text-secondary)",fontWeight:500}}>{unconfCount} pending</span></>}
+          </div>
         </div>
       )}
 
