@@ -580,7 +580,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
 
           {/* Header: course name + status pill */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
-            <div style={{fontWeight:800,fontSize:24,lineHeight:1.1,letterSpacing:"-0.01em"}}>{shortCourseName(selEvent.course_name)}</div>
+            <div style={{fontWeight:800,fontSize:22,lineHeight:1.1,letterSpacing:"-0.01em"}}>{shortCourseName(selEvent.course_name)}</div>
             <span className="pill pill-gold" style={{flexShrink:0,textTransform:"uppercase",letterSpacing:"0.04em",fontSize:11,...(isJuly4&&selEvent.status==="Upcoming"?{backgroundImage:`linear-gradient(rgba(0,0,0,0.35),rgba(0,0,0,0.35)),${july4StarBg}`,backgroundSize:"auto,16px 16px",backgroundColor:"#3C3B6E",color:"#FFFFFF",border:"2px solid #B22234",fontWeight:800,boxShadow:CHIP_BEZEL}:{boxShadow:CHIP_BEZEL})}}>{selEvent.status}</span>
           </div>
 
@@ -597,8 +597,8 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             <div ref={teeRowRef} style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:"6px 14px"}}>
               {selEvent.tee_times.map((t:string,i:number)=>(
                 <span key={i} style={{display:"inline-flex",alignItems:"center",gap:dotHidden[i]?0:14}}>
-                  {i>0&&!dotHidden[i]&&<span style={{color:"var(--text-muted)",fontSize:22,fontWeight:900,lineHeight:1}}>·</span>}
-                  <span data-tee-time style={{fontSize:22,fontWeight:800,color:"var(--green-700)",letterSpacing:"-0.01em"}}>{t}</span>
+                  {i>0&&!dotHidden[i]&&<span style={{color:"var(--text-muted)",fontSize:20,fontWeight:900,lineHeight:1}}>·</span>}
+                  <span data-tee-time style={{fontSize:20,fontWeight:800,color:"var(--green-700)",letterSpacing:"-0.01em"}}>{t}</span>
                 </span>
               ))}
             </div>
