@@ -45,6 +45,35 @@ generate/move/swap rely on its diff-writes for persistence.
 
 ## Features In Progress
 
+- IN PROGRESS 2026-07-13: Event Highlights + Auto Recap (admin-gated, flag
+  `HIGHLIGHTS_AUDIENCE` in src/tabs/leaderboard/highlights/highlightsShared.ts).
+  Story rail on the completed-event detail overlay (between skins card and
+  leaderboard) + full-screen story viewer mixing auto data beats (win-prob
+  replay selector in src/lib/recapEngine.ts, adapted from WinProbabilityChart's
+  checkpoint/simulate math) with member photo/video moments. New tables:
+  highlights / highlight_likes / highlight_comments / story_beats_history
+  (migration supabase/migrations/20260713_highlights.sql — NOT YET APPLIED).
+  Media on Cloudflare R2 via presigned PUTs from the new r2-presign Edge
+  Function (NOT YET DEPLOYED; operator steps in docs/highlights-r2-setup.md).
+  Feature CSS appended to the CSS const in App.tsx (rail .story/.ring, viewer
+  .v-*/.beat*, sheets, add flow). Members see zero change until the flag flips
+  to 'all'. Remaining before flipping: apply migration, create R2 bucket +
+  secrets + deploy function, verify R2 round-trip on a phone.
+  UPDATE 2026-07-13 (same day): beat selection rebuilt as an independent
+  DETECTOR CATALOG (14 angles: three_way/duel/wire_to_wire/pace_setter openings;
+  charge/collapse/hold/grinder/wildcard/tough_hole this-event middles;
+  nemesis/redemption/out_of_character/rivalry cross-event middles; final) with
+  a weighted composer (strength x surprise x recency x protagonist penalties).
+  Cross-event history built client-side from leaderboard/events/holeScores
+  props (buildPlayerHistories). New viz payloads grind/fieldStat/h2h/histBars
+  render in the viewer. Acceptance gate: tests/recapEngine.backtest.test.ts
+  (run: node --test tests/recapEngine.backtest.test.ts) replays the last 7
+  real hole-by-hole events from tests/fixtures/recapBacktest.json -- asserts
+  angle variety, no repeating skeleton, spotlight rotation, grammar (verbs,
+  no gendered pronouns), determinism. Beat cache key bumped to hl_beats_v2_.
+  Known limitation: simulate() uses one fixed hole-outcome distribution for
+  all players; per-player distributions are the next lever if beats feel noisy.
+
 - DONE 2026-07-08: Member identity + persistent logins. Admin unlock moved from
   sessionStorage to localStorage (`ss_admin`) and auto-restored on boot, so it
   survives an iOS force-quit; cleared only via the profile-icon logout. New

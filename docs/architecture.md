@@ -152,18 +152,32 @@ Payout: 1st (solo) = 2/3 pot; 1st (tied) = pot/n; 2nd = 1/3 pot (only if 1st is 
 
 ## CSS Architecture
 
-All styles in `src/index.css` and `src/App.css`.
+> **Source of truth:** the `CSS` template constant in `src/App.tsx` (injected
+> via `<style>{CSS}</style>`) is the single source of truth for design tokens
+> and app styles. This doc mirrors it and must be updated alongside it.
+> `src/index.css` holds only base/reset rules; there is no `App.css`.
 
 ```css
 :root {
-  /* Palette */
-  --green-900: #1a3a2a;
-  --green-700: #2d6a4f;
-  --gold-500: #d4a017;
-  --earth-800: #3d2b1f;
+  /* Palette (mirrors the live CSS const in App.tsx) */
+  --green-900:#0a2e1a; --green-800:#0f4526; --green-700:#155c32;
+  --green-600:#1a7340; --green-500:#228b50; --green-400:#2db368;
+  --green-300:#5cc98a; --green-100:#d4f2e3; --green-50:#edf9f2;
+  --gold-900:#3d2400;  --gold-800:#6b3d00;  --gold-700:#9a5a00;
+  --gold-600:#c47800;  --gold-500:#e09400;  --gold-400:#f5b000;
+  --gold-300:#ffc947;  --gold-100:#fff2cc;  --gold-50:#fffaf0;
+  --red-800:#7a1515;   --red-600:#c02020;   --red-400:#e84040;   --red-100:#fde8e8;
+  --earth-900:#1c1410; --earth-800:#2e221a; --earth-700:#4a3728;
+  --earth-600:#6b5240; --earth-400:#9c7c65; --earth-200:#d4c4b8;
+  --earth-100:#ede6e0; --earth-50:#f7f4f1;
+  --bg:#f4f1ec; --surface:#ffffff; --surface2:#f9f7f4;
+  --border:rgba(74,55,40,0.15); --border-md:rgba(74,55,40,0.25);
+  --text-primary:#1c1410; --text-secondary:#6b5240; --text-muted:#9c7c65;
+  --radius-sm:6px; --radius-md:10px; --radius-lg:16px; --radius-xl:24px;
   /* Layout */
-  --bottom-nav-height: 72px;
-  --safe-area-bottom: env(safe-area-inset-bottom);
+  --safe-area-top:env(safe-area-inset-top,0px);
+  --safe-area-bottom:var(--sab,0px);
+  --full-screen-h:100dvh;
 }
 
 .golden-hour { /* Fri/Sat 4-8pm PST color shift */ }
