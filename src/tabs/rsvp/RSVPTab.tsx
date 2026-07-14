@@ -584,14 +584,16 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             <span className="pill pill-gold" style={{flexShrink:0,textTransform:"uppercase",letterSpacing:"0.04em",fontSize:11,...(isJuly4&&selEvent.status==="Upcoming"?{backgroundImage:`linear-gradient(rgba(0,0,0,0.35),rgba(0,0,0,0.35)),${july4StarBg}`,backgroundSize:"auto,16px 16px",backgroundColor:"#3C3B6E",color:"#FFFFFF",border:"2px solid #B22234",fontWeight:800,boxShadow:CHIP_BEZEL}:{boxShadow:CHIP_BEZEL})}}>{selEvent.status}</span>
           </div>
 
-          {/* Weather */}
+          {/* Weather — the row always reserves its height (minHeight) so the card
+              doesn't grow when the forecast resolves; content fades/deblurs in. */}
           {(()=>{
             const d=forecastWx?wmoToDesc(forecastWx.code):null;
             return(
               <div style={{
-                marginTop:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",
+                marginTop:8,minHeight:22,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",
+                opacity:wxReady?1:0,
                 filter:wxReady?"blur(0px)":"blur(6px)",
-                transition:"filter 0.35s ease",
+                transition:"opacity 0.4s ease, filter 0.4s ease",
                 pointerEvents:wxReady?"auto":"none",
               }}>
                 {d?<>
@@ -600,7 +602,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
                   <span style={{fontSize:14,color:"var(--text-secondary)"}}>{d.label}</span>
                   <span style={{color:"var(--text-muted)",fontSize:13}}>·</span>
                   <span style={{fontSize:14,color:"var(--text-secondary)"}}>{forecastWx.wind} mph {degToCompass(forecastWx.windDeg)}</span>
-                </>:wxReady&&<span style={{fontSize:14,color:"var(--text-muted)"}}>Forecast TBD</span>}
+                </>:<span style={{fontSize:14,color:"var(--text-muted)"}}>Forecast TBD</span>}
               </div>
             );
           })()}
