@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from "react";
-import { Sun, ChevronDown } from "lucide-react";
+import { Sun, ChevronDown, Check, X, HelpCircle } from "lucide-react";
 import { ToggleGroup, GlassPicker } from "../../components/common";
 import { PairingPanel } from "../../components/common/PairingPanel";
 import { golferName, formatDate, eventPickerLabel, shortCourseName } from "../../lib/formatters";
@@ -584,28 +584,12 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             <span className="pill pill-gold" style={{flexShrink:0,textTransform:"uppercase",letterSpacing:"0.04em",fontSize:11,...(isJuly4&&selEvent.status==="Upcoming"?{backgroundImage:`linear-gradient(rgba(0,0,0,0.35),rgba(0,0,0,0.35)),${july4StarBg}`,backgroundSize:"auto,16px 16px",backgroundColor:"#3C3B6E",color:"#FFFFFF",border:"2px solid #B22234",fontWeight:800,boxShadow:CHIP_BEZEL}:{boxShadow:CHIP_BEZEL})}}>{selEvent.status}</span>
           </div>
 
-          {/* Weather — the row always reserves its height (minHeight) so the card
-              doesn't grow when the forecast resolves; content fades/deblurs in. */}
-          {(()=>{
-            const d=forecastWx?wmoToDesc(forecastWx.code):null;
-            return(
-              <div style={{
-                marginTop:8,minHeight:22,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",
-                opacity:wxReady?1:0,
-                filter:wxReady?"blur(0px)":"blur(6px)",
-                transition:"opacity 0.4s ease, filter 0.4s ease",
-                pointerEvents:wxReady?"auto":"none",
-              }}>
-                {d?<>
-                  <span style={{fontSize:18,lineHeight:1}}>{d.emoji}</span>
-                  <span style={{fontWeight:700,fontSize:15,color:"var(--text-primary)"}}>{forecastWx.temp}°</span>
-                  <span style={{fontSize:14,color:"var(--text-secondary)"}}>{d.label}</span>
-                  <span style={{color:"var(--text-muted)",fontSize:13}}>·</span>
-                  <span style={{fontSize:14,color:"var(--text-secondary)"}}>{forecastWx.wind} mph {degToCompass(forecastWx.windDeg)}</span>
-                </>:<span style={{fontSize:14,color:"var(--text-muted)"}}>Forecast TBD</span>}
-              </div>
-            );
-          })()}
+          {/* Summary line: in / out / pending — count + icon per status */}
+          <div style={{marginTop:8,display:"flex",flexWrap:"wrap",alignItems:"center",gap:16,fontSize:15,fontWeight:700}}>
+            <span style={{display:"inline-flex",alignItems:"center",gap:5,color:"var(--green-600)"}}><span style={{lineHeight:1}}>{yesCount}</span><Check size={16} strokeWidth={3} style={{display:"block"}}/></span>
+            {noCount>0&&<span style={{display:"inline-flex",alignItems:"center",gap:5,color:"var(--red-600)"}}><span style={{lineHeight:1}}>{noCount}</span><X size={16} strokeWidth={3} style={{display:"block"}}/></span>}
+            {unconfCount>0&&<span style={{display:"inline-flex",alignItems:"center",gap:5,color:"var(--text-muted)"}}><span style={{lineHeight:1}}>{unconfCount}</span><HelpCircle size={16} strokeWidth={2.5} style={{display:"block"}}/></span>}
+          </div>
 
           {/* Tee times */}
           <div style={{marginTop:16,paddingTop:14,borderTop:"1px solid var(--border)",textAlign:"left"}}>
@@ -667,12 +651,29 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             );
           })()}
 
-          {/* Summary line: in / out / pending (centered footer) */}
-          <div style={{marginTop:16,paddingTop:14,borderTop:"1px solid var(--border)",fontSize:15,fontWeight:600,display:"flex",flexWrap:"wrap",alignItems:"baseline",justifyContent:"center",gap:2}}>
-            <span style={{color:"var(--green-600)"}}>{yesCount} in</span>
-            {noCount>0&&<><span style={{color:"var(--text-muted)",fontWeight:500,margin:"0 2px"}}>·</span><span style={{color:"var(--red-600)"}}>{noCount} out</span></>}
-            {unconfCount>0&&<><span style={{color:"var(--text-muted)",fontWeight:500,margin:"0 2px"}}>·</span><span style={{color:"var(--text-secondary)",fontWeight:500}}>{unconfCount} pending</span></>}
-          </div>
+          {/* Weather footer — the row always reserves its height (minHeight) so
+              the card doesn't grow when the forecast resolves; it fades/deblurs in. */}
+          {(()=>{
+            const d=forecastWx?wmoToDesc(forecastWx.code):null;
+            return(
+              <div style={{
+                marginTop:16,paddingTop:14,borderTop:"1px solid var(--border)",
+                minHeight:36,display:"flex",alignItems:"center",justifyContent:"flex-start",gap:8,flexWrap:"wrap",
+                opacity:wxReady?1:0,
+                filter:wxReady?"blur(0px)":"blur(6px)",
+                transition:"opacity 0.4s ease, filter 0.4s ease",
+                pointerEvents:wxReady?"auto":"none",
+              }}>
+                {d?<>
+                  <span style={{fontSize:18,lineHeight:1}}>{d.emoji}</span>
+                  <span style={{fontWeight:700,fontSize:15,color:"var(--text-primary)"}}>{forecastWx.temp}°</span>
+                  <span style={{fontSize:14,color:"var(--text-secondary)"}}>{d.label}</span>
+                  <span style={{color:"var(--text-muted)",fontSize:13}}>·</span>
+                  <span style={{fontSize:14,color:"var(--text-secondary)"}}>{forecastWx.wind} mph {degToCompass(forecastWx.windDeg)}</span>
+                </>:<span style={{fontSize:14,color:"var(--text-muted)"}}>Forecast TBD</span>}
+              </div>
+            );
+          })()}
         </div>
       )}
 
