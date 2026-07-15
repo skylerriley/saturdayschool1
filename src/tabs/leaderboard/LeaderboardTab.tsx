@@ -17,6 +17,8 @@ import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, BEZEL_SUBTAB_RAISED, bezelRimOve
 import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
 import { WinProbabilityChart } from "../../WinProbabilityChart";
+import { HighlightsModule } from "./highlights/HighlightsModule";
+import { highlightsEnabled } from "./highlights/highlightsShared";
 
 ensureShimmer();
 
@@ -2573,6 +2575,27 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               </div>
             );
           })()}
+
+                  {/* Event Highlights: admin-gated story rail (module renders
+                      nothing when the gate is closed or the event has neither
+                      hole data nor uploads) */}
+                  {highlightsEnabled(adminMode)&&displayEvent&&(
+                    <HighlightsModule
+                      event={displayEvent}
+                      course={courses.find((c:any)=>c.course_name===displayEvent.course_name)}
+                      golfers={golfers}
+                      eventEntries={eventEntries}
+                      holeScores={holeScores}
+                      holeImages={holeImages}
+                      memberGolferId={memberGolferId}
+                      adminMode={adminMode}
+                      eventNumber={overlayEventNumMap[displayEvent.event_id]||1}
+                      recentEventIds={completedEvents.filter((e:any)=>e.event_id!==displayEvent.event_id).slice(0,4).map((e:any)=>e.event_id)}
+                      leaderboard={leaderboard}
+                      events={events}
+                    />
+                  )}
+
                   <div style={{borderRadius:"var(--radius-md)",boxShadow:BEZEL_OUTER_SHADOW}}>
                   <div style={{position:"relative",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
             <div style={bezelRimOverlay("var(--radius-md)","light")}/>
