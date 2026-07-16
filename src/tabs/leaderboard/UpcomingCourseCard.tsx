@@ -12,7 +12,7 @@ import { useCachedImage } from "../../lib/imageCache";
 // ------------------------------------------------------------------
 export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldCount, firstTeeTime }: any) {
   const courseName = event?.course_name || "";
-  const courseImages = (holeImages || []).filter((img: any) => img.course_name === courseName && img.public_url);
+  const courseImages = (holeImages || []).filter((img: any) => img.course_name === courseName && img.public_url && (img.view_type == null || img.view_type === "hole"));
   // Deterministic pick (hashed off the course name) instead of random, so the
   // same photo is chosen on every mount — that keeps the session image cache
   // warm and lets the card appear instantly on revisit instead of re-loading.

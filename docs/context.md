@@ -73,6 +73,80 @@ generate/move/swap rely on its diff-writes for persistence.
   no gendered pronouns), determinism. Beat cache key bumped to hl_beats_v2_.
   Known limitation: simulate() uses one fixed hole-outcome distribution for
   all players; per-player distributions are the next lever if beats feel noisy.
+  UPDATE 2026-07-15 (Handoff #3, "recap visual language"): engine + viewer pass.
+  Engine (src/lib/recapEngine.ts): Monte Carlo now SEEDED on event_id
+  (mulberry32) so a given event yields identical beats forever; beat valence
+  keys on Stableford POINTS not gross-par (DataBeat.score gained `points`);
+  charge detector requires protagonist merit (>=2 pts on the anchor hole, run
+  variant "The Run" when a >=3-hole >=2pt stretch exists); collapse requires
+  <=1 pt; all odds-speak removed from copy (win-prob stays internal; users see
+  points + position via new ptsPanel/streak/scoreRow/scorecard/fieldBars/
+  weekBars payloads; odds/swing payloads retired); beats carry heroLabel/
+  eyebrow/holeMeta (kicker/title mapped for compat); nemesis per-hole history
+  is now SAME-COURSE only (buildPlayerHistories holeStatsEventIds) while
+  season baselines stay cross-course; hidden angles filter PRE-composition.
+  Cache key hl_beats_v3_. Backtest rewritten to run the real seeded path
+  twice + new asserts (no odds-speak, charge merit, par consistency) -- 11/11.
+  Viewer (HighlightsViewer.tsx) rebuilt to the approved mockup
+  (recap-visual-language.html): blurred scenic bg + mood tints, right-aligned
+  hero label over the focus .shot card, animated hole number, glass panels,
+  real .lb-* finalboard w/ bottom-up reveal + leader shine (scoped
+  .finalboard), anchor-driven tracers (normalized anchors on hole_images
+  view_type 'hole'|'green'; green view = OUTCOME ONLY, never putt counts;
+  fixed-arc fallback when no anchors). Pressing down pauses IMMEDIATELY
+  (.viewer.paused freezes all CSS animation, video pauses too) with NO pause
+  indicator; release always resumes, and a press >180ms counts as a hold so
+  its release never navigates. Left/right-third tap zones navigate (centre
+  tap does nothing; nav arrows and the pause pill were removed at user
+  request 2026-07-15); topbar dots/close icons have no background circle;
+  iOS long-press callout suppressed. Dots menu: admin hide-beat (updates
+  story_beats_history.hidden, busts cache, recomposes so the next-best
+  candidate fills the slot) + edit-caption (caption_override); human cards get
+  owner/admin edit + delete (soft-hide). Yardage in hole meta follows the
+  protagonist's tee (event_signups.tee_box_course_id) -> most common tee ->
+  first course row. Admin anchor authoring tool: Admin > Courses > hole-images
+  grid, the crosshair button (src/tabs/admin/AnchorTool.tsx; shared math in
+  highlights/tracerMath.ts + TracerSvg.tsx). NEW MIGRATION NOT YET APPLIED:
+  supabase/migrations/20260715_highlights_visuals.sql (hole_images.view_type/
+  anchors; story_beats_history.hidden/caption_override + anon update grant).
+  Until applied, hide/edit-caption writes fail soft (reportWriteError toast)
+  and anchors cannot be saved; everything else works. Verified via seeded
+  backtest + read-only Playwright smoke (hold-to-pause, tap zones, dots menu,
+  member-gate isolation: zero highlights API calls for non-admin).
+  UPDATE 2026-07-15 (same day, "late-round bias" pass): beat SELECTION
+  reworked -- no viewer/CSS changes, all new beats reuse existing payloads.
+  Governing principle (comment block in recapEngine.ts): narrative weight AT
+  THE MOMENT != contribution to the final result; win-prob deltas grow
+  ~1/sqrt(holesRemaining) so ranking on them selects "the latest hole".
+  Merit beats (charge/hold/fast_start/fade) now rank on FIELD-RELATIVE
+  Stableford points (holeMerit/spanMerit vs ctx.fieldMeanAt) -- position-
+  independent by construction; collapse stays the ONE odds-driven beat (the
+  turning point legitimately skews late). Openings are DETECTED in holes 3-9
+  (three_way: bunched-count x depth; duel: points separation of a top pair;
+  pace_setter: peak early margin; wire_to_wire: permanent-lead onset <= 4 +
+  late margin never below 1, else the caption's "never threatened" would
+  lie). hold un-gated from h>12 (led -> lead lost -> >=2pt answer restoring
+  margin). New detectors: fast_start (burst merit over holes 1-5, ranked on
+  the burst NEVER on whether it lasted; streak payload), fade (top-2 at an
+  early/mid checkpoint -> finished >=4 spots back outside top 3; ranked on
+  earlyStanding x positionsLost, explicitly not outcome impact; two-col
+  ptsPanel), the_turn (hole-9 state, low base strength, middle filler).
+  Composer: soft spread constraint (x0.55 for an occupied round-third
+  1-6/7-12/13-18, x0.75 within 4 holes of a chosen beat -- multipliers,
+  never blocks), iterative weighted pick replaces the static two-pass sort,
+  and the opening's protagonist counts against middle pass-1 freshness (no
+  more "Mark's hot start" told twice). grinder loosened (zero blanks + <=1
+  net birdie; the all-1s-and-2s gate never fired on real data), rivalry
+  loosened (mean gap <= 2.5, crossings >= 2). Long-run streak strips cap
+  their context so they stay phone-width. Beat cache key bumped to
+  hl_beats_v4_. Backtest: 4 new distribution asserts (opening variety,
+  round coverage >= 2 thirds majority, front-nine merit reachability,
+  7-13 dead-zone) + per-third histogram in the dump; 15/15 pass. Result on
+  the last 7 real events: openings 9,6,8,3,7,4,7 (was 6x7); thirds histogram
+  5/7/4 (was ~0 outside the last third for merit beats); fade/fast_start/
+  rivalry fire on real data. duel/wire/grinder verified genuinely absent in
+  this 7-event window (conditions checked directly against the fixture),
+  not threshold-starved.
 
 - DONE 2026-07-08: Member identity + persistent logins. Admin unlock moved from
   sessionStorage to localStorage (`ss_admin`) and auto-restored on boot, so it

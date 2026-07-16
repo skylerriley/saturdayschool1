@@ -30,7 +30,7 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
 
   // Hole image: cycle 1..18 by event number
   const holeNum=((eventNumber-1)%18)+1;
-  const imgRecord=(holeImages||[]).find((img:any)=>img.course_name===courseName&&img.hole_number===holeNum&&img.public_url);
+  const imgRecord=(holeImages||[]).find((img:any)=>img.course_name===courseName&&img.hole_number===holeNum&&img.public_url&&(img.view_type==null||img.view_type==="hole"));
   const imgUrl:string|null=imgRecord?imgRecord.public_url:null;
 
   // Cached-image hook: fades in on first decode, appears instantly on revisits.
@@ -218,7 +218,7 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
   useEffect(()=>{
     const urls=shown.map((ev:any)=>{
       const holeNum=(((eventNumMap[ev.event_id]||1)-1)%18)+1;
-      const rec=(holeImages||[]).find((img:any)=>img.course_name===(ev.course_name||"")&&img.hole_number===holeNum&&img.public_url);
+      const rec=(holeImages||[]).find((img:any)=>img.course_name===(ev.course_name||"")&&img.hole_number===holeNum&&img.public_url&&(img.view_type==null||img.view_type==="hole"));
       return rec?rec.public_url:null;
     });
     prefetchImages(urls);
@@ -2305,7 +2305,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             const heroCourseName:string=displayEvent.course_name||"";
             const heroEventNum=overlayEventNumMap[displayEvent.event_id]||1;
             const heroHoleNum=((heroEventNum-1)%18)+1;
-            const heroImgRecord=(holeImages||[]).find((img:any)=>img.course_name===heroCourseName&&img.hole_number===heroHoleNum&&img.public_url);
+            const heroImgRecord=(holeImages||[]).find((img:any)=>img.course_name===heroCourseName&&img.hole_number===heroHoleNum&&img.public_url&&(img.view_type==null||img.view_type==="hole"));
             const heroImgUrl:string|null=heroImgRecord?heroImgRecord.public_url:null;
 
             // Date formatting: "SAT · Jun 14, 2025"
@@ -2583,6 +2583,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                     <HighlightsModule
                       event={displayEvent}
                       course={courses.find((c:any)=>c.course_name===displayEvent.course_name)}
+                      courses={courses}
+                      signups={signups}
                       golfers={golfers}
                       eventEntries={eventEntries}
                       holeScores={holeScores}
@@ -2977,10 +2979,12 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
   };
   const pmColor=(pm:number)=>pm<0?"var(--green-700)":"var(--red-500,#e53e3e)";
 
-  // Hole images keyed by hole number for this course
+  // Hole images keyed by hole number for this course. Hole-view rows only
+  // (view_type NULL/'hole') -- 'green' rows belong to the recap tracer, not
+  // the course card or this upload/replace flow.
   const imgByHole:Record<number,any>={};
   for(const img of (holeImages||[])){
-    if(img.course_name===courseName)imgByHole[img.hole_number]=img;
+    if(img.course_name===courseName&&(img.view_type==null||img.view_type==="hole"))imgByHole[img.hole_number]=img;
   }
 
   const uploadHoleImage=async(hole:number,file:File)=>{

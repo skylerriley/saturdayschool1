@@ -21,7 +21,7 @@ const AUTO_ICON = (
   </svg>
 );
 
-export function HighlightsModule({ event, course, golfers, eventEntries, holeScores, holeImages, memberGolferId, adminMode, eventNumber, recentEventIds, leaderboard, events }: any) {
+export function HighlightsModule({ event, course, courses, signups, golfers, eventEntries, holeScores, holeImages, memberGolferId, adminMode, eventNumber, recentEventIds, leaderboard, events }: any) {
   const eventId = event.event_id;
 
   // Hard gate for auto beats: same predicate the skins card uses -- every
@@ -32,6 +32,13 @@ export function HighlightsModule({ event, course, golfers, eventEntries, holeSco
   const [likes, setLikes] = useState<any[]>([]);
   const [comments, setComments] = useState<any[]>([]);
   const [beats, setBeats] = useState<DataBeat[]>([]);
+  // This event's story_beats_history rows -- carries the admin `hidden` flag
+  // and `caption_override` applied at display time.
+  const [beatHistory, setBeatHistory] = useState<any[]>([]);
+  // Bumped after an admin hide so the story recomposes immediately (the
+  // hidden angle is filtered BEFORE composition; the next-best candidate
+  // fills the slot instead of leaving a gap).
+  const [beatsNonce, setBeatsNonce] = useState(0);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -71,26 +78,30 @@ export function HighlightsModule({ event, course, golfers, eventEntries, holeSco
     return () => { cancelled = true; };
   }, [eventId]);
 
-  // Generate data beats (win-prob replay path). Cached per event in
-  // sessionStorage so the story is stable within a session (the Monte Carlo
-  // uses randomness) and reopening the overlay is instant.
+  // Generate data beats (win-prob replay path). The Monte Carlo is seeded on
+  // event_id inside the engine, so beats are deterministic across sessions;
+  // the sessionStorage cache is purely an instant-reopen optimization.
   useEffect(() => {
     if (!hasHoleData) { setBeats([]); return; }
-    const cacheKey = `hl_beats_v2_${eventId}`;
-    try {
-      const cached = sessionStorage.getItem(cacheKey);
-      if (cached) { setBeats(JSON.parse(cached)); return; }
-    } catch (_: any) {}
+    const cacheKey = `hl_beats_v4_${eventId}`;
 
     let cancelled = false;
     (async () => {
       // Recent history for anti-repeat (last ~4 completed events + this one).
+      // Always fetched (even on a beats cache hit) so hidden flags and
+      // caption overrides apply.
       let history: any[] = [];
       const histIds = [...(recentEventIds || []), eventId];
       try {
         history = await supabase.from("story_beats_history").select("*", `&event_id=in.(${histIds.join(",")})`);
       } catch (_: any) {}
       if (cancelled) return;
+      setBeatHistory(history.filter((h: any) => h.event_id === eventId));
+
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) { setBeats(JSON.parse(cached)); return; }
+      } catch (_: any) {}
 
       const players = eventEntries
         .filter((e: any) => e.entry_type === "Hole-by-Hole")
@@ -121,7 +132,14 @@ export function HighlightsModule({ event, course, golfers, eventEntries, holeSco
           event_id: priorSummaryInfo[h.summary_id].event_id,
           hole: h.hole_number,
           gross: h.gross_score,
+          points: h.stableford_points ?? null,
         }));
+      // Per-hole aggregates (nemesis etc.) must only pool SAME-COURSE prior
+      // events -- "hole 16" at another course is a different hole. Season
+      // points baselines stay cross-course inside buildPlayerHistories.
+      const holeStatsEventIds = (events || [])
+        .filter((e: any) => e.status === "Completed" && e.date < event.date && e.course_name === event.course_name)
+        .map((e: any) => e.event_id);
       const playerHistory = buildPlayerHistories({
         eventId,
         playerIds: players.map((p: any) => p.golferId),
@@ -130,9 +148,30 @@ export function HighlightsModule({ event, course, golfers, eventEntries, holeSco
           .filter((r: any) => completedEvts.some((e: any) => e.event_id === r.event_id))
           .map((r: any) => ({ event_id: r.event_id, golfer_id: r.golfer_id, total: r.total_stableford_points })),
         priorHoleRows,
+        holeStatsEventIds,
       });
 
+      // Yardage for the hole meta block: each golfer's own tee
+      // (event_signups.tee_box_course_id), with the event's most common tee
+      // as the field-wide value and per-golfer fallback.
+      const yardsOf = (courseId: any): (number | null)[] | null => {
+        const row = courseId != null ? (courses || []).find((c: any) => c.course_id === courseId) : null;
+        return Array.isArray(row?.hole_yards) ? row.hole_yards : null;
+      };
+      const evSignups = (signups || []).filter((s: any) => s.event_id === eventId && s.tee_box_course_id != null);
+      const holeYardsByGolfer: Record<number, (number | null)[] | null> = {};
+      evSignups.forEach((s: any) => { holeYardsByGolfer[s.golfer_id] = yardsOf(s.tee_box_course_id); });
+      const teeCounts: Record<number, number> = {};
+      evSignups.forEach((s: any) => { teeCounts[s.tee_box_course_id] = (teeCounts[s.tee_box_course_id] || 0) + 1; });
+      const modalTee = Object.entries(teeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+      const fieldHoleYards = yardsOf(modalTee != null ? Number(modalTee) : null)
+        ?? (Array.isArray(course?.hole_yards) ? course.hole_yards : null);
+
       const standings = buildStandings(eventEntries, golfers);
+      // Full name for the final title ("Joe Fischman closes out Week 27");
+      // standings rows keep the short display form.
+      const winnerEntry = [...eventEntries].sort((a: any, b: any) => b.total_stableford_points - a.total_stableford_points)[0];
+      const winnerFullName = winnerEntry ? golferName(golfers, winnerEntry.golfer_id) : "";
       // Week label scoped to the season (the all-time event number reads as
       // "Week 264" after a few years).
       const seasonWeek = (events || []).filter((e: any) => e.status === "Completed" && e.season === event.season && e.date <= event.date).length || eventNumber;
@@ -142,11 +181,14 @@ export function HighlightsModule({ event, course, golfers, eventEntries, holeSco
         scores,
         holePars: course?.hole_pars || [],
         finalStandings: standings.slice(0, 5),
-        winnerName: standings[0]?.name || "",
+        winnerName: winnerFullName || standings[0]?.name || "",
         eventLabel: `Week ${seasonWeek || ""}`.trim(),
         history: history.filter((h: any) => h.event_id !== eventId),
         prevEventId: (recentEventIds || [])[0] ?? null,
         playerHistory,
+        holeYardsByGolfer,
+        fieldHoleYards,
+        hiddenBeats: history.filter((h: any) => h.event_id === eventId && h.hidden === true),
       });
       if (cancelled) return;
       setBeats(generated);
@@ -165,14 +207,27 @@ export function HighlightsModule({ event, course, golfers, eventEntries, holeSco
       }
     })();
     return () => { cancelled = true; };
-  }, [eventId, hasHoleData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, hasHoleData, beatsNonce]);
 
   const humanRows = useMemo(() => rows || [], [rows]);
+
+  // Hidden beats filtered (belt-and-braces for cached beats -- generation
+  // already filters pre-composition) and admin caption overrides applied.
+  const displayBeats = useMemo(() => {
+    const match = (h: any, b: DataBeat) => h.angle_type === b.angle;
+    return beats
+      .filter((b) => !beatHistory.some((h: any) => h.hidden === true && match(h, b)))
+      .map((b) => {
+        const o = beatHistory.find((h: any) => h.caption_override && match(h, b));
+        return o ? { ...b, caption: [{ t: o.caption_override }] } : b;
+      });
+  }, [beats, beatHistory]);
 
   // Unified watch model: merged, sorted card array.
   const cards: RecapCard[] = useMemo(() => {
     const list: RecapCard[] = [
-      ...beats.map((b) => ({
+      ...displayBeats.map((b) => ({
         kind: "data" as const,
         beat: b,
         // Opening beats ("Through N") are the cold open of the data story --
@@ -194,7 +249,61 @@ export function HighlightsModule({ event, course, golfers, eventEntries, holeSco
     ];
     list.sort(watchOrderCompare);
     return list;
-  }, [beats, humanRows]);
+  }, [displayBeats, humanRows]);
+
+  // ---- admin/owner actions from the viewer's dots menu ----------------------
+  const bustBeatCache = () => { try { sessionStorage.removeItem(`hl_beats_v4_${eventId}`); } catch (_: any) {} };
+  const histRowFor = (b: DataBeat) => beatHistory.find((h: any) => h.angle_type === b.angle);
+
+  const hideBeat = async (b: DataBeat) => {
+    try {
+      const row = histRowFor(b);
+      if (row) {
+        await supabase.from("story_beats_history").update({ hidden: true }, { id: row.id });
+      } else {
+        await supabase.from("story_beats_history").insert({
+          event_id: eventId, angle_type: b.angle, protagonist_id: b.protagonistId, strength: b.strength, hidden: true,
+        });
+      }
+    } catch (e: any) { reportWriteError("Hide beat")(e); }
+    // Recompose from scratch so the next-best candidate fills the slot.
+    bustBeatCache();
+    setViewerIndex(null);
+    setBeatsNonce((n) => n + 1);
+    showToast("Beat hidden");
+  };
+
+  const editBeatCaption = async (b: DataBeat, text: string) => {
+    const val = text === "" ? null : text;
+    try {
+      const row = histRowFor(b);
+      if (row) {
+        await supabase.from("story_beats_history").update({ caption_override: val }, { id: row.id });
+        setBeatHistory((prev) => prev.map((h: any) => (h.id === row.id ? { ...h, caption_override: val } : h)));
+      } else if (val) {
+        const inserted = await supabase.from("story_beats_history").insert({
+          event_id: eventId, angle_type: b.angle, protagonist_id: b.protagonistId, strength: b.strength, caption_override: val,
+        });
+        const ir = Array.isArray(inserted) ? inserted[0] : null;
+        setBeatHistory((prev) => [...prev, ir || { id: Date.now(), event_id: eventId, angle_type: b.angle, protagonist_id: b.protagonistId, caption_override: val }]);
+      }
+      showToast(val ? "Caption updated" : "Caption restored");
+    } catch (e: any) { reportWriteError("Edit beat caption")(e); }
+  };
+
+  const deleteHighlight = (highlightId: number) => {
+    setRows((prev) => (prev || []).filter((r: any) => r.id !== highlightId));
+    setViewerIndex(null);
+    supabase.from("highlights").update({ hidden: true }, { id: highlightId }).catch(reportWriteError("Delete highlight"));
+    showToast("Highlight deleted");
+  };
+
+  const editHighlightCaption = (row: any, text: string) => {
+    const caption = text === "" ? null : text;
+    setRows((prev) => (prev || []).map((r: any) => (r.id === row.id ? { ...r, caption } : r)));
+    supabase.from("highlights").update({ caption }, { id: row.id }).catch(reportWriteError("Edit highlight"));
+    showToast("Caption updated");
+  };
 
   // Module visibility: hole-data events always show (they have beats); other
   // events only if someone uploaded to them. No empty state, no dangling "+".
@@ -276,6 +385,8 @@ export function HighlightsModule({ event, course, golfers, eventEntries, holeSco
           startIndex={viewerIndex}
           event={event}
           course={course}
+          courses={courses}
+          signups={signups}
           golfers={golfers}
           eventEntries={eventEntries}
           holeScores={holeScores}
@@ -285,6 +396,10 @@ export function HighlightsModule({ event, course, golfers, eventEntries, holeSco
           memberName={memberName}
           adminMode={adminMode}
           onClose={() => setViewerIndex(null)}
+          onHideBeat={adminMode ? hideBeat : undefined}
+          onEditBeatCaption={adminMode ? editBeatCaption : undefined}
+          onDeleteHighlight={deleteHighlight}
+          onEditHighlightCaption={editHighlightCaption}
           onToggleLike={(highlightId: number) => {
             if (!memberName) { showToast("Pick your profile in Settings to like highlights"); return; }
             const mine = likes.find((l: any) => l.highlight_id === highlightId && l.liker_name === memberName);
@@ -308,12 +423,6 @@ export function HighlightsModule({ event, course, golfers, eventEntries, holeSco
               reportWriteError("Comment")(e);
             }
           }}
-          onHide={adminMode ? (highlightId: number) => {
-            setRows((prev) => (prev || []).filter((r: any) => r.id !== highlightId));
-            setViewerIndex(null);
-            supabase.from("highlights").update({ hidden: true }, { id: highlightId }).catch(reportWriteError("Hide highlight"));
-            showToast("Highlight hidden");
-          } : undefined}
         />
       )}
 

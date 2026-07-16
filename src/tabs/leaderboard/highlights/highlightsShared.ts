@@ -21,7 +21,22 @@ export interface RecapCard {
   createdAt: string | null;
 }
 
+// hole_images rows now carry view_type ('hole' | 'green'; NULL = legacy
+// 'hole') and optional normalized tracer anchors. Everything that wants "the
+// hole photo" must filter to the hole view so a green image never leaks into
+// course cards or the upload/replace flow.
+export function isHoleView(img: any): boolean {
+  return img.view_type == null || img.view_type === "hole";
+}
+
+export function holeImageRow(holeImages: any[], courseName: string, hole: number, view: "hole" | "green"): any | null {
+  return (holeImages || []).find((img: any) =>
+    img.course_name === courseName && img.hole_number === hole && img.public_url
+    && (view === "hole" ? isHoleView(img) : img.view_type === "green"),
+  ) || null;
+}
+
 export function holeAerialUrl(holeImages: any[], courseName: string, hole: number): string | null {
-  const rec = (holeImages || []).find((img: any) => img.course_name === courseName && img.hole_number === hole && img.public_url);
+  const rec = holeImageRow(holeImages, courseName, hole, "hole");
   return rec ? rec.public_url : null;
 }

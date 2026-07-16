@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { scrollMainTop, scrollMainToEl } from "../../lib/formatters";
 import { fuzzyMatchCourseName } from "../../lib/courseNameUtils";
 import { supabase, GCAPI_KEY, reportWriteError } from "../../lib/supabaseClient";
+import { AnchorTool } from "./AnchorTool";
 
 // -- 3b) COURSE MANAGER ---------------------------------------
 
@@ -22,6 +23,8 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
   // ── Hole Images Modal ──────────────────────────────────────────────
   const [imgModalCourse, setImgModalCourse] = useState<string | null>(null);
   const [uploadingHole, setUploadingHole] = useState<number | null>(null);
+  // Tracer anchor editor (recap shot tracers): { courseName, hole } | null
+  const [anchorEdit, setAnchorEdit] = useState<{ courseName: string; hole: number } | null>(null);
 
   const uploadHoleImage = async (courseName: string, hole: number, file: File) => {
     setUploadingHole(hole);
@@ -38,7 +41,8 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
       const path = `${courseName.replace(/\s+/g, "-").toLowerCase()}/hole-${hole}-${Date.now()}.jpg`;
       const result = await supabase.storage.upload("hole-images", path, blob);
       if (!result) throw new Error("Upload failed");
-      const existing = (holeImages || []).find((r: any) => r.course_name === courseName && r.hole_number === hole);
+      // Hole-view rows only: 'green' rows belong to the recap tracer.
+      const existing = (holeImages || []).find((r: any) => r.course_name === courseName && r.hole_number === hole && (r.view_type == null || r.view_type === "hole"));
       if (existing) {
         // Old-file cleanup is best-effort — the replacement already uploaded
         await supabase.storage.remove("hole-images", [existing.storage_path]).catch((e) => console.warn("[storage] cleanup:", e));
@@ -58,7 +62,7 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
   };
 
   const deleteHoleImage = async (courseName: string, hole: number) => {
-    const existing = (holeImages || []).find((r: any) => r.course_name === courseName && r.hole_number === hole);
+    const existing = (holeImages || []).find((r: any) => r.course_name === courseName && r.hole_number === hole && (r.view_type == null || r.view_type === "hole"));
     if (!existing) return;
     await supabase.storage.remove("hole-images", [existing.storage_path]).catch((e) => console.warn("[storage] cleanup:", e));
     await supabase.from("hole_images").delete({ hole_image_id: existing.hole_image_id }).catch(reportWriteError("Hole image delete"));
@@ -304,7 +308,7 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
       )}
 
       {courseNames.map(name => {
-        const courseImgs = (holeImages || []).filter((r: any) => r.course_name === name);
+        const courseImgs = (holeImages || []).filter((r: any) => r.course_name === name && (r.view_type == null || r.view_type === "hole"));
         const imgCount = courseImgs.length;
         return (
           <div key={name} className="card" style={{ padding: "12px 14px" }}>
@@ -349,7 +353,7 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
             <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, maxHeight: "70vh", overflowY: "auto" }}>
               {Array.from({ length: 18 }, (_, i) => {
                 const hole = i + 1;
-                const existing = (holeImages || []).find((r: any) => r.course_name === imgModalCourse && r.hole_number === hole);
+                const existing = (holeImages || []).find((r: any) => r.course_name === imgModalCourse && r.hole_number === hole && (r.view_type == null || r.view_type === "hole"));
                 const isUploading = uploadingHole === hole;
                 return (
                   <div key={hole} style={{ borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface2)", position: "relative" }}>
@@ -374,6 +378,10 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
                           onChange={async (e) => { const f = e.target.files?.[0]; if (f) await uploadHoleImage(imgModalCourse!, hole, f); e.target.value = ""; }} />
                       </label>
                       {existing && (
+                        <button style={{ padding: "5px 7px", borderRadius: 6, background: existing.anchors ? "var(--gold-50)" : "transparent", border: "1px solid " + (existing.anchors ? "var(--gold-300)" : "var(--border)"), color: existing.anchors ? "var(--gold-800)" : "var(--text-muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                          title="Tracer anchors" onClick={() => setAnchorEdit({ courseName: imgModalCourse!, hole })}>⌖</button>
+                      )}
+                      {existing && (
                         <button style={{ padding: "5px 8px", borderRadius: 6, background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 11, cursor: "pointer" }}
                           onClick={() => deleteHoleImage(imgModalCourse!, hole)}>✕</button>
                       )}
@@ -385,12 +393,23 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
             {/* Footer */}
             <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--surface2)" }}>
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {(holeImages || []).filter((r: any) => r.course_name === imgModalCourse).length} / 18 uploaded · compressed to 1400px JPEG
+                {(holeImages || []).filter((r: any) => r.course_name === imgModalCourse && (r.view_type == null || r.view_type === "hole")).length} / 18 uploaded · compressed to 1400px JPEG
               </span>
               <button className="btn btn-sm btn-outline" onClick={() => setImgModalCourse(null)}>Done</button>
             </div>
           </div>
         </div>
+      )}
+
+      {anchorEdit && (
+        <AnchorTool
+          courseName={anchorEdit.courseName}
+          hole={anchorEdit.hole}
+          holeImages={holeImages}
+          setHoleImages={setHoleImages}
+          showSuccess={showSuccess}
+          onClose={() => setAnchorEdit(null)}
+        />
       )}
     </div>
   );
