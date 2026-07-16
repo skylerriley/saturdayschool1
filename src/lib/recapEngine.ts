@@ -1245,7 +1245,7 @@ const detectGrinder: Detector = (ctx) => {
           scorecard: { name: p.name, totalPoints: c.totals[i], holes: holes.map((h) => ({ gross: h.gross, par: h.par })) },
           caption: [
             { t: `${nPars} net pars, ${nBogs} net ${plural(nBogs, "bogey")}, ` },
-            { t: "zero blanks", b: true },
+            { t: "zero blowouts", b: true },
             { t: nBirdies === 0
               ? ` -- ${fn} finishes ${place} without a single net birdie.`
               : ` -- ${fn} finishes ${place} on steadiness alone.` },
@@ -1295,7 +1295,7 @@ const detectWildcard: Detector = (ctx) => {
           protagonistId: p.golferId, protagonistName: p.name, protagonistInitials: initials(p.name),
           scorecard: { name: p.name, totalPoints: c.totals[i], holes: holes.map((h) => ({ gross: h.gross, par: h.par })) },
           caption: [
-            { t: `${numWord(nBird, true)} net ${plural(nBird, "birdie")} and ${numWord(nBlank)} ${plural(nBlank, "blank")} share one scorecard`, b: true },
+            { t: `${numWord(nBird, true)} net ${plural(nBird, "birdie")} and ${numWord(nBlank)} ${plural(nBlank, "blowouts")} across one scorecard`, b: true },
             { t: ` -- ${fn} never plays a boring hole.` },
           ],
           strength: 0, mood: "cool",

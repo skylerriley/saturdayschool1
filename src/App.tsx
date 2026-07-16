@@ -1360,7 +1360,7 @@ const CSS = `
   .hl-head{display:flex;align-items:baseline;justify-content:space-between;padding:2px 2px 3px;}
   .hl-title{font-family:var(--font-serif);font-size:24px;color:var(--green-800);}
   .hl-sub{padding:0 2px 10px;font-size:14px;color:var(--text-muted);}
-  .rail{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px;-webkit-overflow-scrolling:touch;}
+  .rail{display:flex;gap:2px;overflow-x:auto;padding:2px 2px 10px;-webkit-overflow-scrolling:touch;}
   .rail::-webkit-scrollbar{height:0;}
   .story{flex:0 0 auto;width:88px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
   .ring{width:72px;height:72px;border-radius:50%;padding:3px;position:relative;background:conic-gradient(from 210deg,var(--green-600),var(--green-800),var(--gold-700),var(--gold-400),var(--green-600));}
@@ -1372,7 +1372,7 @@ const CSS = `
   .badge-cnr{position:absolute;bottom:-1px;right:-1px;width:22px;height:22px;border-radius:50%;background:var(--gold-600);border:2.5px solid var(--surface);display:flex;align-items:center;justify-content:center;z-index:2;}
   .badge-cnr svg{width:11px;height:11px;fill:#fff;}
   .badge-cnr.vid{background:var(--green-800);}
-  .story-name{font-size:11.5px;font-weight:700;color:var(--text-secondary);max-width:88px;text-align:center;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .story-name{font-size:11.5px;font-weight:700;color:var(--text-secondary);max-width:80px;text-align:center;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
   .story.add .ring{background:var(--earth-100);padding:0;display:flex;align-items:center;justify-content:center;border:2px dashed var(--border-md);}
   .story.add .plus{width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;}
   .story.add .plus svg{width:28px;height:28px;stroke:var(--green-600);stroke-width:2.4;fill:none;}
@@ -1412,7 +1412,7 @@ const CSS = `
   /* topbar: eyebrow left, dots + close right */
   .v-topbar{position:absolute;top:calc(26px + var(--safe-area-top));left:16px;right:12px;display:flex;align-items:flex-start;gap:8px;z-index:9;pointer-events:none;}
   .v-eyebrow{flex:1;color:#fff;font-size:15px;font-weight:700;line-height:1.25;text-shadow:0 1px 8px rgba(0,0,0,.7);min-width:0;padding-top:4px;}
-  .v-ico{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:0;background:transparent;cursor:pointer;flex:0 0 auto;pointer-events:auto;filter:drop-shadow(0 1px 6px rgba(0,0,0,.6));}
+  .v-ico{width:34px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:0;background:transparent;cursor:pointer;flex:0 0 auto;pointer-events:auto;filter:drop-shadow(0 1px 6px rgba(0,0,0,.6));}
   .v-ico svg{width:18px;height:18px;stroke:#fff;stroke-width:2.4;fill:none;}
   .v-ico.dots svg{fill:#fff;stroke:none;}
   /* frosted context menu (the dots) */
@@ -1501,8 +1501,8 @@ const CSS = `
   .sccard .sc-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:2px;}
   .sccard .sc-grid + .sc-grid{margin-top:5px;}
   .sccard .sc-cell{display:flex;flex-direction:column;align-items:center;gap:3px;opacity:0;animation:scPop .3s ease both;}
-  .sccard .sc-cell .h{font-size:8px;color:rgba(255,255,255,.5);font-weight:600;}
-  .sccard .sc-cell .sc-score{font-size:12px;width:17px;height:17px;}
+  .sccard .sc-cell .h{font-size:15px;color:rgba(255,255,255,.5);font-weight:600;}
+  .sccard .sc-cell .sc-score{font-size:22px;width:30px;height:30px;}
   @keyframes scPop{from{opacity:0;transform:scale(.6);}to{opacity:1;transform:none;}}
   /* nemesis score row: scorecard notation + points, no magnitude bars */
   .srow{display:flex;gap:7px;align-items:flex-end;}
