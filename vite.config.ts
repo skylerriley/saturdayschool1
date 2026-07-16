@@ -55,18 +55,22 @@ export default defineConfig({
           },
           {
             // Supabase Storage images (hole photos, scorecards).
-            // Supabase serves these with `Cache-Control: no-cache`, so the
-            // browser HTTP cache revalidates on every use — on the live PWA
-            // that's a network round-trip per view (the "delay then pop-in").
-            // CacheFirst here serves straight from Cache Storage once stored,
-            // ignoring no-cache. cacheableResponse guards against ever storing
-            // an error/opaque response; higher maxEntries so a full season of
-            // hole photos survives without eviction churn.
+            // New uploads now carry `cache-control: max-age=31536000, immutable`
+            // (set in the upload shim); the filename embeds Date.now() so a
+            // replaced image gets a fresh URL. CacheFirst serves straight from
+            // Cache Storage once stored (also covering the legacy no-cache
+            // objects until the backfill runs). cacheableResponse guards against
+            // storing an error/opaque response.
+            // maxEntries sized for the whole media corpus: 18 holes x ~15
+            // courses (~270) + green-view tracers + scorecards + event images.
+            // 400 was under-provisioned -- LRU eviction there means a re-fetch
+            // (billed cached egress) every time an evicted photo scrolls back,
+            // so raise it well above the working set.
             urlPattern: ({ url }) => url.hostname.endsWith('.supabase.co') && url.pathname.startsWith('/storage/v1/object/public/'),
             handler: 'CacheFirst',
             options: {
               cacheName: 'supabase-images',
-              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 24 * 3600 },
+              expiration: { maxEntries: 1200, maxAgeSeconds: 365 * 24 * 3600 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },

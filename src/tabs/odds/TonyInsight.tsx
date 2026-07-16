@@ -281,7 +281,7 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
         <div style={{ flexShrink: 0 }}>
           {imgErr
             ? <div style={{ width: 110, height: 80, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>🎯</div>
-            : <img src={TONY_AVATAR} alt="Tony.ai"
+            : <img src={TONY_AVATAR} alt="Tony.ai" loading="lazy" decoding="async"
                 style={{ width: 110, height: 80, objectFit: "contain", display: "block"
                   }}
                 onError={() => setImgErr(true)} />

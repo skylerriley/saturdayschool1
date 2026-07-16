@@ -303,11 +303,17 @@ export const supabase = (() => {
         return rpc(table, "DELETE", undefined, `?${q}`);
       },
     }),
-    // Storage helpers for scorecard image uploads
+    // Storage helpers for scorecard image uploads.
+    // cache-control: one year, immutable. Safe because every upload path
+    // embeds Date.now() in the filename (hole-5-<ts>.jpg, event_<id>_<ts>.jpg),
+    // so a replaced image gets a new URL -- the filename IS the cache-buster,
+    // and a stale long-lived cache entry can never be served for fresh content.
+    // Without this header Supabase Storage defaults objects to no-cache, which
+    // forces an origin revalidation (billed cached egress) on every view.
     storage: {
       upload: async (bucket:string, path:string, file:Blob):Promise<{url:string}|null>=>{
         const url=SUPABASE_URL+"/storage/v1/object/"+bucket+"/"+path;
-        const res=await fetch(url,{method:"POST",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":file.type,"x-upsert":"true"},body:file});
+        const res=await fetch(url,{method:"POST",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":file.type,"cache-control":"public, max-age=31536000, immutable","x-upsert":"true"},body:file});
         if(!res.ok){
           const err=await res.text().catch(()=>"");
           console.error("Storage upload failed:",res.status,err);

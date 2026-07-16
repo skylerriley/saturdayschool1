@@ -2651,7 +2651,12 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                 reader.onload=(e:any)=>{
                   imgEl.onload=async()=>{
                     try{
-                      const MAX=1200;
+                      // Scorecards are text/line-art read full-screen by 60+
+                      // users, so size to the physical width of the largest
+                      // target device: iPhone 16 Pro Max 440 CSS pt x DPR 3 =
+                      // 1320 px. iPhones are DPR 3 -- never size against the
+                      // CSS-point mockup frame.
+                      const MAX=1320;
                       const scale=Math.min(1,MAX/Math.max(imgEl.width,imgEl.height));
                       const canvas=document.createElement("canvas");
                       canvas.width=Math.round(imgEl.width*scale);
@@ -3090,7 +3095,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
                     :{position:"absolute",inset:0,borderRadius:14,overflow:"hidden",background:"#1a2e1a",display:isFlipped?"none":undefined}}>
                   {/* Background image or placeholder */}
                   {img
-                    ?<img src={img.public_url} alt={`Hole ${h.hole}`} className="hcard-img" draggable={false} style={{position:"absolute",inset:0,zIndex:0,width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.9)"}}/>
+                    ?<img src={img.public_url} alt={`Hole ${h.hole}`} className="hcard-img" draggable={false} loading="lazy" decoding="async" style={{position:"absolute",inset:0,zIndex:0,width:"100%",height:"100%",objectFit:"cover",filter:"brightness(0.9)"}}/>
                     :<div style={{position:"absolute",inset:0,zIndex:0,background:"linear-gradient(145deg,var(--green-900,#1a3a1a) 0%,var(--green-800,#224422) 50%,#1a2b1a 100%)"}}/>
                   }                  {/* Content */}
                   <div style={is3D
