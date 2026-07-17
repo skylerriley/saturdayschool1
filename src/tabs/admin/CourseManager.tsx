@@ -1,8 +1,9 @@
 import { useState, useRef } from "react";
 import { scrollMainTop, scrollMainToEl } from "../../lib/formatters";
 import { fuzzyMatchCourseName } from "../../lib/courseNameUtils";
-import { supabase, GCAPI_KEY, reportWriteError } from "../../lib/supabaseClient";
-import { AnchorTool } from "./AnchorTool";
+import { GCAPI_KEY } from "../../lib/supabaseClient";
+import { HoleImageManager } from "./HoleImageManager";
+import { ToggleGroup, GlassPicker } from "../../components/common";
 
 // -- 3b) COURSE MANAGER ---------------------------------------
 
@@ -20,54 +21,14 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
   const [yardsStr, setYardsStr] = useState("");
   const courseNames = [...new Set(courses.map((c: any) => c.course_name))] as string[];
 
-  // ── Hole Images Modal ──────────────────────────────────────────────
-  const [imgModalCourse, setImgModalCourse] = useState<string | null>(null);
-  const [uploadingHole, setUploadingHole] = useState<number | null>(null);
-  // Tracer anchor editor (recap shot tracers): { courseName, hole } | null
-  const [anchorEdit, setAnchorEdit] = useState<{ courseName: string; hole: number } | null>(null);
-
-  const uploadHoleImage = async (courseName: string, hole: number, file: File) => {
-    setUploadingHole(hole);
-    try {
-      const reader = new FileReader();
-      const dataUrl = await new Promise<string>((res, rej) => { reader.onload = (e: any) => res(e.target.result); reader.onerror = () => rej(); reader.readAsDataURL(file); });
-      const img = new Image();
-      await new Promise<void>((res) => { img.onload = () => res(); img.src = dataUrl; });
-      const MAX = 1400; const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext("2d")!; ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const blob = await new Promise<Blob>((res, rej) => canvas.toBlob(b => b ? res(b) : rej(), "image/jpeg", 0.82));
-      const path = `${courseName.replace(/\s+/g, "-").toLowerCase()}/hole-${hole}-${Date.now()}.jpg`;
-      const result = await supabase.storage.upload("hole-images", path, blob);
-      if (!result) throw new Error("Upload failed");
-      // Hole-view rows only: 'green' rows belong to the recap tracer.
-      const existing = (holeImages || []).find((r: any) => r.course_name === courseName && r.hole_number === hole && (r.view_type == null || r.view_type === "hole"));
-      if (existing) {
-        // Old-file cleanup is best-effort — the replacement already uploaded
-        await supabase.storage.remove("hole-images", [existing.storage_path]).catch((e) => console.warn("[storage] cleanup:", e));
-        await supabase.from("hole_images").update({ public_url: result.url, storage_path: path }, { hole_image_id: existing.hole_image_id }).catch(reportWriteError("Hole image save"));
-        setHoleImages((p: any[]) => p.map((r: any) => r.hole_image_id === existing.hole_image_id ? { ...r, public_url: result.url, storage_path: path } : r));
-      } else {
-        const row = { course_name: courseName, hole_number: hole, public_url: result.url, storage_path: path };
-        // insert() resolves to an ARRAY of rows — grabbing .hole_image_id off it
-        // is always undefined, leaving a temp id that later update/delete can't match
-        const inserted = await supabase.from("hole_images").insert(row).catch((e: any) => { reportWriteError("Hole image save")(e); return null; });
-        const insertedRow = Array.isArray(inserted) ? inserted[0] : null;
-        setHoleImages((p: any[]) => [...p, { ...row, hole_image_id: insertedRow?.hole_image_id || Date.now() }]);
-      }
-      showSuccess(`Hole ${hole} image saved`);
-    } catch (e: any) { alert("Upload failed: " + (e?.message || String(e))); }
-    setUploadingHole(null);
-  };
-
-  const deleteHoleImage = async (courseName: string, hole: number) => {
-    const existing = (holeImages || []).find((r: any) => r.course_name === courseName && r.hole_number === hole && (r.view_type == null || r.view_type === "hole"));
-    if (!existing) return;
-    await supabase.storage.remove("hole-images", [existing.storage_path]).catch((e) => console.warn("[storage] cleanup:", e));
-    await supabase.from("hole_images").delete({ hole_image_id: existing.hole_image_id }).catch(reportWriteError("Hole image delete"));
-    setHoleImages((p: any[]) => p.filter((r: any) => r.hole_image_id !== existing.hole_image_id));
-    showSuccess(`Hole ${hole} image removed`);
+  // ── Tees / Images subtab (segmented, no modal) ─────────────────────
+  // course_name is the row key everywhere; the R2 folder uses the course's
+  // numeric id (lowest id sharing this name) as a stable slug.
+  const [view, setView] = useState<"tees" | "images">("tees");
+  const [imgCourse, setImgCourse] = useState<string>("");
+  const courseIdForName = (name: string): number => {
+    const ids = courses.filter((c: any) => c.course_name === name).map((c: any) => Number(c.course_id)).filter((n: number) => Number.isFinite(n) && n > 0);
+    return ids.length ? Math.min(...ids) : 0;
   };
 
   // ── Course Lookup (golfcourseapi.com) ──────────────────────────────
@@ -189,6 +150,14 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
 
   return (
     <div>
+      <ToggleGroup
+        value={view}
+        onChange={(v) => setView(v)}
+        options={[{ value: "tees", label: "Tees" }, { value: "images", label: "Images" }]}
+        style={{ marginBottom: 14 }}
+      />
+
+      {view === "tees" && (<>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div className="card-title">Course & Tee Manager</div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -308,8 +277,8 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
       )}
 
       {courseNames.map(name => {
-        const courseImgs = (holeImages || []).filter((r: any) => r.course_name === name && (r.view_type == null || r.view_type === "hole"));
-        const imgCount = courseImgs.length;
+        // Placed = any per-hole slot (artistic/hole/green) with an image; out of 54.
+        const imgCount = (holeImages || []).filter((r: any) => r.course_name === name && r.hole_number != null && r.view_type !== "course").length;
         return (
           <div key={name} className="card" style={{ padding: "12px 14px" }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>{name}</div>
@@ -326,90 +295,42 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
                 </div>
               );
             })}
-            {/* Hole Images button */}
+            {/* Hole Images: jump to the Images subtab for this course */}
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{imgCount} of 18 hole {imgCount === 1 ? "image" : "images"}</span>
-              <button className="btn btn-sm btn-outline" onClick={() => setImgModalCourse(name)}>
-                {imgCount === 0 ? "+ Add Hole Images" : "Manage Hole Images"}
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{imgCount} of 54 images placed</span>
+              <button className="btn btn-sm btn-outline" onClick={() => { setImgCourse(name); setView("images"); setTimeout(() => scrollMainTop(), 50); }}>
+                {imgCount === 0 ? "+ Add Images" : "Manage Images"}
               </button>
             </div>
           </div>
         );
       })}
+      </>)}
 
-      {/* ── Hole Images Modal ── */}
-      {imgModalCourse && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 9300, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "20px 12px", overflowY: "auto" }} onClick={e => { if (e.target === e.currentTarget) setImgModalCourse(null); }}>
-          <div style={{ background: "var(--surface)", borderRadius: 16, width: "100%", maxWidth: 560, boxShadow: "0 8px 40px rgba(0,0,0,0.4)", overflow: "hidden" }}>
-            {/* Header */}
-            <div style={{ background: "var(--green-900)", padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <div style={{ fontFamily: "var(--font-serif,serif)", fontSize: 18, fontWeight: 700, color: "var(--gold-300,#d4a843)" }}>{imgModalCourse}</div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginTop: 2 }}>Hole images · used on Weekly Leaderboard course cards</div>
-              </div>
-              <button onClick={() => setImgModalCourse(null)} style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "white", borderRadius: "50%", width: 32, height: 32, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>✕</button>
-            </div>
-            {/* Hole grid */}
-            <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, maxHeight: "70vh", overflowY: "auto" }}>
-              {Array.from({ length: 18 }, (_, i) => {
-                const hole = i + 1;
-                const existing = (holeImages || []).find((r: any) => r.course_name === imgModalCourse && r.hole_number === hole && (r.view_type == null || r.view_type === "hole"));
-                const isUploading = uploadingHole === hole;
-                return (
-                  <div key={hole} style={{ borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface2)", position: "relative" }}>
-                    {/* Image preview or placeholder */}
-                    <div style={{ height: 90, position: "relative", background: existing ? "#111" : "var(--earth-100)" }}>
-                      {existing
-                        ? <img src={existing.public_url} alt={`Hole ${hole}`} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: isUploading ? 0.4 : 1 }} />
-                        : <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "var(--text-muted)", opacity: 0.4 }}>⛳</div>
-                      }
-                      {/* Hole number badge */}
-                      <div style={{ position: "absolute", top: 6, left: 6, background: "rgba(0,0,0,0.65)", color: "white", borderRadius: 6, padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>#{hole}</div>
-                      {/* Loading overlay */}
-                      {isUploading && (
-                        <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "white", fontWeight: 600 }}>Uploading…</div>
-                      )}
-                    </div>
-                    {/* Actions */}
-                    <div style={{ padding: "6px 8px", display: "flex", gap: 4 }}>
-                      <label style={{ flex: 1, textAlign: "center", padding: "5px 4px", borderRadius: 6, background: "var(--green-800)", color: "white", fontSize: 11, fontWeight: 600, cursor: isUploading || uploadingHole !== null ? "not-allowed" : "pointer", opacity: uploadingHole !== null && !isUploading ? 0.5 : 1, letterSpacing: "0.02em" }}>
-                        {existing ? "Replace" : "Upload"}
-                        <input type="file" accept="image/*" style={{ display: "none" }} disabled={uploadingHole !== null}
-                          onChange={async (e) => { const f = e.target.files?.[0]; if (f) await uploadHoleImage(imgModalCourse!, hole, f); e.target.value = ""; }} />
-                      </label>
-                      {existing && (
-                        <button style={{ padding: "5px 7px", borderRadius: 6, background: existing.anchors ? "var(--gold-50)" : "transparent", border: "1px solid " + (existing.anchors ? "var(--gold-300)" : "var(--border)"), color: existing.anchors ? "var(--gold-800)" : "var(--text-muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
-                          title="Tracer anchors" onClick={() => setAnchorEdit({ courseName: imgModalCourse!, hole })}>⌖</button>
-                      )}
-                      {existing && (
-                        <button style={{ padding: "5px 8px", borderRadius: 6, background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 11, cursor: "pointer" }}
-                          onClick={() => deleteHoleImage(imgModalCourse!, hole)}>✕</button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Footer */}
-            <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--surface2)" }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {(holeImages || []).filter((r: any) => r.course_name === imgModalCourse && (r.view_type == null || r.view_type === "hole")).length} / 18 uploaded · compressed to 1400px JPEG
-              </span>
-              <button className="btn btn-sm btn-outline" onClick={() => setImgModalCourse(null)}>Done</button>
-            </div>
+      {view === "images" && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>Hole Images</div>
           </div>
-        </div>
-      )}
-
-      {anchorEdit && (
-        <AnchorTool
-          courseName={anchorEdit.courseName}
-          hole={anchorEdit.hole}
-          holeImages={holeImages}
-          setHoleImages={setHoleImages}
-          showSuccess={showSuccess}
-          onClose={() => setAnchorEdit(null)}
-        />
+          <div className="form-group">
+            <label className="form-label">Course</label>
+            <GlassPicker
+              value={imgCourse}
+              onChange={(v) => setImgCourse(v)}
+              options={[{ value: "", label: "Choose a course…" }, ...courseNames.map((n) => ({ value: n, label: n }))]}
+            />
+          </div>
+          {imgCourse
+            ? <HoleImageManager
+                key={imgCourse}
+                courseName={imgCourse}
+                courseId={courseIdForName(imgCourse)}
+                holeImages={holeImages}
+                setHoleImages={setHoleImages}
+                showSuccess={showSuccess}
+              />
+            : <div className="empty-state" style={{ marginTop: 8 }}><div className="empty-text">Pick a course to manage its artistic, hole, and green images.</div></div>}
+        </>
       )}
     </div>
   );

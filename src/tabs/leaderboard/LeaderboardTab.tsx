@@ -18,7 +18,8 @@ import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
 import { WinProbabilityChart } from "../../WinProbabilityChart";
 import { HighlightsModule } from "./highlights/HighlightsModule";
-import { highlightsEnabled } from "./highlights/highlightsShared";
+import { highlightsEnabled, isArtisticView } from "./highlights/highlightsShared";
+import { uploadCourseAsset } from "../../lib/r2Upload";
 
 ensureShimmer();
 
@@ -30,7 +31,7 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
 
   // Hole image: cycle 1..18 by event number
   const holeNum=((eventNumber-1)%18)+1;
-  const imgRecord=(holeImages||[]).find((img:any)=>img.course_name===courseName&&img.hole_number===holeNum&&img.public_url&&(img.view_type==null||img.view_type==="hole"));
+  const imgRecord=(holeImages||[]).find((img:any)=>img.course_name===courseName&&img.hole_number===holeNum&&img.public_url&&isArtisticView(img));
   const imgUrl:string|null=imgRecord?imgRecord.public_url:null;
 
   // Cached-image hook: fades in on first decode, appears instantly on revisits.
@@ -218,7 +219,7 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
   useEffect(()=>{
     const urls=shown.map((ev:any)=>{
       const holeNum=(((eventNumMap[ev.event_id]||1)-1)%18)+1;
-      const rec=(holeImages||[]).find((img:any)=>img.course_name===(ev.course_name||"")&&img.hole_number===holeNum&&img.public_url&&(img.view_type==null||img.view_type==="hole"));
+      const rec=(holeImages||[]).find((img:any)=>img.course_name===(ev.course_name||"")&&img.hole_number===holeNum&&img.public_url&&isArtisticView(img));
       return rec?rec.public_url:null;
     });
     prefetchImages(urls);
@@ -2305,7 +2306,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             const heroCourseName:string=displayEvent.course_name||"";
             const heroEventNum=overlayEventNumMap[displayEvent.event_id]||1;
             const heroHoleNum=((heroEventNum-1)%18)+1;
-            const heroImgRecord=(holeImages||[]).find((img:any)=>img.course_name===heroCourseName&&img.hole_number===heroHoleNum&&img.public_url&&(img.view_type==null||img.view_type==="hole"));
+            const heroImgRecord=(holeImages||[]).find((img:any)=>img.course_name===heroCourseName&&img.hole_number===heroHoleNum&&img.public_url&&isArtisticView(img));
             const heroImgUrl:string|null=heroImgRecord?heroImgRecord.public_url:null;
 
             // Date formatting: "SAT · Jun 14, 2025"
@@ -2878,6 +2879,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                 holeImages={holeImages}
                 setHoleImages={setHoleImages}
                 courseName={eventCourseName}
+                courseId={(() => { const ids=courses.filter((c:any)=>c.course_name===eventCourseName).map((c:any)=>Number(c.course_id)).filter((n:number)=>Number.isFinite(n)&&n>0); return ids.length?Math.min(...ids):0; })()}
                 adminMode={adminMode}
                 supabase={supabase}
                 showSuccess={showSuccess}
@@ -2903,7 +2905,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
 
 // ── Course Stats Module ──────────────────────────────────────────────────────
-export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,setHoleImages,courseName,adminMode,showSuccess,hasYards,holeCount}:any){
+export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,setHoleImages,courseName,courseId,adminMode,showSuccess,hasYards,holeCount}:any){
   const [view,setView]=useState<"course"|"stats">("course");
   const [uploadingHole,setUploadingHole]=useState<number|null>(null);
   const [flippedHole,setFlippedHole]=useState<number|null>(null);
@@ -2984,39 +2986,35 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
   };
   const pmColor=(pm:number)=>pm<0?"var(--green-700)":"var(--red-500,#e53e3e)";
 
-  // Hole images keyed by hole number for this course. Hole-view rows only
-  // (view_type NULL/'hole') -- 'green' rows belong to the recap tracer, not
-  // the course card or this upload/replace flow.
+  // Hole images keyed by hole number for this course. ARTISTIC rows only
+  // (legacy NULL counts as artistic) -- these are the beauty-shot card
+  // backgrounds; 'hole'/'green' layouts belong to the recap tracer, not this
+  // card upload/replace flow.
   const imgByHole:Record<number,any>={};
   for(const img of (holeImages||[])){
-    if(img.course_name===courseName&&(img.view_type==null||img.view_type==="hole"))imgByHole[img.hole_number]=img;
+    if(img.course_name===courseName&&isArtisticView(img))imgByHole[img.hole_number]=img;
   }
 
+  // SINGLE WRITER: this card uploader and Admin > Course > Images both write the
+  // ARTISTIC row for a hole. With unique(course_name,hole_number,view_type) they
+  // contend for the SAME row, so both go through the same R2 path
+  // (uploadCourseAsset) and match on that one row. Existing Supabase-Storage
+  // URLs are left as-is (public_url is backend-invisible at read time); only new
+  // writes land on R2. storage_path holds the URL (no Supabase object to clean).
   const uploadHoleImage=async(hole:number,file:File)=>{
     setUploadingHole(hole);
     try{
-      const reader=new FileReader();
-      const dataUrl=await new Promise<string>((res,rej)=>{reader.onload=(e:any)=>res(e.target.result);reader.onerror=()=>rej();reader.readAsDataURL(file);});
-      const img=new Image();
-      await new Promise<void>((res)=>{img.onload=()=>res();img.src=dataUrl;});
-      const MAX=1400;
-      const scale=Math.min(1,MAX/Math.max(img.width,img.height));
-      const canvas=document.createElement("canvas");
-      canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);
-      const ctx=canvas.getContext("2d")!;ctx.drawImage(img,0,0,canvas.width,canvas.height);
-      const blob=await new Promise<Blob>((res,rej)=>canvas.toBlob(b=>b?res(b):rej(),"image/jpeg",0.82));
-      const path=`${courseName.replace(/\s+/g,"-").toLowerCase()}/hole-${hole}-${Date.now()}.jpg`;
-      const result=await supabase.storage.upload("hole-images",path,blob);
-      if(!result)throw new Error("Upload failed");
+      if(!courseId)throw new Error("No course id for this course");
+      const publicUrl=await uploadCourseAsset(courseId,hole,"artistic",file);
       const existing=imgByHole[hole];
       if(existing){
-        // delete old storage file then update row
-        await supabase.storage.remove("hole-images",[existing.storage_path]).catch((e)=>console.warn("[storage] cleanup:",e));
-        const updated={...existing,public_url:result.url,storage_path:path};
-        await supabase.from("hole_images").update({public_url:result.url,storage_path:path},{hole_image_id:existing.hole_image_id}).catch(reportWriteError("Hole image save"));
+        // Fresh R2 key per upload => cache-bust is automatic; just repoint the
+        // row. Old object (R2 or Supabase Storage) is orphaned harmlessly.
+        const updated={...existing,public_url:publicUrl,storage_path:publicUrl,view_type:existing.view_type||"artistic"};
+        await supabase.from("hole_images").update({public_url:publicUrl,storage_path:publicUrl},{hole_image_id:existing.hole_image_id}).catch(reportWriteError("Hole image save"));
         setHoleImages((p:any[])=>p.map((r:any)=>r.hole_image_id===existing.hole_image_id?updated:r));
       } else {
-        const row={course_name:courseName,hole_number:hole,public_url:result.url,storage_path:path};
+        const row={course_name:courseName,hole_number:hole,public_url:publicUrl,storage_path:publicUrl,view_type:"artistic"};
         // insert() resolves to an ARRAY of rows — .hole_image_id off it is always
         // undefined, leaving a temp id that later replace/delete can't match
         const inserted=await supabase.from("hole_images").insert(row).catch((e:any)=>{reportWriteError("Hole image save")(e);return null;});
@@ -3031,7 +3029,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
   const deleteHoleImage=async(hole:number)=>{
     const existing=imgByHole[hole];
     if(!existing||!window.confirm(`Remove image for hole ${hole}?`))return;
-    await supabase.storage.remove("hole-images",[existing.storage_path]).catch((e)=>console.warn("[storage] cleanup:",e));
+    // Row only -- the R2/Storage object orphans harmlessly (zero egress).
     await supabase.from("hole_images").delete({hole_image_id:existing.hole_image_id}).catch(reportWriteError("Hole image delete"));
     setHoleImages((p:any[])=>p.filter((r:any)=>r.hole_image_id!==existing.hole_image_id));
     showSuccess(`Hole ${hole} image removed`);

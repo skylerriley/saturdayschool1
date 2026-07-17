@@ -8,9 +8,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { ScoreSymbol } from "../../../components/common";
 import type { DataBeat } from "../../../lib/recapEngine";
-import { holeAerialUrl, holeImageRow, type RecapCard } from "./highlightsShared";
+import { holeAerialUrl, holeImageRow, courseArtisticUrl, type RecapCard } from "./highlightsShared";
 import { TracerSvg } from "./TracerSvg";
-import { FALLBACK_ANCHORS } from "./tracerMath";
 
 const AUTO_ICON = <svg viewBox="0 0 24 24"><path d="M4 20V6l7 4 9-6v14l-9 5-7-4z" /></svg>;
 
@@ -433,8 +432,10 @@ export function HighlightsViewer({
   };
 
   // ---- per-card derived data -------------------------------------------------
+  // Background fallback: any ARTISTIC image on the course (never a hole/green
+  // layout -- those are for tracers, not blurred backgrounds).
   const firstCourseImg = useMemo(
-    () => (holeImages || []).find((img: any) => img.course_name === courseName && img.public_url && (img.view_type == null || img.view_type === "hole"))?.public_url || null,
+    () => courseArtisticUrl(holeImages, courseName),
     [holeImages, courseName],
   );
 
@@ -510,12 +511,18 @@ export function HighlightsViewer({
   const renderBeat = (b: DataBeat) => {
     const holeRow = b.hole != null ? holeImageRow(holeImages, courseName, b.hole, "hole") : null;
     const greenRow = b.hole != null ? holeImageRow(holeImages, courseName, b.hole, "green") : null;
-    // Focus card image: prefer the green view for a made net birdie+ when a
-    // green image with anchors exists; otherwise the hole view.
-    const useGreen = !!(greenRow && greenRow.anchors && b.score && b.score.points >= 3);
-    const focusRow = useGreen ? greenRow : holeRow;
+    // A layout row is only usable for the focus card if it has ANCHORS. A tracer
+    // now requires BOTH a layout image AND anchors (Handoff #11 sec 7) -- the
+    // fixed-arc fallback is gone (a wrong arc is worse than no arc). Prefer the
+    // green view for a made net birdie+ when it is anchored; else the hole view.
+    const anchoredHole = holeRow && holeRow.anchors && typeof holeRow.anchors === "object" ? holeRow : null;
+    const anchoredGreen = greenRow && greenRow.anchors && typeof greenRow.anchors === "object" ? greenRow : null;
+    const useGreen = !!(anchoredGreen && b.score && b.score.points >= 3);
+    const focusRow = useGreen ? anchoredGreen : anchoredHole;
     const anchors = focusRow?.anchors && typeof focusRow.anchors === "object" ? focusRow.anchors : null;
-    const showTracer = b.score != null && focusRow != null;
+    // Focus card + tracer only when we have a layout image AND its anchors AND a
+    // score to draw. Otherwise the beat renders its glass panel only.
+    const showTracer = b.score != null && focusRow != null && anchors != null;
     // A standings beat (race-state / the_turn / final) renders the real .lb-*
     // leaderboard, NOT a hole image -- it has no shot to trace, so the
     // decorative photo is dropped (Handoff #9 5).
@@ -550,7 +557,7 @@ export function HighlightsViewer({
                 <TracerSvg
                   key={`${idx}-${useGreen ? "g" : "h"}`}
                   points={b.score!.points}
-                  anchors={useGreen ? anchors : anchors || FALLBACK_ANCHORS}
+                  anchors={anchors}
                   view={useGreen ? "green" : "hole"}
                 />
               )}

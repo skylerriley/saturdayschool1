@@ -377,6 +377,69 @@ generate/move/swap rely on its diff-writes for persistence.
   NOT been done in this environment -- verify on hardware before closing.
   BEATS_CACHE_VERSION bumped v8 -> v9; history rebuild required after deploy.
 
+  UPDATE 2026-07-17 (Handoff #11, "hole image taxonomy + mobile anchor tooling").
+  RENDER-ONLY -- no beat selection/ordering/detector/MC/gate change, so NO
+  history rebuild and NO cache bump (still v9). Confirmed: nothing touches
+  recapEngine/buildBeatsInput or the beat payload shape.
+  1 TAXONOMY: hole_images.view_type is now four kinds -- artistic (beauty shots:
+  event/upcoming cards, course stats, AND the blurred highlight background;
+  NEVER traced), hole + green (tracer layouts, need anchors), course (routing
+  map, one per course, NO consumer yet -- schema+upload only per the prove-
+  before-build principle). Migration 20260717_hole_image_taxonomy.sql (NOT YET
+  APPLIED, idempotent/re-runnable): BACKFILLS every pre-existing row to
+  'artistic' -- the 20260715 migration added view_type with `default 'hole'`, so
+  every existing beauty shot was mislabelled a tracer-able layout (THE bug in
+  schema form). Sets default 'artistic', adds check(view_type in
+  artistic/hole/green/course), and drops any legacy unique(course_name,
+  hole_number) for unique(course_name,hole_number,view_type) + a partial
+  one-map-per-course index -- so one hole holds artistic+hole+green at once.
+  Keyed on course_name (the app's key everywhere; the handoff said course_id but
+  that would be a whole-app migration for a cosmetic key). Report the
+  before/after counts: `select view_type, count(*) from hole_images group by 1`.
+  2 ADMIN > Course > Images (src/tabs/admin/HoleImageManager.tsx): coverage grid
+  as the landing view -- 18 holes x 3 (artistic/hole/green) + a separate course-
+  map slot, "N of 54 placed", per-cell states present / NEEDS ANCHORS / empty.
+  Tapping a cell opens upload/replace + (hole/green) the anchor wizard. Replaces
+  the old per-course hole-images modal (which only knew 'hole').
+  3 ANCHOR WIZARD (src/tabs/admin/AnchorWizard.tsx) -- rebuilt for mobile
+  precision, replaces AnchorTool.tsx (DELETED): sequential one-at-a-time steps,
+  tap-to-place THEN drag-to-fine-tune, a MAGNIFIER LOUPE offset above the finger
+  (so the finger never covers the target -- the iOS/Maps pattern), 1px nudge
+  arrows, skippable dogleg-apex step, and a live preview across ALL valences
+  (3/2/1/0 for hole; in-cup/beside/past for green) before saving. Reuses
+  arcPath/puttPath via TracerSvg so preview == render. Reopening a placed hole
+  shows the pins for adjustment. DEVICE PASS OWED: loupe precision cannot be
+  validated in the type/build layer.
+  4 UPLOAD: course assets go to R2 (zero egress; the Cache-Control header is not
+  honored on this project's Supabase bucket). r2-presign gained an
+  `asset:'course'` branch (key courses/{course_id}/{hole|'map'}/{view_type}-{uuid}
+  .{ext}, image content-types, fresh uuid = cache-bust on replace); client
+  uploadCourseAsset in r2Upload.ts compresses to 1600px q0.85. SINGLE WRITER:
+  the constraint unique(course_name,hole_number,view_type) makes the Course>Images
+  grid and the LeaderboardTab weekly-card uploader (CourseStatsModule) CONTEND
+  for the same artistic row, so both now write through uploadCourseAsset (R2)
+  and match one row; the LeaderboardTab path dropped its Supabase-Storage
+  upload/remove (scorecard uploads are unrelated and still use Storage). Existing
+  artistic URLs are NOT backfilled -- public_url is backend-invisible at read
+  time so a dual-URL is harmless; the dual-WRITER was the actual defect.
+  5 CONSUMERS: background -> artistic (holeAerialUrl/courseArtisticUrl now source
+  artistic, fall back to any course artistic); focus card + tracer -> hole/green
+  + ANCHORS. FALLBACK_ANCHORS and the fixed-arc path are REMOVED entirely -- a
+  tracer now requires layout image AND anchors, else the beat renders its glass
+  panel ONLY (no shot, no tracer). A wrong arc is worse than no arc. Card
+  consumers (UpcomingCourseCard, LeaderboardTab feed/hero/weekly cards) switched
+  to artistic via isArtisticView (isHoleView was RENAMED -> isArtisticView; null
+  now means artistic). THIN BEATS: every hole-anchored middle beat (charge/run,
+  collapse, hold, fast_start, hole-scoped tough_hole, nemesis-on-hole,
+  redemption, out_of_character, fireworks ace/eagle) renders panel-only until
+  layouts+anchors are authored -- the honest sparseness signal, visible in the
+  coverage grid. Whole-round beats (grinder/wildcard/fade/rivalry) and standings
+  beats (race-state/the_turn/final) were already panel/board-only -- unchanged.
+  typecheck/build clean; new lint findings are the repo's usual exhaustive-deps
+  warnings only. OPERATOR STEPS BEFORE THIS WORKS: apply
+  20260717_hole_image_taxonomy.sql, re-deploy r2-presign, then author
+  layout+anchor assets per hole in Admin > Course > Images.
+
 - DONE 2026-07-08: Member identity + persistent logins. Admin unlock moved from
   sessionStorage to localStorage (`ss_admin`) and auto-restored on boot, so it
   survives an iOS force-quit; cleared only via the profile-icon logout. New

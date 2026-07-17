@@ -5,6 +5,7 @@ import { wmoToDesc } from "../../components/weather/weatherUtils";
 import { WeatherBadgeSkeleton } from "../../components/weather/WeatherSkeleton";
 import { useWeatherReady } from "../../hooks/useWeatherReady";
 import { useCachedImage } from "../../lib/imageCache";
+import { isArtisticView } from "./highlights/highlightsShared";
 
 // ------------------------------------------------------------------
 // UPCOMING COURSE CARD -- rounded hero image (random hole photo) with
@@ -12,7 +13,8 @@ import { useCachedImage } from "../../lib/imageCache";
 // ------------------------------------------------------------------
 export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldCount, firstTeeTime }: any) {
   const courseName = event?.course_name || "";
-  const courseImages = (holeImages || []).filter((img: any) => img.course_name === courseName && img.public_url && (img.view_type == null || img.view_type === "hole"));
+  // Beauty-shot hero: artistic images only (legacy NULL rows count as artistic).
+  const courseImages = (holeImages || []).filter((img: any) => img.course_name === courseName && img.public_url && isArtisticView(img));
   // Deterministic pick (hashed off the course name) instead of random, so the
   // same photo is chosen on every mount — that keeps the session image cache
   // warm and lets the card appear instantly on revisit instead of re-loading.

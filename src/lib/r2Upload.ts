@@ -30,6 +30,23 @@ async function presign(eventId: number, contentType: string, ext: string, kind: 
   return json;
 }
 
+// Presign a static COURSE asset (artistic / hole / green layout, or the course
+// map). hole is null for a 'course' map. Distinct key namespace from highlights
+// media -- see r2-presign.
+async function presignCourse(courseId: number, hole: number | null, viewType: string, contentType: string, ext: string): Promise<{ uploadUrl: string; publicUrl: string }> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/r2-presign`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + SUPABASE_KEY,
+    },
+    body: JSON.stringify({ asset: "course", course_id: courseId, hole, view_type: viewType, contentType, ext }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.uploadUrl) throw new Error(json.error || `Presign failed (${res.status})`);
+  return json;
+}
+
 async function putToR2(uploadUrl: string, blob: Blob): Promise<void> {
   const res = await fetch(uploadUrl, { method: "PUT", body: blob });
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);
@@ -56,22 +73,27 @@ function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob>
   });
 }
 
-// Resize longest edge to PHOTO_MAX_EDGE at JPEG q0.8 (~5 MB phone photo -> ~300 KB).
-async function compressPhoto(file: File): Promise<Blob> {
+// Resize longest edge at JPEG quality q. Defaults tuned for highlight photos
+// (~5 MB phone photo -> ~300 KB); course layouts pass a larger edge/quality.
+async function compressImage(file: File, maxEdge: number, quality: number): Promise<Blob> {
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImage(url);
-    const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight));
+    const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
     const w = Math.round(img.naturalWidth * scale);
     const h = Math.round(img.naturalHeight * scale);
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
     canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
-    return await canvasToJpeg(canvas, PHOTO_QUALITY);
+    return await canvasToJpeg(canvas, quality);
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+function compressPhoto(file: File): Promise<Blob> {
+  return compressImage(file, PHOTO_MAX_EDGE, PHOTO_QUALITY);
 }
 
 // Small square center-crop thumbnail from an image element or video frame.
@@ -170,4 +192,26 @@ export async function uploadHighlightMedia(eventId: number, file: File): Promise
     uploadBlob(eventId, thumbBlob, "jpg", "thumb"),
   ]);
   return { mediaUrl, thumbUrl, mediaType: "photo" };
+}
+
+// ---------------------------------------------------------------------------
+// Course assets (Handoff #11): artistic / hole / green layouts + the course map.
+// These are uploaded once per hole from a phone and READ REPEATEDLY (every
+// highlight beat pulls the artistic background), so they can be larger than a
+// highlight photo -- 1600px longest edge at q0.85. Everything comes out JPEG.
+// hole is null for a 'course' map. Returns the R2 publicUrl to store on the
+// hole_images row.
+const COURSE_MAX_EDGE = 1600;
+const COURSE_QUALITY = 0.85;
+
+export type CourseViewType = "artistic" | "hole" | "green" | "course";
+
+export async function uploadCourseAsset(courseId: number, hole: number | null, viewType: CourseViewType, file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("That file type is not supported -- use a photo.");
+  }
+  const blob = await compressImage(file, COURSE_MAX_EDGE, COURSE_QUALITY);
+  const { uploadUrl, publicUrl } = await presignCourse(courseId, hole, viewType, "image/jpeg", "jpg");
+  await putToR2(uploadUrl, blob);
+  return publicUrl;
 }

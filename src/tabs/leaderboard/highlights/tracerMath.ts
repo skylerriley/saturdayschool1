@@ -37,12 +37,3 @@ export function puttPath(a: Pt, b: Pt): string {
   const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
   return `M ${A.x.toFixed(0)} ${A.y.toFixed(0)} Q ${(mx - (dy / len) * len * 0.12).toFixed(0)} ${(my + (dx / len) * len * 0.12).toFixed(0)} ${B.x.toFixed(0)} ${B.y.toFixed(0)}`;
 }
-
-// Legacy fixed-arc geometry expressed as pseudo-anchors, so un-anchored hole
-// images keep rendering exactly as before (graceful degradation).
-export const FALLBACK_ANCHORS = {
-  tee: { x: 0.161, y: 0.823 },
-  green: { x: 0.815, y: 0.245 },
-  bunker: { x: 0.776, y: 0.368 },
-  trouble: { x: 0.441, y: 0.438 },
-};
