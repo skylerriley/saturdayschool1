@@ -1440,11 +1440,37 @@ const CSS = `
 
   /* data beats: hero label directly above the focus card, glass panel, caption */
   .beat{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;padding:calc(74px + var(--safe-area-top)) 14px calc(16px + var(--safe-area-bottom));pointer-events:none;}
-  .beat-mid{flex:1;display:flex;flex-direction:column;justify-content:center;gap:11px;min-height:0;}
-  .beat-hero{font-weight:800;font-size:31px;line-height:1.04;letter-spacing:-.025em;color:#fff;text-align:right;margin:0 2px -2px;text-shadow:0 2px 18px rgba(0,0,0,.5);}
-  .beat-cap{color:#fff;font-size:21px;font-weight:600;line-height:1.32;letter-spacing:-.01em;text-shadow:0 2px 12px rgba(0,0,0,.6);}
+  /* Handoff #9 2a: the caption and the "Auto highlight" footer are SIBLINGS
+     in a flex column that CANNOT overlap. .beat-mid takes the flexible space
+     (min-height:0 so it can shrink; overflow:hidden so nothing escapes onto
+     the footer); .beat-auto is flex:0 0 auto and always keeps its own row. */
+  .beat-mid{flex:1 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:11px;}
+  .beat-hero{font-weight:800;font-size:31px;line-height:1.04;letter-spacing:-.025em;color:#fff;text-align:right;margin:0 2px -2px;text-shadow:0 2px 18px rgba(0,0,0,.5);flex:0 0 auto;}
+  /* 2b: match the glass panels' visual boundary + 3px side padding so the
+     caption reads inside the card edges, not against them. 2c: font size is
+     set by the cap-* length bucket the viewer picks, not a fixed 21px. */
+  .beat-cap{flex:0 1 auto;min-height:0;overflow:hidden;color:#fff;font-weight:600;line-height:1.3;letter-spacing:-.01em;text-shadow:0 2px 12px rgba(0,0,0,.6);padding:0 3px;box-sizing:border-box;}
+  .beat-cap.cap-xl{font-size:24px;}
+  .beat-cap.cap-lg{font-size:21px;}
+  .beat-cap.cap-md{font-size:18px;}
+  .beat-cap.cap-sm{font-size:16px;line-height:1.28;}
   .beat-cap b{font-weight:800;}
-  .beat-auto{color:rgba(255,255,255,.5);font-size:12.5px;display:flex;align-items:center;gap:7px;}
+  /* ENTRANCE SEQUENCE: the card (glass panel / scorecard / shot) slides gently
+     up into place, and only once it has landed does the caption fade in beneath
+     it. Card ~.6s, caption fades over .7s starting as the card settles.
+     The leaderboard (.finalboard) is EXCLUDED -- it has its own row-by-row
+     reveal, and sliding the whole board fought that. */
+  .hl-overlay .glass,.hl-overlay .sccard.stand,.hl-overlay .shot{
+    animation:beatCardUp .6s cubic-bezier(.2,1,.3,1) both;}
+  @keyframes beatCardUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:none;}}
+  .beat-cap{animation:beatCapIn .7s ease-out .55s both;}
+  @keyframes beatCapIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  @media (prefers-reduced-motion: reduce){
+    .hl-overlay .glass,.hl-overlay .sccard.stand,.hl-overlay .shot,
+    .beat-cap{animation:none;opacity:1;transform:none;}
+  }
+  .beat-auto{flex:0 0 auto;color:rgba(255,255,255,.5);font-size:12.5px;display:flex;align-items:center;gap:7px;padding-top:8px;}
+  .beat-date{color:rgba(255,255,255,.5);}
   /* hole meta: big number growing up out of the ground + Par / Yds */
   .hl-overlay .hole-meta{color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.75);line-height:1;}
   .hl-overlay .hole-meta b{display:block;font-weight:800;font-size:44px;letter-spacing:-.03em;overflow:hidden;line-height:.98;}
@@ -1452,7 +1478,7 @@ const CSS = `
   @keyframes holeGrow{from{transform:translateY(105%);}to{transform:translateY(0);}}
   .hl-overlay .hole-meta span{display:block;font-size:15px;font-weight:600;margin-top:6px;opacity:.96;}
   /* focus shot card */
-  .hl-overlay .shot{position:relative;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.18);aspect-ratio:1024/660;box-shadow:0 16px 40px rgba(0,0,0,.5);flex:0 0 auto;}
+  .hl-overlay .shot{position:relative;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.18);aspect-ratio:1024/660;box-shadow:0 6px 18px rgba(0,0,0,.22);flex:0 0 auto;}
   .hl-overlay .shot.tall{aspect-ratio:1024/860;}
   .hl-overlay .shot img{width:100%;height:100%;object-fit:cover;object-position:center 42%;}
   .hl-overlay .shot .hole-meta{position:absolute;top:12px;left:14px;}
@@ -1464,7 +1490,41 @@ const CSS = `
   .tring{opacity:0;animation:hlTring 1s ease 1.8s forwards;transform-origin:center;transform-box:fill-box;}
   @keyframes hlTring{0%{opacity:.9;transform:scale(.6);}100%{opacity:0;transform:scale(1.7);}}
   /* glass data panel */
-  .hl-overlay .glass{background:rgba(14,32,22,.5);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:14px 16px;backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%);flex:0 0 auto;}
+  /* ---- LIQUID GLASS (highlight cards) --------------------------------------
+     Ported from the liquid-glass look (rdev/liquid-glass-react) minus its SVG
+     feDisplacementMap refraction (that filter does not render on WebKit / iOS,
+     which is what this PWA runs on). Two rules that MUST hold or it stops
+     looking like glass:
+       1. The background must stay genuinely TRANSLUCENT -- backdrop-filter only
+          shows through a see-through fill. A near-opaque tint kills the effect.
+       2. The specular highlights must be CLIPPED INSIDE the card. They are
+          overlay pseudo-elements at z-index 0 with overflow:hidden on the card,
+          NOT z-index:-1 (which pushed them behind the tint and let them bleed
+          outside the rounded corners -- the "floating top overlay" bug). */
+  .lg,.hl-overlay .glass,.sccard.stand{position:relative;overflow:hidden;border:none;
+    /* Essentially no fill -- the card is clear; the look is purely the backdrop
+       blur diffusing the photo behind it plus the specular highlights. */
+    background:rgba(255,255,255,.01);
+    /* Minimal blur -- the photo reads through nearly sharp, just softened. */
+    -webkit-backdrop-filter:blur(8px) saturate(120%);
+    backdrop-filter:blur(8px) saturate(120%);
+    /* NO border. A SUBTLE, tight drop shadow lifts the card off the photo
+       without the dark strip a large blurred shadow left below/between cards.
+       Plus a bright inset top highlight -- light catching the glass edge. */
+    box-shadow:0 6px 18px rgba(0,0,0,.22), inset 0 1.5px 0 rgba(255,255,255,.4);}
+  /* diagonal sheen -- clipped inside the card, over the blurred backdrop but
+     under the text (screen blend keeps it a highlight, not a wash). Brighter +
+     wider than before so the pane looks lit, not flat. */
+  .lg::before,.hl-overlay .glass::before,.sccard.stand::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    background:linear-gradient(122deg, rgba(255,255,255,.28) 0%, rgba(255,255,255,.08) 30%, transparent 58%);
+    mix-blend-mode:screen;}
+  /* bright specular pool at the top edge -- full width, contained by the card's
+     overflow:hidden so it never floats above the corners. */
+  .lg::after,.hl-overlay .glass::after,.sccard.stand::after{content:"";position:absolute;left:0;right:0;top:0;height:52%;border-radius:inherit;pointer-events:none;
+    background:radial-gradient(140% 110% at 50% -10%, rgba(255,255,255,.34), rgba(255,255,255,0) 66%);}
+  /* card CONTENT must sit above the two highlight layers */
+  .lg > *,.hl-overlay .glass > *,.sccard.stand > *{position:relative;z-index:1;}
+  .hl-overlay .glass{border-radius:22px;padding:14px 16px;flex:0 0 auto;}
   .glass-lbl{font-size:12.5px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:rgba(255,255,255,.8);margin-bottom:10px;}
   .glass-lbl.c{text-align:center;}
   /* points columns (Thru N standings) */
@@ -1488,21 +1548,46 @@ const CSS = `
   .hb{display:flex;align-items:center;gap:11px;}
   .hb-l{width:70px;color:#fff;font-size:15px;font-weight:600;}
   .hb-t{flex:1;height:15px;border-radius:8px;background:rgba(255,255,255,.16);overflow:hidden;}
-  .hb-f{height:100%;border-radius:8px;width:0;animation:hbFill .7s cubic-bezier(.2,1,.3,1) both;}
+  /* Final width is inline; animate transform:scaleX from the left so there is
+     no custom-property-in-keyframe. display:block is REQUIRED -- .hb-f is a
+     <span>, and width is ignored on an inline box, so without this the fill
+     collapsed to zero width and the bar rendered empty (the real root cause;
+     the scaleX change alone did not fix it). */
+  .hb-f{display:block;height:100%;border-radius:8px;transform-origin:left;animation:hbFill .7s cubic-bezier(.2,1,.3,1) both;}
   .hb-v{width:22px;text-align:right;color:#fff;font-size:15px;font-weight:800;}
-  @keyframes hbFill{to{width:var(--w);}}
-  /* 18-hole scorecard strip (wildcard/grinder) -- overlays a tall shot, or
-     stands alone as a glass card when the hole photo is missing */
+  @keyframes hbFill{from{transform:scaleX(0);}to{transform:scaleX(1);}}
+  /* 18-hole scorecard (wildcard/grinder). Handoff #9 4: it lives in its OWN
+     full-width glass panel (.stand), never overlaid on the photo -- the panel
+     gives it the full card width and vertical room, with the two rows of nine
+     clearly separated. .sccard (absolute overlay) is retained only as a
+     fallback; the viewer always renders these standalone. */
   .sccard{position:absolute;left:10px;right:10px;bottom:10px;background:rgba(10,26,18,.62);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:9px 10px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);}
-  .sccard.stand{position:static;background:rgba(14,32,22,.5);border-radius:20px;padding:14px 16px;}
-  .sc-nameline{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:7px;}
+  /* Tighter side padding so nine columns fit the card width without clipping
+     hole 9 / 18 (the fixed-width glyphs were overflowing a narrow phone). */
+  /* Glass treatment comes from the shared .lg group above; here only layout.
+     position:relative (not the base's absolute) is REQUIRED -- the base .sccard
+     is absolutely positioned (left:10px;right:10px), and without resetting it
+     the standalone card stayed pinned/offset and the grid clipped on the right.
+     relative also keeps it a positioning context for the ::before/::after
+     highlight layers. */
+  .sccard.stand{position:relative;left:auto;right:auto;bottom:auto;width:100%;border-radius:22px;padding:16px 10px;}
+  .sc-nameline{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;padding:0 2px;}
   .sc-nameline .n{color:#fff;font-size:16px;font-weight:700;}
   .sc-nameline .p{color:var(--gold-300);font-size:16px;font-weight:800;}
-  .sccard .sc-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:2px;}
+  /* minmax(0,1fr) lets the nine tracks SHRINK below their content width -- with
+     plain 1fr (== minmax(auto,1fr)) a fixed-width glyph forced the grid wider
+     than the card, so it overflowed to the right and got clipped. */
+  .sccard .sc-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:2px;width:100%;}
+  /* clear separation between the front nine and back nine */
+  .sccard.stand .sc-grid + .sc-grid{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12);}
   .sccard .sc-grid + .sc-grid{margin-top:5px;}
-  .sccard .sc-cell{display:flex;flex-direction:column;align-items:center;gap:3px;opacity:0;animation:scPop .3s ease both;}
-  .sccard .sc-cell .h{font-size:15px;color:rgba(255,255,255,.5);font-weight:600;}
+  .sccard .sc-cell{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;opacity:0;animation:scPop .3s ease both;}
+  .sccard .sc-cell .h{font-size:13px;color:rgba(255,255,255,.5);font-weight:600;}
   .sccard .sc-cell .sc-score{font-size:22px;width:30px;height:30px;}
+  /* With minmax(0,1fr) tracks the grid no longer overflows, so a fixed 30px
+     glyph fits nine to a row (inner ~332px / 9 ~= 35px per track). max-width
+     keeps it from ever exceeding a narrow track on very small screens. */
+  .sccard.stand .sc-cell .sc-score{font-size:22px;width:30px;height:30px;max-width:100%;}
   @keyframes scPop{from{opacity:0;transform:scale(.6);}to{opacity:1;transform:none;}}
   /* nemesis score row: scorecard notation + points, no magnitude bars.
      DATA-HONESTY RULE: .sc-* notation is the ONLY thing permitted to encode
@@ -1546,13 +1631,44 @@ const CSS = `
      bottom-up (reversed stagger, leader lands last), then the leader row
      carries the gold wash + shine sweep. Scoped so the app's live .lb-row
      styling is untouched. */
-  .finalboard{border-radius:var(--radius-md);overflow:hidden;box-shadow:0 18px 44px rgba(0,0,0,.5);flex:0 0 auto;}
-  .finalboard .lb-row{animation:hlLbUp .62s cubic-bezier(.2,1,.3,1) both;cursor:default;}
+  .finalboard{border-radius:var(--radius-md);overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.22);flex:0 1 auto;min-height:0;}
   .finalboard .lb-row:hover{background:var(--surface);}
+  /* Bottom-up reveal + leader shine are the FINAL's flourish only. Standings
+     checkpoint beats show the board plainly, then scroll (Handoff #9 5b). */
+  .finalboard.is-final .lb-row{animation:hlLbUp .62s cubic-bezier(.2,1,.3,1) both;cursor:default;}
   @keyframes hlLbUp{from{opacity:0;transform:translateY(30px);}to{opacity:1;transform:none;}}
+  /* FINAL hero word ("Final") stamps in AFTER the bottom-up reveal lands the
+     leader row (~6 rows x 150ms stagger + 620ms row = ~1.4s). */
+  /* delay is set inline (animationDelay) to match the leader row's reveal.
+     A long, near-linear fade so "Final" builds opacity steadily over ~1.8s
+     rather than snapping to full and then coasting. */
+  .beat-hero.hero-final-in{opacity:0;animation:heroFinalIn 1.0s cubic-bezier(.4,0,.6,1) both;}
+  @keyframes heroFinalIn{from{opacity:0;transform:translateY(6px);}60%{opacity:.5;}to{opacity:1;transform:none;}}
+  @media (prefers-reduced-motion: reduce){.beat-hero.hero-final-in{opacity:1;animation:none;transform:none;}}
   .finalboard .lb-row.leader,.finalboard .lb-row.leader:hover{position:relative;background:color-mix(in srgb,var(--gold-500) 10%,var(--surface));}
-  .finalboard .lb-row.leader::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 30%,rgba(245,176,0,.34) 50%,transparent 70%);background-size:250% 100%;animation:hlLeadShine 2.8s ease-in-out 1.5s infinite;}
+  .finalboard.is-final .lb-row.leader::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 30%,rgba(245,176,0,.34) 50%,transparent 70%);background-size:250% 100%;animation:hlLeadShine 2.8s ease-in-out 1.5s infinite;}
   @keyframes hlLeadShine{0%{background-position:200% 0;}100%{background-position:-100% 0;}}
+  /* Standings board (Handoff #9 5): whole field in a fixed-height viewport,
+     the inner track gently auto-scrolls translateY so every row is seen. The
+     scroll completes inside the beat duration; the .paused freeze catches it
+     for free (it is a plain CSS animation on a descendant). */
+  /* viewport height is set inline (VISIBLE_ROWS x row height) so only ~6 rows
+     show; the track scrolls the rest past the window. */
+  .standings-board .sb-viewport{overflow:hidden;}
+  .sb-track{will-change:transform;}
+  /* Linger on the leader, then scroll gently, then hold at the bottom. The
+     initial delay is applied inline (scrollStartSec); this curve keeps a short
+     settle at each end and eases the travel in between. */
+  @keyframes sbScroll{
+    0%{transform:translateY(0);}
+    18%{transform:translateY(0);}
+    82%{transform:translateY(var(--sb-scroll));}
+    100%{transform:translateY(var(--sb-scroll));}
+  }
+  .sb-more{padding:10px 14px;color:var(--text-muted);font-size:13px;font-weight:600;text-align:center;background:var(--surface);}
+  @media (prefers-reduced-motion: reduce){
+    .sb-track{animation:none !important;transform:none !important;}
+  }
 
   /* comments bottom sheet */
   .hl-sheet-scrim{position:absolute;inset:0;background:rgba(0,0,0,.45);z-index:20;display:flex;flex-direction:column;justify-content:flex-end;}
@@ -1601,7 +1717,7 @@ const CSS = `
     .tring{animation:none;opacity:0;}
     .hl-overlay .hole-meta b i{animation:none;}
     .vb-bar{animation:none;transform:none;}
-    .hb-f{animation:none;width:var(--w);}
+    .hb-f{animation:none;transform:none;}
     .sccard .sc-cell,.sr-c{animation:none;opacity:1;}
     .st-win::before{animation:none;opacity:1;transform:none;}
     .finalboard .lb-row{animation:none;opacity:1;transform:none;}

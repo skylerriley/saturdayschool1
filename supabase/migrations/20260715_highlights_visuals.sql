@@ -22,5 +22,7 @@ alter table story_beats_history add column if not exists caption_override text;
 
 -- The app's anon role needs update on story_beats_history for the admin
 -- hide / edit-caption actions (reads+inserts were granted in 20260713).
+-- Idempotent: drop-then-create so this file is safe to re-run.
+drop policy if exists "anon update beat history" on story_beats_history;
 create policy "anon update beat history" on story_beats_history for update to anon using (true) with check (true);
 grant update on story_beats_history to anon;

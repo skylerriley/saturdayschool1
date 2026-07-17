@@ -25,7 +25,7 @@ export const ANTI_REPEAT_WINDOW = 6;
 // saves recomputation, it is not what holds the story still. BUMP IT whenever
 // the engine's output could change (detector/threshold/composer edits, or a
 // history rebuild), or viewers keep seeing beats from the previous engine.
-export const BEATS_CACHE_VERSION = "v6";
+export const BEATS_CACHE_VERSION = "v9";
 export const beatsCacheKey = (eventId: number) => `hl_beats_${BEATS_CACHE_VERSION}_${eventId}`;
 
 export interface BeatsInputTables {
@@ -178,6 +178,7 @@ export function buildBeatsInput(t: BeatsInputTables): SelectBeatsInput {
     scores,
     holePars: t.course?.hole_pars || [],
     finalStandings: standings.slice(0, 5),
+    fullStandings: standings, // whole tie-aware field for the standings board
     winnerName: winnerFullName || standings[0]?.name || "",
     eventLabel: t.eventLabel,
     history: antiRepeatHistory,

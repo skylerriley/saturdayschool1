@@ -40,6 +40,30 @@ function HoleMetaBlock({ meta, animKey }: { meta: NonNullable<DataBeat["holeMeta
   );
 }
 
+// Fluid caption type by CONTENT LENGTH (Handoff #9 2c), not viewport width --
+// the constraint is how many characters must fit. Discrete buckets so a long
+// self-contained caption shrinks instead of running on / overlapping the
+// footer. Stops tuned against real captions at phone width.
+//   <= 60 -> 24px | 61-100 -> 21px | 101-140 -> 18px | > 140 -> 16px
+function capSizeClass(parts: { t: string }[]): string {
+  const len = parts.reduce((n, p) => n + p.t.length, 0);
+  if (len <= 60) return "cap-xl";
+  if (len <= 100) return "cap-lg";
+  if (len <= 140) return "cap-md";
+  return "cap-sm";
+}
+
+// Footer date -- the beat's IDENTIFICATION line (Handoff #10 6c), so it
+// carries the YEAR. Same month spelling as the chart's shortDate ("Jul 11"),
+// plus the year: "Jul 11, 2026". One format used on every card's footer.
+const FOOT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function footerDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m) return "";
+  const mon = FOOT_MONTHS[Number(m[2]) - 1] || "";
+  return `${mon} ${Number(m[3])}, ${m[1]}`;
+}
+
 function CaptionText({ parts }: { parts: { t: string; b?: boolean }[] }) {
   // Engine copy uses ASCII " -- "; render it as an em dash.
   const pretty = (t: string) => t.replace(/ -- /g, " — ");
@@ -103,18 +127,27 @@ function GlassPanel({ beat }: { beat: DataBeat }) {
     );
   }
   if (beat.fieldBars) {
-    const max = Math.max(1, ...beat.fieldBars.map((b) => b.value));
+    const vals = beat.fieldBars.map((b) => (Number.isFinite(b.value) ? b.value : 0));
+    const max = Math.max(1, ...vals);
     return (
       <div className="glass">
         <div className="glass-lbl">{beat.hole != null ? `Hole ${beat.hole} · net scoring across the field` : "Net scoring across the field"}</div>
         <div className="hbars">
-          {beat.fieldBars.map((b, i) => (
-            <div key={b.label} className="hb">
-              <span className="hb-l">{b.label}</span>
-              <span className="hb-t"><span className="hb-f" style={{ "--w": `${Math.round((b.value / max) * 100)}%`, background: b.color, animationDelay: `${i * 80}ms` } as any} /></span>
-              <span className="hb-v">{b.value}</span>
-            </div>
-          ))}
+          {beat.fieldBars.map((b, i) => {
+            // Defensive: a non-finite value renders 0 width, never NaN%.
+            const v = Number.isFinite(b.value) ? b.value : 0;
+            if (!Number.isFinite(b.value)) console.warn("fieldBars: non-finite value", b);
+            const pct = Math.round((v / max) * 100);
+            // Final width is set INLINE; the fill animates transform:scaleX so
+            // there is no custom-property-in-keyframe (fragile on iOS WebKit).
+            return (
+              <div key={b.label} className="hb">
+                <span className="hb-l">{b.label}</span>
+                <span className="hb-t"><span className="hb-f" style={{ width: `${pct}%`, background: b.color, animationDelay: `${i * 80}ms` }} /></span>
+                <span className="hb-v">{b.value}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -175,27 +208,103 @@ function GlassPanel({ beat }: { beat: DataBeat }) {
   return null;
 }
 
-function FinalBoard({ rows }: { rows: { pos: string; name: string; pts: number }[] }) {
-  const n = rows.length;
-  const cols = { gridTemplateColumns: "44px 1fr 64px" };
+// One renderer for every standings beat (Handoff #9 5): the real .lb-*
+// leaderboard floating over the blurred photo, showing the WHOLE field, capped
+// at ROW_CAP with a "+N more" footer. A CHECKPOINT board (three_way / the_turn
+// / pace_setter / wire_to_wire) auto-scrolls so every row is seen. The FINAL
+// does NOT scroll (Handoff #10 3b) -- it plays its bottom-up reveal + leader
+// shine focused on the top of the board. `reduced` => no scroll, static rows.
+// Columns are POS | GOLFER | PTS | THRU (Handoff #10 4): points is what the
+// card is about, THRU is the timestamp, so it sits last.
+// Render up to this many rows into the scrolling track...
+const ROW_CAP = 12;
+// ...but the viewport shows exactly this many at once, so the board stays
+// compact and the rest are revealed by the gentle auto-scroll.
+const VISIBLE_ROWS = 5;
+// Fallback row height only -- the real height is MEASURED from the rendered row
+// (a hardcoded guess is what produced a "5 and a half rows" viewport).
+const SB_ROW_FALLBACK_H = 51;
+
+function StandingsBoard({ standings, reduced, animKey }: {
+  standings: NonNullable<DataBeat["standings"]>;
+  reduced: boolean;
+  animKey: any;
+}) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [scrollPx, setScrollPx] = useState(0);
+  const [rowH, setRowH] = useState(SB_ROW_FALLBACK_H);
+  const isFinal = standings.isFinal;
+  const all = standings.rows;
+  // Final shows the top VISIBLE_ROWS statically (the reveal is the moment).
+  // Checkpoint boards render the field (ROW_CAP) and scroll it past the window
+  // -- BUT under reduced motion there is no scroll, so cap to the visible
+  // window there too and let "+N more" account for the rest honestly.
+  const staticTop = isFinal || reduced;
+  const rows = all.slice(0, staticTop ? VISIBLE_ROWS : ROW_CAP);
+  const overflow = all.length - rows.length;
+  const cols = { gridTemplateColumns: "40px 1fr 58px 46px" };
+  // Viewport is exactly N x the MEASURED row height, so it always lands on a
+  // whole number of rows (never a half-row peeking). A short field shows only
+  // as many rows as it has rather than padding empty space.
+  const shownRows = Math.min(VISIBLE_ROWS, rows.length);
+  const viewportH = shownRows * rowH;
+
+  // Measure the real row height, then the scroll distance (how far the content
+  // exceeds the viewport). Both come from live layout rather than constants.
+  useEffect(() => {
+    const track = trackRef.current;
+    const firstRow = track?.querySelector(".lb-row") as HTMLElement | null;
+    const measured = firstRow?.getBoundingClientRect().height ?? 0;
+    const h = measured > 8 ? measured : SB_ROW_FALLBACK_H;
+    setRowH(h);
+    if (reduced || isFinal) { setScrollPx(0); return; }
+    const contentH = (track?.scrollHeight ?? 0) || (rows.length * h);
+    const over = contentH - Math.min(VISIBLE_ROWS, rows.length) * h;
+    setScrollPx(over > 4 ? over : 0);
+  }, [reduced, isFinal, animKey, rows.length, overflow]);
+
+  const revealDelay = (i: number) => (isFinal ? (rows.length - 1 - i) * 150 : 0);
+  const doScroll = !reduced && !isFinal && scrollPx > 0;
+  // ~40px/sec through the field, with a long hold on the leader before it
+  // starts (see the sbScroll keyframe) so the eye settles on 1st place first.
+  const SCROLL_SEC = Math.max(4, Math.min(8, scrollPx / 40));
+  const scrollStartSec = 2.2; // linger on the top of the board before scrolling
+
   return (
-    <div className="finalboard">
+    <div className={"finalboard standings-board" + (isFinal ? " is-final" : "")}>
       <div className="lb-header" style={cols}>
         <div className="lb-header-cell">Pos</div>
         <div className="lb-header-cell">Golfer</div>
         <div className="lb-header-cell right">Pts</div>
+        <div className="lb-header-cell right">Thru</div>
       </div>
-      {rows.map((r, i) => (
+      <div className="sb-viewport" ref={viewportRef} style={{ height: viewportH }}>
         <div
-          key={r.name + i}
-          className={"lb-row" + (i === 0 ? " leader" : "")}
-          style={{ ...cols, animationDelay: `${(n - 1 - i) * 150}ms` }}
+          className="sb-track"
+          ref={trackRef}
+          style={doScroll ? ({
+            "--sb-scroll": `-${scrollPx}px`,
+            animation: `sbScroll ${SCROLL_SEC}s ease-in-out ${scrollStartSec}s both`,
+          } as any) : undefined}
         >
-          <span className={"lb-rank-cell" + (r.pos === "1" || r.pos === "T1" ? " r1" : "")}>{r.pos}</span>
-          <span className="lb-name-main">{r.name}</span>
-          <span className="lb-score-big" style={{ textAlign: "right" }}>{r.pts}</span>
+          {rows.map((r, i) => (
+            <div
+              key={r.name + i}
+              className={"lb-row" + (i === 0 ? " leader" : "")}
+              style={{ ...cols, animationDelay: `${revealDelay(i)}ms` }}
+            >
+              <span className={"lb-rank-cell" + (r.pos === "1" || r.pos === "T1" ? " r1" : "")}>{r.pos}</span>
+              <span className="lb-name-main">{r.name}</span>
+              <span className="lb-score-big" style={{ textAlign: "right" }}>{r.points}</span>
+              <span className="lb-thru-big" style={{ textAlign: "right" }}>{standings.thru}</span>
+            </div>
+          ))}
+          {overflow > 0 && (
+            <div className="sb-more">+{overflow} more {overflow === 1 ? "golfer" : "golfers"}</div>
+          )}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
@@ -225,6 +334,7 @@ export function HighlightsViewer({
   const card: RecapCard = cards[idx];
   const courseName = event?.course_name || "";
   const holePars: number[] = course?.hole_pars || [];
+  const eventDateLabel = footerDate(event?.date || "");
 
   const durationFor = (c: RecapCard) => (c.kind === "data" ? DUR_DATA : c.row?.media_type === "video" ? DUR_VIDEO : DUR_PHOTO);
 
@@ -406,15 +516,33 @@ export function HighlightsViewer({
     const focusRow = useGreen ? greenRow : holeRow;
     const anchors = focusRow?.anchors && typeof focusRow.anchors === "object" ? focusRow.anchors : null;
     const showTracer = b.score != null && focusRow != null;
-    const isFinal = !!b.finalStandings;
+    // A standings beat (race-state / the_turn / final) renders the real .lb-*
+    // leaderboard, NOT a hole image -- it has no shot to trace, so the
+    // decorative photo is dropped (Handoff #9 5).
+    const isStandings = !!b.standings;
     // hcard-back scopes the white-on-dark score-symbol variants: white
     // numbers/borders, triple+ as a filled white square with the numeral
     // knocked out. Points labels keep their gold.
+    // On the FINAL board, the hero word ("Final") fades in exactly as the
+    // LEADER row (1st place) is revealed. The board reveals bottom-up: row i
+    // has delay (rowCount-1-i)*150ms, so the leader (i=0) begins at
+    // (rowCount-1)*150ms -- the hero uses that same delay. Reduced motion
+    // shows it immediately.
+    const isFinalBoard = !!(b.standings && b.standings.isFinal);
+    const heroFinalIn = isFinalBoard && !reduced;
+    const finalRowCount = isFinalBoard ? Math.min(b.standings!.rows.length, VISIBLE_ROWS) : 0;
+    const heroDelayMs = Math.max(0, (finalRowCount - 1) * 150);
     return (
-      <div className="beat hcard-back">
+      // key on idx so the entrance animations (card slide-up, caption fade)
+      // replay for every beat instead of only on first mount.
+      <div className="beat hcard-back" key={`beat-${idx}`}>
         <div className="beat-mid">
-          <div className="beat-hero">{b.heroLabel}</div>
-          {focusRow && !isFinal && (
+          <div
+            className={"beat-hero" + (heroFinalIn ? " hero-final-in" : "")}
+            style={heroFinalIn ? { animationDelay: `${heroDelayMs}ms` } : undefined}
+            key={heroFinalIn ? `hero-${idx}` : undefined}
+          >{b.heroLabel}</div>
+          {focusRow && !isStandings && (
             <div className="shot">
               <img src={focusRow.public_url} alt="" />
               {b.holeMeta && <HoleMetaBlock meta={b.holeMeta} animKey={idx} />}
@@ -428,10 +556,15 @@ export function HighlightsViewer({
               )}
             </div>
           )}
-          {isFinal ? <FinalBoard rows={b.finalStandings!} /> : <GlassPanel beat={b} />}
-          <div className="beat-cap"><CaptionText parts={b.caption} /></div>
+          {isStandings
+            ? <StandingsBoard standings={b.standings!} reduced={reduced} animKey={idx} />
+            : <GlassPanel beat={b} />}
+          <div className={"beat-cap " + capSizeClass(b.caption)}><CaptionText parts={b.caption} /></div>
         </div>
-        <div className="beat-auto"><span style={{ width: 13, height: 13, display: "flex", fill: "rgba(255,255,255,.55)" }}>{AUTO_ICON}</span> Auto highlight</div>
+        <div className="beat-auto">
+          <span style={{ width: 13, height: 13, display: "flex", fill: "rgba(255,255,255,.55)" }}>{AUTO_ICON}</span> Auto highlight
+          {eventDateLabel && <span className="beat-date"> • {eventDateLabel}</span>}
+        </div>
       </div>
     );
   };
@@ -519,7 +652,7 @@ export function HighlightsViewer({
                 {r.caption && <div className="v-cap">{r.caption}</div>}
                 <div className="v-credit">
                   <svg viewBox="0 0 24 24"><path d="M4 20a8 8 0 0 1 16 0" /><circle cx="12" cy="8" r="4" /></svg>
-                  Added by {r.created_by_name}
+                  Added by {r.created_by_name}{eventDateLabel ? ` • ${eventDateLabel}` : ""}
                 </div>
                 <div className="v-actions">
                   <button className="act" onClick={() => onToggleLike(r.id)} aria-label="Like">

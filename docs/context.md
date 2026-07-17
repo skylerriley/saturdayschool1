@@ -260,6 +260,123 @@ generate/move/swap rely on its diff-writes for persistence.
   (new detector changes output; other devices must drop cached beats), and a
   history rebuild is required after deploy.
 
+  UPDATE 2026-07-16 (Handoff #8, "chronological ordering: no forced opening").
+  BUG: the race-state beat (three_way/duel/pace_setter/wire_to_wire) was always
+  emitted first regardless of hole, so a recap could go "standings through 9"
+  -> "eagle on 4" -> "run over 5-8" and jump backwards. Handoff #4 made the
+  opening DETECTED across holes 3-9, which exposed it. ROOT CAUSE was in TWO
+  places: composeBeats assembled in slot order (opening pushed first), and
+  HighlightsModule's watch-model gave every opening the hardcoded sort key
+  hole=0 ("cold open, before hole 1") so watchOrderCompare pinned it first and
+  floated whole-round (hole:null) beats to the end. FIX: every beat now carries
+  resolutionHole -- the hole where its story RESOLVES -- and both the composer
+  and the module sort on it. Single-hole beats resolve at their hole; span
+  beats at their END (a run over 5-8 -> 8, fast_start -> burst end, fade/
+  wildcard/grinder/rivalry/redemption/out_of_character whole-round -> 18 so
+  they land by the finish); the opening -> its throughHole. resolutionHoleFor()
+  in recapEngine derives it (endHole added to charge/fast_start evidence, duel
+  already carried throughHole). The composer's forced-first slice is GONE -- the
+  opening goes through the same sort; watchOrderCompare is UNTOUCHED (the module
+  just feeds it resolutionHole as the hole key, with a throughHole/hole
+  fallback for pre-v7 cached beats). Opening SLOT guarantee kept: exactly one
+  throughHole-bearing race-state beat per recap, only its forced POSITION
+  removed. Position-aware labels via relabelRaceState(): "The Opening" and
+  earliness copy ("takes shape"/"opening stretch"/"finding its footing") only
+  when the beat is chronologically first; otherwise three_way gets a neutral
+  "A Three-Way Race"/"Where It Stands" label + rewritten copy. pace_setter/
+  wire_to_wire keep their labels (earliness is baked into the ANGLE meaning,
+  and "one clear early leader" stays true even after an eagle on 4). Verified
+  on the exact bug shape: event 302 now reads fast_start(3) -> three_way(8) ->
+  fade(18) -> duel(18), no backwards jump. Backtest 31 -> 35 tests: monotonic
+  chronology (the assert that would have caught it), span resolution, opening-
+  slot guaranteed, label truth (no "The Opening"/earliness off the front).
+  BEATS_CACHE_VERSION bumped v6 -> v7; history rebuild required after deploy.
+
+  UPDATE 2026-07-16 (Handoff #9, "caption architecture, layout bugs, copy").
+  1 CAPTIONS SELF-CONTAINED: the visual hierarchy makes the caption primary
+  (~24px under the graphic) and the eyebrow a 15px aside the eye skips, so every
+  caption now states who+what+so-what alone and never leans on the eyebrow. The
+  final beat was the worst case ("A tie for second sits just behind" named no
+  winner) -- rewritten to always name the champion + margin, with 3 structural
+  variants. Rule commented at the Phrasing header in recapEngine.
+  2 CAPTION LAYOUT (App.tsx viewer CSS): .beat-mid (flex:1,min-height:0,
+  overflow:hidden) and .beat-auto (flex:0 0 auto) are siblings that cannot
+  overlap the footer; .beat-cap gets 3px side padding + length-bucketed font
+  (cap-xl/lg/md/sm = 24/21/18/16px picked by capSizeClass in the viewer) so a
+  long caption shrinks instead of running on. ~140-char copy budget enforced by
+  a backtest assert (caught nemesis at 177 -> rewritten to 3 shorter variants).
+  3 tough_hole BARS RENDERED EMPTY: root cause was @keyframes hbFill animating
+  to width:var(--w) (custom-property-in-keyframe, fragile on iOS WebKit). Fixed:
+  .hb-f gets its final width INLINE and animates transform:scaleX(0->1) from the
+  left; added a non-finite-value guard (renders 0, warns, never NaN%). vbars
+  audited -- already scaleY off the correct key, no change.
+  4 SCORECARD: grinder/wildcard already render standalone (hole==null => no
+  shot); .sccard.stand bumped to bigger cells (34px)/gap/padding with a divider
+  between the front/back nine. .sc-* notation shapes untouched (the standing
+  data-honesty rule).
+  5 STANDINGS BEATS = REAL LEADERBOARD: race-state (three_way/pace_setter/
+  wire_to_wire) + the_turn + final now render the .lb-* board floating over the
+  blurred photo (no decorative hole image -- a standings beat has no shot to
+  trace), via a shared StandingsBoard renderer. New engine payload beat.standings
+  {label,thru,isFinal,rows} carries the WHOLE tie-aware field (buildStandingsBoard
+  + input.fullStandings from buildBeatsInput). THRU column reuses .lb-thru-*
+  (checkpoint hole on standings beats, "F" on final). Gentle translateY
+  auto-scroll (sbScroll keyframe, ~46px/sec, completes inside the beat, holds top
+  + bottom), capped at 12 rows + "+N more", frozen by .paused, static under
+  reduced motion. Final keeps its bottom-up reveal + leader shine (scoped to
+  .is-final), scroll sequenced after. Money column deferred (points only).
+  6 COPY VARIETY: multi-shape pick() caption pools added to final/nemesis/
+  grinder/wildcard/fade (3 structural shapes each: lead with number / name /
+  consequence); others carry varied eyebrows + movement clauses. New asserts:
+  caption-self-contained (protagonist named), char-budget (<=160), cross-event
+  variety (an angle firing 3+ times is not one fixed shape). Gemini rephrase
+  noted as a rebuild-time seam, not wired.
+  7 Migrations made idempotent last turn; setup doc 5 documents the 4-file
+  order + re-runnability + the required DELETE grant.
+  Backtest 35 -> 38 tests, all green; typecheck/lint/build clean.
+  BEATS_CACHE_VERSION bumped v7 -> v8; history rebuild required after deploy.
+
+  UPDATE 2026-07-16 (Handoff #10, "standings truth, bar bug, date identity").
+  1 P0 STANDINGS TRUTH: a checkpoint standings beat showed each golfer's FINAL
+  points under a "THRU 6" label -- so the positions were final too, i.e. the
+  finishing order relabelled. Root cause: buildStandingsBoard sourced
+  input.fullStandings (the final board). Rewritten to take ctx and build from
+  ctx.totalsSeries[i][hole] (cumulative through the checkpoint) with tie-aware
+  positions derived from THOSE totals; the final beat is the only caller that
+  reads ctx.totals. Assert: a checkpoint board equals cumulative-through-N, at
+  least one golfer differs from their final total, positions derive from the
+  same series. (input.fullStandings now unused by the board.)
+  2 P0 tough_hole BARS EMPTY -- the Handoff #9 scaleX/keyframe fix was NOT the
+  cause. Real cause: .hb-f is a <span> with no display, so it was inline, and
+  WIDTH IS IGNORED ON INLINE BOXES -- the inline width:X% did nothing and the
+  fill had zero width (numbers printed from a separate span, bars empty: the
+  exact symptom). Fix: .hb-f{display:block}. Keys were already {label,value,
+  color} (not the l/v/c mismatch hypothesised). Assert: fieldBars values finite,
+  >0 count => >0 proportional width, key shape correct.
+  3a STANDINGS SCROLL measured the wrong element -- trackRef on .sb-track, which
+  grows to fit its rows so scrollHeight==clientHeight==0 distance. Now measures
+  the fixed-height .sb-viewport (scrollHeight - clientHeight) with a row-count x
+  46px fallback for pre-paint. 3b FINAL no longer scrolls -- reveal + shine
+  only, scroll gated to !isFinal.
+  4 COLUMNS reordered POS | GOLFER | PTS | THRU on both boards (points is the
+  subject, THRU the timestamp, last).
+  5 out_of_character never named its golfer (the "up" branch said "the outlier
+  round of the year"); Handoff #9 1 was scoped too narrowly. Rewritten to lead
+  with the name in both branches. The self-contained assert was STRENGTHENED:
+  every beat with a non-null protagonist must contain that name in the caption
+  (the weak version checked length/punct and passed the bug).
+  6 EVENT IDENTITY: "Week N" removed from all captions + the final title (it is
+  internal bookkeeping, same class as Wk -5 on charts) -- captions read
+  self-contained without it. The beat footer now carries the date
+  authoritatively: "Auto highlight   Jul 11, 2026" and "Added by X   Jul 11,
+  2026", via footerDate() (month spelling matches the chart shortDate, plus the
+  year since the footer is the identification line). Assert: no /Week \d/ in UI.
+  Backtest 38 -> 41 tests, all green; typecheck/lint/build clean.
+  DEVICE PASS STILL OWED: 2 (bars fill) and 3 (scroll timing/legibility) are
+  fixed at the data/build layer and asserted, but a real 380px device pass has
+  NOT been done in this environment -- verify on hardware before closing.
+  BEATS_CACHE_VERSION bumped v8 -> v9; history rebuild required after deploy.
+
 - DONE 2026-07-08: Member identity + persistent logins. Admin unlock moved from
   sessionStorage to localStorage (`ss_admin`) and auto-restored on boot, so it
   survives an iOS force-quit; cleared only via the profile-icon logout. New

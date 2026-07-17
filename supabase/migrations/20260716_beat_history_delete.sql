@@ -11,18 +11,9 @@
 -- on the unique (event_id, angle_type, protagonist_id) constraint and the
 -- rebuild fails / no-ops. This migration adds the missing delete permission.
 --
--- Idempotent: guarded so it is safe to run more than once.
-do $$
-begin
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'public'
-      and tablename = 'story_beats_history'
-      and policyname = 'anon delete beat history'
-  ) then
-    create policy "anon delete beat history"
-      on story_beats_history for delete to anon using (true);
-  end if;
-end $$;
+-- Idempotent: drop-then-create so it is safe to run more than once (matches
+-- the pattern in 20260713 / 20260715).
+drop policy if exists "anon delete beat history" on story_beats_history;
+create policy "anon delete beat history" on story_beats_history for delete to anon using (true);
 
 grant delete on story_beats_history to anon;

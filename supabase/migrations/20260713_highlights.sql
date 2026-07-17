@@ -73,18 +73,31 @@ alter table highlight_likes enable row level security;
 alter table highlight_comments enable row level security;
 alter table story_beats_history enable row level security;
 
+-- Idempotent: drop-then-create so the whole file is safe to re-run (Postgres
+-- has no "create policy if not exists"). Dropping a nonexistent policy is a
+-- no-op with "if exists".
+drop policy if exists "anon read highlights"   on highlights;
 create policy "anon read highlights"        on highlights          for select to anon using (true);
+drop policy if exists "anon insert highlights" on highlights;
 create policy "anon insert highlights"      on highlights          for insert to anon with check (true);
+drop policy if exists "anon hide highlights"   on highlights;
 create policy "anon hide highlights"        on highlights          for update to anon using (true) with check (true);
 
+drop policy if exists "anon read likes"        on highlight_likes;
 create policy "anon read likes"             on highlight_likes     for select to anon using (true);
+drop policy if exists "anon insert likes"      on highlight_likes;
 create policy "anon insert likes"           on highlight_likes     for insert to anon with check (true);
+drop policy if exists "anon delete likes"      on highlight_likes;
 create policy "anon delete likes"           on highlight_likes     for delete to anon using (true);
 
+drop policy if exists "anon read comments"     on highlight_comments;
 create policy "anon read comments"          on highlight_comments  for select to anon using (true);
+drop policy if exists "anon insert comments"   on highlight_comments;
 create policy "anon insert comments"        on highlight_comments  for insert to anon with check (true);
 
+drop policy if exists "anon read beat history"   on story_beats_history;
 create policy "anon read beat history"      on story_beats_history for select to anon using (true);
+drop policy if exists "anon insert beat history" on story_beats_history;
 create policy "anon insert beat history"    on story_beats_history for insert to anon with check (true);
 
 grant select, insert, update on highlights          to anon;

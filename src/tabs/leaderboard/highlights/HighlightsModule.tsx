@@ -167,10 +167,14 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
       ...displayBeats.map((b) => ({
         kind: "data" as const,
         beat: b,
-        // Opening beats ("Through N") are the cold open of the data story --
-        // they must play before any per-hole card, so their sort key is 0
-        // (after pre-round humans, before hole 1).
-        hole: b.throughHole != null ? 0 : b.hole,
+        // Chronological order (Handoff #8): every data beat sorts on the hole
+        // where its story RESOLVES, computed by the composer (resolutionHole).
+        // The opening is NO LONGER pinned to the front -- a race-state beat
+        // detected at hole 9 plays after an eagle on 4, so the story never
+        // jumps backwards. Fall back to throughHole/hole for any cached beat
+        // written before resolutionHole existed (an opening -> its throughHole,
+        // a whole-round beat -> end via watchOrderCompare's null handling).
+        hole: b.resolutionHole ?? b.throughHole ?? b.hole,
         preRound: false,
         isFinal: b.angle === "final",
         createdAt: null,

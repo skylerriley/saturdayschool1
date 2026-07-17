@@ -188,10 +188,17 @@ runs.forEach((r) => {
   console.log(`\n${r.date}  (event ${r.event_id})  winner: ${firstOf(golferName(r.winnerGid))}`);
   r.beats.forEach((b) => {
     const who = b.protagonistName ? firstOf(b.protagonistName) : "(field)";
-    console.log(`  [${b.angle.padEnd(16)}] ${String(b.hole ?? "-").padStart(2)}  ${who.padEnd(9)} ${("[" + b.heroLabel + "]").padEnd(18)} "${b.eyebrow}"`);
+    const res = b.angle === "final" ? "fin" : String(resHole(b) ?? "-");
+    console.log(`  [${b.angle.padEnd(16)}] res ${res.padStart(3)}  hole ${String(b.hole ?? "-").padStart(2)}  ${who.padEnd(9)} ${("[" + b.heroLabel + "]").padEnd(18)} "${b.eyebrow}"`);
     console.log(`      ${captionText(b)}`);
   });
 });
+
+// The resolution hole the composer sorts on: explicit resolutionHole, else the
+// opening's throughHole, else hole. Mirrors HighlightsModule's sort key.
+function resHole(b: DataBeat): number | null {
+  return b.resolutionHole ?? b.throughHole ?? b.hole ?? null;
+}
 // Per-third histogram of hole-bearing beats (holes 1-6 / 7-12 / 13-18).
 const hist = [0, 0, 0];
 runs.forEach((r) => r.beats.forEach((b) => {
@@ -247,6 +254,137 @@ test("spotlight rotation: winner is the primary protagonist in <= half the event
   });
   console.log(`winner is primary protagonist in ${winnerPrimary}/${runs.length} events`);
   assert.ok(winnerPrimary <= runs.length / 2, `winner stars in ${winnerPrimary}/${runs.length}`);
+});
+
+// ---- caption architecture (Handoff #9 1, 2d, 6) ------------------------------
+
+// Field-wide angles have no protagonist; their caption is self-contained by
+// naming the hole / field fact instead of a person.
+const FIELD_ANGLES = new Set(["three_way", "the_turn", "tough_hole", "final"]);
+
+test("caption self-contained: EVERY beat with a protagonist names them (Handoff #10 5b)", () => {
+  // Strengthened: this is the assert that would have caught out_of_character
+  // failing to name its golfer. It applies to ALL angles with a non-null
+  // protagonist, field angles excluded (they have no protagonist to name).
+  runs.forEach((r) => r.beats.forEach((b) => {
+    if (b.protagonistId == null) return;
+    const first = (b.protagonistName || "").split(" ")[0];
+    assert.ok(first, `beat has a protagonistId but no name [${b.angle}, event ${r.event_id}]`);
+    const text = captionText(b);
+    assert.ok(text.includes(first), `caption does not name ${first}, leans on eyebrow [${b.angle}, event ${r.event_id}]: "${text}"`);
+  }));
+});
+
+test("caption char budget: every caption's plain text is <= 160 chars", () => {
+  // 140 is the copy target; the final beat appends a decider clause, so the
+  // hard ceiling the layout must survive is a little higher.
+  runs.forEach((r) => r.beats.forEach((b) => {
+    const len = captionText(b).length;
+    assert.ok(len <= 160, `caption ${len} chars, over budget [${b.angle}, event ${r.event_id}]: "${captionText(b)}"`);
+  }));
+});
+
+test("caption variety across events: an angle firing in >=2 events is not always the same caption shape", () => {
+  // Shape = the caption with names/numbers stripped, so we detect a fixed
+  // SENTENCE STRUCTURE repeating, not just different nouns.
+  const shapeOf = (t: string) => t.replace(/[A-Z][a-z]+/g, "N").replace(/\d+/g, "#").replace(/\s+/g, " ").trim();
+  const byAngle: Record<string, string[]> = {};
+  runs.forEach((r) => r.beats.forEach((b) => {
+    (byAngle[b.angle] ||= []).push(shapeOf(captionText(b)));
+  }));
+  Object.entries(byAngle).forEach(([angle, shapes]) => {
+    if (shapes.length <= 2) return; // need a few firings to judge variety
+    const distinct = new Set(shapes).size;
+    assert.ok(distinct >= 2, `angle ${angle} uses one fixed caption shape across ${shapes.length} events`);
+  });
+});
+
+// ---- standings truth (Handoff #10 1) -----------------------------------------
+
+// Cumulative points per golfer through hole N, from the fixture's per-hole pts.
+function cumThrough(r: typeof runs[number], gids: number[], throughHole: number): Record<number, number> {
+  const out: Record<number, number> = {};
+  gids.forEach((g) => {
+    let s = 0;
+    for (let h = 1; h <= throughHole; h++) s += r.pointsAt[g + "|" + h] ?? 0;
+    out[g] = s;
+  });
+  return out;
+}
+
+test("standings truth: a checkpoint board shows cumulative-through-N, not the final board relabelled", () => {
+  runs.forEach((r) => {
+    const ev = fx.events.find((e: any) => e.event_id === r.event_id);
+    const gids: number[] = ev.entries.map((e: any) => e.golfer_id);
+    const nameOf = (g: number) => golferName(g);
+    const maxHole = Math.max(...ev.hole_scores.filter((h: any) => h.pts != null).map((h: any) => h.hole));
+    const finalCum = cumThrough(r, gids, maxHole);
+
+    r.beats.forEach((b) => {
+      const sb = (b as any).standings;
+      if (!sb || sb.isFinal) return; // final legitimately shows final totals
+      const thru = Number(sb.thru);
+      assert.ok(Number.isFinite(thru) && thru >= 1 && thru < maxHole, `checkpoint thru ${sb.thru} out of range [${b.angle}, event ${r.event_id}]`);
+      const cum = cumThrough(r, gids, thru);
+      // 1) every row's points equal cumulative-through-thru for that golfer.
+      sb.rows.forEach((row: any) => {
+        const g = gids.find((x) => nameOf(x) === row.name);
+        assert.ok(g != null, `standings row name ${row.name} not in field [event ${r.event_id}]`);
+        assert.equal(row.points, cum[g!], `row ${row.name} shows ${row.points}, cumulative through ${thru} is ${cum[g!]} [${b.angle}, event ${r.event_id}]`);
+      });
+      // 2) it is NOT the final board relabelled -- at least one golfer's
+      //    checkpoint total differs from their final total.
+      const anyDiffers = sb.rows.some((row: any) => {
+        const g = gids.find((x) => nameOf(x) === row.name)!;
+        return cum[g] !== finalCum[g];
+      });
+      assert.ok(anyDiffers, `checkpoint board at ${thru} is identical to the final totals -- it is the finishing order relabelled [${b.angle}, event ${r.event_id}]`);
+      // 3) positions derive from THESE totals: rows are points-descending and
+      //    equal points share a position (tie-aware from the same series).
+      for (let i = 1; i < sb.rows.length; i++) {
+        assert.ok(sb.rows[i].points <= sb.rows[i - 1].points, `standings not points-ordered [${b.angle}, event ${r.event_id}]`);
+        if (sb.rows[i].points === sb.rows[i - 1].points) {
+          const a = String(sb.rows[i].pos).replace(/^T/, ""), c = String(sb.rows[i - 1].pos).replace(/^T/, "");
+          assert.equal(a, c, `equal points but different positions [${b.angle}, event ${r.event_id}]: ${sb.rows[i-1].name}=${sb.rows[i-1].pos} ${sb.rows[i].name}=${sb.rows[i].pos}`);
+        }
+      }
+    });
+  });
+});
+
+// ---- tough_hole bars (Handoff #10 2) -----------------------------------------
+
+test("tough_hole bars: fieldBars values are finite and produce > 0 proportional widths", () => {
+  runs.forEach((r) => r.beats.forEach((b) => {
+    if (b.angle !== "tough_hole" || !b.fieldBars) return;
+    const vals = b.fieldBars.map((x: any) => x.value);
+    vals.forEach((v: any, i: number) => {
+      assert.ok(Number.isFinite(v), `fieldBars[${i}].value not finite [event ${r.event_id}]: ${v}`);
+      assert.ok(v >= 0, `fieldBars[${i}].value negative [event ${r.event_id}]`);
+    });
+    const max = Math.max(1, ...vals);
+    assert.ok(Number.isFinite(max) && max > 0, `fieldBars max not positive-finite [event ${r.event_id}]`);
+    // The renderer computes width = round(value/max*100)%; assert it is finite
+    // and > 0 for any non-zero count, and proportional (bigger count => wider).
+    const widths = vals.map((v: any) => Math.round((v / max) * 100));
+    widths.forEach((w: number, i: number) => {
+      assert.ok(Number.isFinite(w), `width NaN [event ${r.event_id}, bar ${i}]`);
+      if (vals[i] > 0) assert.ok(w > 0, `non-zero count ${vals[i]} produced 0 width [event ${r.event_id}, bar ${i}]`);
+    });
+    // Keys are the spec shape { label, value, color }, not { l, v, c }.
+    b.fieldBars.forEach((x: any) => {
+      assert.ok("label" in x && "value" in x && "color" in x, `fieldBars wrong key shape [event ${r.event_id}]: ${JSON.stringify(x)}`);
+    });
+  }));
+});
+
+// ---- event identity: no "Week N" in user-facing copy (Handoff #10 6) ---------
+
+test("no week numbers: no user-facing string matches /Week \\d/", () => {
+  const WEEK = /Week\s*\d/i;
+  runs.forEach((r) => r.beats.forEach((b) => {
+    assert.ok(!WEEK.test(allText(b)), `"Week N" leaked to UI [${b.angle}, event ${r.event_id}]: "${allText(b)}"`);
+  }));
 });
 
 test("grammar: captions have verbs, terminal punctuation, no broken possessive fragment", () => {
@@ -327,16 +465,19 @@ test("determinism: two full pipeline runs (Monte Carlo rebuilt from seed) are id
 
 const FIREWORKS = new Set(["ace", "albatross", "eagle"]);
 
-test("shape: opening first, final last, 3-5 beats (+1 per fireworks), middles hole-ascending", () => {
+test("shape: final last, 3-5 beats (+1 per fireworks), body sorted by resolution hole", () => {
   runs.forEach((r) => {
     // Fireworks are ADDITIVE -- they take a guaranteed slot on top of the arc
     // (up to FIREWORKS_MAX=2), so an eagle event may run to 6 or 7 beats.
     const extra = r.beats.filter((b) => FIREWORKS.has(b.angle)).length;
     assert.ok(r.beats.length >= 3 && r.beats.length <= 5 + extra, `event ${r.event_id}: ${r.beats.length} beats (+${extra} fireworks)`);
-    assert.ok(r.beats[0].throughHole != null, `event ${r.event_id}: first beat is not an opening`);
+    // Chronology (Handoff #8): the opening is NO LONGER pinned first. The body
+    // (everything but the final) is ordered by resolution hole, non-decreasing.
     assert.equal(r.beats[r.beats.length - 1].angle, "final");
-    const mids = r.beats.slice(1, -1).map((b) => b.hole ?? 99);
-    for (let i = 1; i < mids.length; i++) assert.ok(mids[i] >= mids[i - 1], `event ${r.event_id}: middles out of order`);
+    const body = r.beats.slice(0, -1).map((b) => resHole(b) ?? 99);
+    for (let i = 1; i < body.length; i++) {
+      assert.ok(body[i] >= body[i - 1], `event ${r.event_id}: body out of resolution-hole order (${body.join(",")})`);
+    }
   });
 });
 
@@ -344,8 +485,10 @@ test("shape: opening first, final last, 3-5 beats (+1 per fireworks), middles ho
 
 test("opening variety: no single hole opens more than half the events", () => {
   const counts: Record<number, number> = {};
-  runs.forEach((r) => { const h = r.beats[0].throughHole!; counts[h] = (counts[h] || 0) + 1; });
-  console.log("opening holes:", runs.map((r) => r.beats[0].throughHole).join(", "));
+  // The opening no longer sits at index 0 (Handoff #8) -- find it by throughHole.
+  const openingOf = (r: typeof runs[number]) => r.beats.find((b) => b.throughHole != null);
+  runs.forEach((r) => { const o = openingOf(r); if (o) { const h = o.throughHole!; counts[h] = (counts[h] || 0) + 1; } });
+  console.log("opening holes:", runs.map((r) => openingOf(r)?.throughHole ?? "-").join(", "));
   const max = Math.max(...Object.values(counts));
   assert.ok(max <= Math.ceil(runs.length / 2), `one hole opens ${max}/${runs.length} events: ${JSON.stringify(counts)}`);
 });
@@ -562,6 +705,79 @@ test("turning point truth: collapse lands on the biggest win-prob drop it is all
     });
     assert.equal(beat.hole, bestHole, `collapse on ${beat.hole} but the biggest qualifying drop is hole ${bestHole} [event ${r.event_id}]`);
     assert.equal(beat.protagonistId, bestGid, `collapse protagonist mismatch [event ${r.event_id}]`);
+  });
+});
+
+// ---- chronological ordering (Handoff #8) -------------------------------------
+
+const RACE_STATE = new Set(["three_way", "duel", "pace_setter", "wire_to_wire"]);
+
+test("chronology: hole-bearing beats are in non-decreasing resolution-hole order, final last", () => {
+  runs.forEach((r) => {
+    assert.equal(r.beats[r.beats.length - 1].angle, "final", `event ${r.event_id}: final not last`);
+    const body = r.beats.slice(0, -1);
+    let prev = -Infinity;
+    body.forEach((b) => {
+      const h = resHole(b);
+      assert.ok(h != null, `event ${r.event_id}: body beat [${b.angle}] has no resolution hole`);
+      assert.ok(h! >= prev, `event ${r.event_id}: story jumps backwards at [${b.angle}] (res ${h} after ${prev}) -- ${r.beats.map((x) => x.angle + "@" + resHole(x)).join(" ")}`);
+      prev = h!;
+    });
+  });
+});
+
+test("span resolution: charge/run, fast_start, and whole-round beats resolve at their end hole", () => {
+  runs.forEach((r) => {
+    r.beats.forEach((b) => {
+      if (b.angle === "charge") {
+        // A run/charge resolves at the END of its stretch, which is >= its
+        // anchor hole; the subtext names "Holes S-E" for the run presentation.
+        const m = /Holes (\d+)-(\d+)/.exec(b.subtext || "");
+        if (m) assert.equal(resHole(b), Number(m[2]), `event ${r.event_id}: charge resolves at ${resHole(b)}, not stretch end ${m[2]}`);
+        else assert.ok(resHole(b)! >= (b.hole ?? 0), `event ${r.event_id}: charge resolution before its anchor`);
+      }
+      // fade / grinder / wildcard / rivalry / redemption / out_of_character are
+      // whole-round (hole == null) -> must resolve at the finish, not float away.
+      if (b.hole == null && b.angle !== "final" && !RACE_STATE.has(b.angle) && b.throughHole == null) {
+        const maxHole = Math.max(...Object.keys(r.pointsAt).map((k) => Number(k.split("|")[1])));
+        assert.equal(resHole(b), maxHole, `event ${r.event_id}: whole-round [${b.angle}] resolves at ${resHole(b)}, not finish ${maxHole}`);
+      }
+    });
+  });
+});
+
+test("opening guaranteed: every event still emits exactly one opening-slot context beat", () => {
+  // The guaranteed context beat is the one filling the OPENING slot -- it
+  // carries throughHole ("Through N"). duel was reclassified to a MIDDLE beat
+  // in Handoff #6 (a sustained two-horse race is a mid-round shape, hole:null,
+  // no throughHole), so an event may hold both a three_way opening AND a duel
+  // middle -- that is 2 race-state angles but still exactly 1 opening.
+  runs.forEach((r) => {
+    const openings = r.beats.filter((b) => b.throughHole != null);
+    assert.equal(openings.length, 1, `event ${r.event_id}: ${openings.length} opening-slot beats (${openings.map((b) => b.angle).join(",")}), expected exactly 1`);
+    assert.ok(RACE_STATE.has(openings[0].angle), `event ${r.event_id}: opening [${openings[0].angle}] is not a race-state angle`);
+  });
+});
+
+test("label truth: 'The Opening' only when chronologically first; no earliness copy off the front", () => {
+  const EARLY = /\b(takes shape|out of the gate|from the start|opens with|early|opening stretch|from the jump|finding its footing|sets the (early )?pace|sets the tone)\b/i;
+  runs.forEach((r) => {
+    const body = r.beats.slice(0, -1);
+    const firstHoleBearing = body.find((b) => resHole(b) != null);
+    body.forEach((b, i) => {
+      const isFirst = b === firstHoleBearing;
+      if (b.heroLabel === "The Opening") {
+        assert.ok(isFirst, `event ${r.event_id}: [${b.angle}] labelled "The Opening" but is not chronologically first (index ${i})`);
+      }
+      // A race-state beat that is NOT first must not assert earliness in its
+      // hero label or caption. (pace_setter/wire_to_wire earliness lives in
+      // the ANGLE meaning, not the copy -- their labels are neutral, and their
+      // captions describe the lead, not "the opening".)
+      if (RACE_STATE.has(b.angle) && !isFirst) {
+        const text = (b.heroLabel + " | " + b.eyebrow + " | " + captionText(b));
+        assert.ok(!EARLY.test(text), `event ${r.event_id}: [${b.angle}] off-front but asserts earliness: "${text}"`);
+      }
+    });
   });
 });
 

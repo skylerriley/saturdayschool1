@@ -64,15 +64,23 @@ supabase functions deploy r2-presign
 
 ## 5. Database migration
 
-Apply, in order (SQL editor or `supabase db push`):
+Apply, in this order (SQL editor or `supabase db push`). Every file is
+IDEMPOTENT — safe to re-run, and safe to run the whole sequence twice — so a
+run that errors partway can just be re-applied (policies use
+`drop policy if exists` then `create`; columns use `add column if not exists`):
 
-- `supabase/migrations/20260713_highlights.sql` — creates `highlights`,
-  `highlight_likes`, `highlight_comments`, `story_beats_history` with anon RLS
-  matching the app.
-- `supabase/migrations/20260715_highlights_visuals.sql` — `hole_images.view_type`
-  / `anchors`; `story_beats_history.hidden` / `caption_override` + anon update.
-- `supabase/migrations/20260716_beat_hole.sql` — `story_beats_history.hole`
-  (needed by the exact-identity anti-repeat cooldown).
+1. `supabase/migrations/20260713_highlights.sql` — creates `highlights`,
+   `highlight_likes`, `highlight_comments`, `story_beats_history` with anon RLS
+   matching the app.
+2. `supabase/migrations/20260715_highlights_visuals.sql` — `hole_images.view_type`
+   / `anchors`; `story_beats_history.hidden` / `caption_override` + anon update.
+3. `supabase/migrations/20260716_beat_hole.sql` — `story_beats_history.hole`
+   (needed by the exact-identity anti-repeat cooldown).
+4. `supabase/migrations/20260716_beat_history_delete.sql` — the anon DELETE
+   policy + grant on `story_beats_history`. REQUIRED: the beat-history rebuild
+   deletes rows per event before replaying; without this grant RLS silently
+   blocks the delete and the rebuild collides on the unique constraint. (Files
+   3 and 4 share the 20260716 prefix but are independent — either order works.)
 
 ## 5b. Beat history — WHEN TO REBUILD
 
