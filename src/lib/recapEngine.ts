@@ -113,6 +113,12 @@ export interface BeatHistoryRow {
   event_id: number;
   angle_type: string;
   protagonist_id: number | null;
+  hole?: number | null; // hole the beat anchored on (null => whole-round/field)
+  // Recency rank among prior events: 0 = the event immediately before this
+  // one, 1 = two events back, ... Used for hard cooldowns and angle decay.
+  // The caller assigns this from event ordering; when absent the composer
+  // treats all rows as "1 event ago" (legacy behaviour).
+  eventsAgo?: number;
 }
 
 // -- Seeded PRNG ---------------------------------------------------------------
@@ -186,6 +192,7 @@ export function buildWinProbSeries(players: RecapPlayer[], scores: RecapHoleScor
 export interface PlayerHistoryEntry {
   golferId: number;
   recentPoints: number[]; // prior events' totals, chronological, most recent last
+  recentDates: string[]; // event date per recentPoints entry (YYYY-MM-DD), parallel
   mean: number;
   std: number;
   // Per-hole aggregates are SAME-COURSE ONLY (when holeStatsEventIds is
@@ -194,8 +201,49 @@ export interface PlayerHistoryEntry {
   // season form is course-independent.
   holeGrossByEvent: Record<number, number[]>; // per hole: gross by prior event, chronological
   holePointsByEvent: Record<number, (number | null)[]>; // parallel stableford points (null when unknown)
+  holeDatesByEvent: Record<number, string[]>; // parallel event dates (YYYY-MM-DD)
   holeAverages: Record<number, number>; // avg gross per hole (>=3 samples only)
   weeksAbsent: number; // completed events since the player last posted a round
+}
+
+// The field's historical baseline on this course -- the yardstick that makes
+// "nemesis" a personal story instead of a restatement of "this hole is hard".
+export interface FieldHoleBaseline {
+  // hole -> mean stableford points the FIELD scored there in prior rounds
+  meanPointsAt: Record<number, number>;
+  // mean stableford points per hole across ALL holes/players (the overall
+  // scoring level, used to subtract out "this player is just better/worse")
+  overallMeanPoints: number;
+  samplesAt: Record<number, number>;
+}
+
+export function buildFieldHoleBaseline(args: {
+  eventId: number;
+  allEvents: { event_id: number; date: string }[];
+  priorHoleRows: { golfer_id: number; event_id: number; hole: number; gross: number; points?: number | null }[];
+  holeStatsEventIds?: number[];
+}): FieldHoleBaseline {
+  const ordered = [...args.allEvents].sort((a, b) => a.date.localeCompare(b.date));
+  const eventOrder: Record<number, number> = {};
+  ordered.forEach((e, i) => { eventOrder[e.event_id] = i; });
+  const targetOrder = eventOrder[args.eventId];
+  const eligible = args.holeStatsEventIds ? new Set(args.holeStatsEventIds) : null;
+  const sums: Record<number, number> = {};
+  const counts: Record<number, number> = {};
+  let allSum = 0, allCount = 0;
+  if (targetOrder != null) {
+    args.priorHoleRows.forEach((r) => {
+      if (r.points == null) return;
+      if (eventOrder[r.event_id] == null || eventOrder[r.event_id] >= targetOrder) return;
+      if (eligible != null && !eligible.has(r.event_id)) return;
+      sums[r.hole] = (sums[r.hole] || 0) + r.points;
+      counts[r.hole] = (counts[r.hole] || 0) + 1;
+      allSum += r.points; allCount += 1;
+    });
+  }
+  const meanPointsAt: Record<number, number> = {};
+  Object.keys(counts).forEach((h) => { meanPointsAt[Number(h)] = sums[Number(h)] / counts[Number(h)]; });
+  return { meanPointsAt, overallMeanPoints: allCount ? allSum / allCount : 0, samplesAt: counts };
 }
 
 export function buildPlayerHistories(args: {
@@ -210,7 +258,8 @@ export function buildPlayerHistories(args: {
 }): Record<number, PlayerHistoryEntry> {
   const ordered = [...args.allEvents].sort((a, b) => a.date.localeCompare(b.date));
   const eventOrder: Record<number, number> = {};
-  ordered.forEach((e, i) => { eventOrder[e.event_id] = i; });
+  const eventDate: Record<number, string> = {};
+  ordered.forEach((e, i) => { eventOrder[e.event_id] = i; eventDate[e.event_id] = e.date; });
   const targetOrder = eventOrder[args.eventId];
   if (targetOrder == null) return {};
   const holeEligible = args.holeStatsEventIds ? new Set(args.holeStatsEventIds) : null;
@@ -221,6 +270,7 @@ export function buildPlayerHistories(args: {
       .filter((t) => t.golfer_id === gid && eventOrder[t.event_id] != null && eventOrder[t.event_id] < targetOrder && t.total != null)
       .sort((a, b) => eventOrder[a.event_id] - eventOrder[b.event_id]);
     const recentPoints = prior.map((t) => t.total);
+    const recentDates = prior.map((t) => eventDate[t.event_id] || "");
     const mean = recentPoints.length ? recentPoints.reduce((a, b) => a + b, 0) / recentPoints.length : 0;
     const variance = recentPoints.length > 1
       ? recentPoints.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (recentPoints.length - 1)
@@ -230,6 +280,7 @@ export function buildPlayerHistories(args: {
 
     const holeGrossByEvent: Record<number, number[]> = {};
     const holePointsByEvent: Record<number, (number | null)[]> = {};
+    const holeDatesByEvent: Record<number, string[]> = {};
     args.priorHoleRows
       .filter((r) => r.golfer_id === gid
         && eventOrder[r.event_id] != null && eventOrder[r.event_id] < targetOrder
@@ -239,13 +290,14 @@ export function buildPlayerHistories(args: {
       .forEach((r) => {
         (holeGrossByEvent[r.hole] ||= []).push(r.gross);
         (holePointsByEvent[r.hole] ||= []).push(r.points ?? null);
+        (holeDatesByEvent[r.hole] ||= []).push(eventDate[r.event_id] || "");
       });
     const holeAverages: Record<number, number> = {};
     Object.entries(holeGrossByEvent).forEach(([h, arr]) => {
       if (arr.length >= 3) holeAverages[Number(h)] = arr.reduce((a, b) => a + b, 0) / arr.length;
     });
 
-    out[gid] = { golferId: gid, recentPoints, mean, std: Math.sqrt(variance), holeGrossByEvent, holePointsByEvent, holeAverages, weeksAbsent };
+    out[gid] = { golferId: gid, recentPoints, recentDates, mean, std: Math.sqrt(variance), holeGrossByEvent, holePointsByEvent, holeDatesByEvent, holeAverages, weeksAbsent };
   }
   return out;
 }
@@ -312,6 +364,16 @@ function plural(n: number, word: string): string {
   return n === 1 ? word : word + "s";
 }
 
+// "2026-06-14" -> "Jun 14". Chart axis labels must be REAL event dates, not
+// computed "Wk -N" offsets (an offset is derived state leaking to the UI).
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function shortDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m) return "";
+  const mon = MONTHS[Number(m[2]) - 1] || "";
+  return `${mon} ${Number(m[3])}`.trim();
+}
+
 // -- Round context -------------------------------------------------------------
 export interface RoundContext {
   players: RecapPlayer[];
@@ -329,6 +391,9 @@ export interface RoundContext {
   fieldMeanAt: number[]; // mean stableford across the field per hole (index hole-1)
   yardsFor: (golferId: number | null, hole: number) => number | null;
   history: Record<number, PlayerHistoryEntry>; // {} when unavailable
+  // The field's historical per-hole baseline on this course. Lets nemesis ask
+  // "is this hole hard FOR THIS PLAYER" rather than "is this hole hard".
+  fieldBaseline: FieldHoleBaseline;
 }
 
 export interface BeatCandidate {
@@ -445,6 +510,60 @@ function marginAt(ctx: RoundContext, hole: number, playerIdx: number): number {
   return ctx.totalsSeries[playerIdx][hole] - (bestOther === -Infinity ? 0 : bestOther);
 }
 
+// How many players SHARE playerIdx's cumulative points at a hole (>=1; 1
+// means alone). "hole == null" reads final totals.
+function tieGroupSizeAt(ctx: RoundContext, hole: number | null, playerIdx: number): number {
+  const val = hole == null ? ctx.totals[playerIdx] : ctx.totalsSeries[playerIdx][hole];
+  let n = 0;
+  ctx.players.forEach((_, i) => {
+    const v = hole == null ? ctx.totals[i] : ctx.totalsSeries[i][hole];
+    if (v === val) n++;
+  });
+  return n;
+}
+
+// ---- Tie-aware position phrasing (data-honesty helper) -----------------------
+// EVERY assertion of a player's position must route through this. Stating
+// "XYZ has the lead" when the top is a four-way tie is a FALSE statement, not
+// just awkward -- it belongs with the par-mismatch class of bug. Returns copy
+// that is always true of the actual standings.
+//   rank 0 solo   -> "leads" / "the lead"
+//   rank 0 tied   -> "is tied for the lead with N others"
+//   rank r solo   -> "sits 3rd"
+//   rank r tied   -> "is tied for 3rd"
+function standingPhrase(ctx: RoundContext, hole: number | null, playerIdx: number, fn: string): {
+  // A complete clause: "Joe leads" / "Joe is tied for the lead with two others".
+  clause: string;
+  // Just the position noun for slotting: "the lead" / "a share of the lead" / "3rd".
+  noun: string;
+  tied: boolean;
+  rank0: number;
+} {
+  const rank0 = hole == null ? ctx.ranks[playerIdx] : ranksAt(ctx, hole)[playerIdx];
+  const others = tieGroupSizeAt(ctx, hole, playerIdx) - 1;
+  const tied = others > 0;
+  if (rank0 === 0) {
+    if (!tied) return { clause: `${fn} leads`, noun: "the lead", tied: false, rank0 };
+    return {
+      clause: `${fn} is tied for the lead with ${numWord(others)} ${plural(others, "other")}`,
+      noun: "a share of the lead",
+      tied: true, rank0,
+    };
+  }
+  const pl = posLabel(rank0);
+  if (!tied) return { clause: `${fn} sits ${pl}`, noun: pl, tied: false, rank0 };
+  return { clause: `${fn} is tied for ${pl}`, noun: `a share of ${pl}`, tied: true, rank0 };
+}
+
+// Tie-aware "leads by N" -- returns null when there is nothing true to say
+// (a tie for the lead has no positive margin). Otherwise the margin phrase.
+function leadByPhrase(ctx: RoundContext, hole: number, playerIdx: number, fn: string): string | null {
+  const m = marginAt(ctx, hole, playerIdx);
+  const rank0 = ranksAt(ctx, hole)[playerIdx];
+  if (rank0 !== 0 || m < 1) return null; // not leading, or tied at the top
+  return `${fn} leads by ${numWord(m)} ${plural(m, "point")}`;
+}
+
 // Standings panel at a hole: top rows by cumulative points, with any featured
 // players forced in (mockup's "Thru 17" glass panel).
 function ptsPanelAt(
@@ -550,6 +669,7 @@ const detectThreeWay: Detector = (ctx) => {
       const leaderIdx = orderAt(c, open)[0];
       const leadFn = firstName(c.players[leaderIdx].name);
       const nearPts = near - 1; // exclude the leader
+      const sp = standingPhrase(c, open, leaderIdx, leadFn);
       const eyebrow = bunched
         ? pick([
             `A ${numWord(Math.min(near, 5))}-way race takes shape`,
@@ -558,16 +678,22 @@ const detectThreeWay: Detector = (ctx) => {
             "Nobody blinks through the opening stretch",
           ], seed)
         : pick(["The race takes shape", "An early feel-out round", "The field settles in"], seed + 1);
-      const caption: CaptionPart[] = nearPts >= 2
+      // Tie-aware: never assert "leads" when the top is shared.
+      const caption: CaptionPart[] = sp.tied
         ? [
-            { t: `${leadFn} leads through ${open}, and ` },
-            { t: `${numWord(nearPts)} golfers sit within two points`, b: true },
-            { t: " of the lead." },
+            { t: `${sp.clause} through ${open}`, b: true },
+            { t: ", with the field still finding its footing." },
           ]
-        : [
-            { t: `${leadFn} leads through ${open}`, b: true },
-            { t: ", and the field is still finding its footing." },
-          ];
+        : nearPts >= 2
+          ? [
+              { t: `${leadFn} leads through ${open}, and ` },
+              { t: `${numWord(nearPts)} golfers sit within two points`, b: true },
+              { t: " of the lead." },
+            ]
+          : [
+              { t: `${leadFn} leads through ${open}`, b: true },
+              { t: ", and the field is still finding its footing." },
+            ];
       return {
         ...beatHead("three_way", "The Opening", eyebrow),
         hole: open, throughHole: open,
@@ -585,26 +711,54 @@ const detectDuel: Detector = (ctx) => {
   if (ctx.players.length < 3 || ctx.maxHole < OPEN_LO) return [];
   // Pick the early hole where two players have most clearly separated from
   // the pack: tiny 1st-2nd gap, big 2nd-3rd gap (all in points).
-  let best: { h: number; aIdx: number; bIdx: number; g23: number; sep: number } | null = null;
-  for (let h = OPEN_LO; h <= openHi(ctx); h++) {
+  // Two leaders who have genuinely SEPARATED from the field.
+  //
+  // Probed against the real fixture, and the numbers rewrote this detector:
+  //   - Over holes 3-9 the best gap-to-third (with a tight 1st-2nd gap) was
+  //     [1,0,1,2,1,1,2] across 7 events -- a 3+ point gap NEVER happens early,
+  //     so the old "opening duel" could only ever fire on noise.
+  //   - Over the WHOLE round, a pair holding the top two with a >=3 point
+  //     cushion never survives even 2 consecutive holes (max run [1,0,0,1,0,0,0]).
+  //     In this league a 3-point cushion two-horse race does not exist.
+  //   - At a 2-point cushion the longest runs are [2,1,0,6,1,0,2].
+  //
+  // So: cushion >= 2 (one hole of separation), but it must be SUSTAINED for
+  // >= 4 consecutive holes. Duration is what proves the 2 points is real
+  // separation rather than a single-hole blip -- a pair clear of the field
+  // for six straight holes (event 302) is a duel a member would recognise;
+  // the same gap for one hole is noise. Rarity here is honest.
+  const DUEL_MIN_CUSHION = 2;
+  const DUEL_MIN_HOLES = 4;
+  let run: { s: number; aIdx: number; bIdx: number } | null = null;
+  let best: { h: number; aIdx: number; bIdx: number; g23: number; len: number } | null = null;
+  for (let h = OPEN_LO; h <= ctx.maxHole; h++) {
     const ord = orderAt(ctx, h);
     const t = (i: number) => ctx.totalsSeries[ord[i]][h];
     const g12 = t(0) - t(1);
     const g23 = t(1) - t(2);
-    if (g12 > 1 || g23 < 3) continue;
-    const sep = g23 - g12;
-    if (!best || sep > best.sep) best = { h, aIdx: ord[0], bIdx: ord[1], g23, sep };
+    const pairOk = g12 <= 2 && g23 >= DUEL_MIN_CUSHION;
+    const samePair = run && ((run.aIdx === ord[0] && run.bIdx === ord[1]) || (run.aIdx === ord[1] && run.bIdx === ord[0]));
+    if (pairOk && samePair) {
+      const len = h - run!.s + 1;
+      if (len >= DUEL_MIN_HOLES && (!best || len > best.len)) best = { h, aIdx: ord[0], bIdx: ord[1], g23, len };
+    } else if (pairOk) {
+      run = { s: h, aIdx: ord[0], bIdx: ord[1] };
+    } else {
+      run = null;
+    }
   }
   if (!best) return [];
   const b = best;
   return [{
     angle: "duel",
-    slot: "opening",
+    // A sustained two-horse race is a shape the whole round has, not a
+    // snapshot of the opening -- so it competes as a middle beat.
+    slot: "middle",
     protagonistId: ctx.players[b.aIdx].golferId,
-    hole: b.h,
-    strength: clamp01(b.sep / 6 + 0.1),
+    hole: null,
+    strength: clamp01(b.len / 10 + b.g23 / 12),
     surprise: 0.5,
-    evidence: { a: ctx.players[b.aIdx].name, b: ctx.players[b.bIdx].name, open: b.h },
+    evidence: { a: ctx.players[b.aIdx].name, b: ctx.players[b.bIdx].name, throughHole: b.h, holes: b.len, cushion: b.g23, fromHole: b.h - b.len + 1 },
     build: (c, seed) => {
       const fa = firstName(c.players[b.aIdx].name);
       const fb = firstName(c.players[b.bIdx].name);
@@ -612,22 +766,25 @@ const detectDuel: Detector = (ctx) => {
       const bPts = c.totalsSeries[b.bIdx][b.h];
       return {
         ...beatHead("duel", "The Duel", pick([
-          `${fa} and ${fb} pull away`,
-          `A two-horse race forms early`,
+          `${fa} and ${fb} leave the field behind`,
+          `A two-horse race`,
           `${fa} vs ${fb}, and daylight behind them`,
           `Two golfers separate from the pack`,
         ], seed)),
-        hole: b.h, throughHole: b.h,
-        preview: "The Duel",
+        hole: null,
+        subtext: "Head to head",
+        preview: `${fa} vs ${fb}`,
         protagonistId: c.players[b.aIdx].golferId,
+        protagonistName: c.players[b.aIdx].name,
+        protagonistInitials: initials(c.players[b.aIdx].name),
         h2h: [
-          { name: fa, color: H2H_COLORS[0], points: cumulativePoints(c, b.aIdx, b.h) },
-          { name: fb, color: H2H_COLORS[1], points: cumulativePoints(c, b.bIdx, b.h) },
+          { name: fa, color: H2H_COLORS[0], points: cumulativePoints(c, b.aIdx, c.maxHole) },
+          { name: fb, color: H2H_COLORS[1], points: cumulativePoints(c, b.bIdx, c.maxHole) },
         ],
         caption: [
-          { t: `Through ${b.h} it is already a two-player fight -- ` },
+          { t: `From hole ${b.h - b.len + 1} to ${b.h} it is a two-player fight -- ` },
           { t: `${fa} on ${aPts} points, ${fb} on ${bPts}`, b: true },
-          { t: `, and the rest of the field sits ${numWord(b.g23)} ${plural(b.g23, "point")} back.` },
+          { t: `, with the rest of the field ${numWord(b.g23)} ${plural(b.g23, "point")} back.` },
         ],
         strength: 0, mood: "expo",
       };
@@ -661,16 +818,15 @@ const detectWireToWire: Detector = (ctx) => {
     evidence: { winner: ctx.players[w].name, onset, finalM },
     build: (c, seed) => {
       const fn = firstName(c.players[w].name);
-      const m = marginAt(c, open, w);
-      const caption: CaptionPart[] = m > 0
+      const lead = leadByPhrase(c, open, w, fn);
+      const caption: CaptionPart[] = lead
         ? [
-            { t: `${fn} leads by ` },
-            { t: `${numWord(m)} ${plural(m, "point")}`, b: true },
+            { t: `${lead}`, b: true },
             { t: ` after ${open} holes, and the lead never gets threatened.` },
           ]
         : [
             { t: `${fn} shares the top spot`, b: true },
-            { t: ` after ${open} holes and never lets go of it.` },
+            { t: ` after ${open} holes, then pulls clear and never looks back.` },
           ];
       return {
         ...beatHead("wire_to_wire", "Wire to Wire", pick([
@@ -718,9 +874,11 @@ const detectPaceSetter: Detector = (ctx) => {
     evidence: { leader: ctx.players[li].name, margin: m0, open: oh },
     build: (c, seed) => {
       const fn = firstName(c.players[li].name);
+      // pace_setter only fires with margin >= 2, so this is always a solo
+      // lead; leadByPhrase keeps that guaranteed rather than assumed.
+      const lead = leadByPhrase(c, oh, li, fn) || `${fn} leads the field`;
       const caption: CaptionPart[] = [
-        { t: `${fn} leads the field by ` },
-        { t: `${numWord(m0)} ${plural(m0, "point")}`, b: true },
+        { t: `${lead}` },
         { t: ` through ${oh} -- now the field has to respond.` },
       ];
       return {
@@ -1040,11 +1198,12 @@ const detectFastStart: Detector = (ctx) => {
         const opener = n3 >= 2
           ? `${numWord(n3, true)} net ${plural(n3, "birdie")} in the first ${numWord(check)} holes`
           : `${totalPts} points through the first ${numWord(check)} holes`;
+        const spCheck = standingPhrase(c, check, i, fn);
         const status = rankAtCheck === 0 && mAtCheck >= 1
           ? [{ t: ` -- through ${check}, ` }, { t: `nobody is close to ${fn}`, b: true }, { t: "." }]
           : rankAtCheck === 0
             ? [{ t: ` -- ${fn} sits ` }, { t: "level at the top", b: true }, { t: ` through ${check}.` }]
-            : [{ t: ` -- ${fn} sits ` }, { t: posLabel(rankAtCheck), b: true }, { t: ` through ${check}.` }];
+            : [{ t: ` -- ${fn} sits ` }, { t: spCheck.noun, b: true }, { t: ` through ${check}.` }];
         // streak strip over holes 1..6 with the burst focused (needs gross;
         // falls back to the points panel when the card is incomplete).
         const to = Math.min(6, c.maxHole);
@@ -1104,7 +1263,14 @@ const detectFade: Detector = (ctx) => {
       evidence: { checkHole, bestRank, finalRank, lost },
       build: (c, seed) => {
         const fn = firstName(p.name);
-        const phrase = bestRank === 0 ? "was the man to beat" : `sat ${posLabel(bestRank)}`;
+        // Tie-aware: at the early checkpoint the leader may be tied. "was the
+        // man to beat" would be false in a shared lead.
+        const spEarly = standingPhrase(c, checkHole, i, fn);
+        const spFinal = standingPhrase(c, null, i, fn);
+        const phrase = bestRank === 0
+          ? (spEarly.tied ? "shared the lead" : "was the man to beat")
+          : (spEarly.tied ? `was tied for ${posLabel(bestRank)}` : `sat ${posLabel(bestRank)}`);
+        const finalNoun = spFinal.tied ? `a share of ${posLabel(finalRank)}` : posLabel(finalRank);
         const closer = checkHole <= 9 && c.maxHole >= 16 ? "The back nine had other ideas." : "The closing stretch had other ideas.";
         const caption: CaptionPart[] = pick([
           [
@@ -1113,13 +1279,13 @@ const detectFade: Detector = (ctx) => {
           ],
           [
             { t: `${fn} ${phrase} through ${checkHole}, then slid to ` },
-            { t: posLabel(finalRank), b: true },
+            { t: finalNoun, b: true },
             { t: " by the end." },
           ],
           [
             { t: `A strong start fades -- ${fn} drops ` },
             { t: `${numWord(lost)} spots`, b: true },
-            { t: ` after hole ${checkHole} and finishes ${posLabel(finalRank)}.` },
+            { t: ` after hole ${checkHole} and finishes ${finalNoun}.` },
           ],
         ], seed + checkHole);
         return {
@@ -1136,8 +1302,8 @@ const detectFade: Detector = (ctx) => {
           ptsPanel: {
             label: `${fn} -- start to finish`,
             cols: [
-              { name: `Thru ${checkHole}`, value: `${posLabel(bestRank)} - ${c.totalsSeries[i][checkHole]} pts` },
-              { name: "Final", value: `${posLabel(finalRank)} - ${c.totals[i]} pts`, dir: "dn" },
+              { name: `Thru ${checkHole}`, value: `${spEarly.tied ? "T" : ""}${posLabel(bestRank)} - ${c.totalsSeries[i][checkHole]} pts` },
+              { name: "Final", value: `${spFinal.tied ? "T" : ""}${posLabel(finalRank)} - ${c.totals[i]} pts`, dir: "dn" },
             ],
           },
           caption,
@@ -1209,28 +1375,58 @@ const detectGrinder: Detector = (ctx) => {
       holes.push({ hole: h, gross: sc.gross, par: sc.par });
       ptsList.push(sc.points);
     }
-    // Net grinder: zero blanks and at most one net birdie -- a top finish
-    // built on steadiness. (A literally birdie-free top-3 card almost never
-    // occurs on real data; the old all-1s-and-2s gate meant this detector
-    // never fired.)
-    const nBirdies = ptsList.filter((d) => d >= 3).length;
-    if (ptsList.some((d) => d === 0) || nBirdies > 1) return;
-    const bogeyShare = ptsList.filter((d) => d === 1).length / ptsList.length;
-    const consistency = 1 - 2 * bogeyShare * (1 - bogeyShare); // 1 when uniform
+    // A grinder is LOW VARIANCE -- mostly 2s, few 0s AND few 3s. That is what
+    // the word means, so measure it directly: the standard deviation of
+    // per-hole points, gated on a top finish.
+    //
+    // History of this gate, as a warning: it originally required a
+    // birdie-FREE top-3 card, which is mythical in a net-Stableford field
+    // (every real top-3 card here has 7+ net birdies) -- scratch-golf
+    // intuition. The first fix ("<=1 blank, birdies <= pars") made it fire but
+    // still let a 7-birdie card be called "no fireworks", which reads false.
+    // Probed field median stddev is ~0.88-1.01; genuine grinders sit at
+    // 0.50-0.75. Requiring BOTH a clearly-below-field stddev and birdies not
+    // dominating pars keeps the copy true.
+    const nBlank = ptsList.filter((d) => d === 0).length;
+    const nBird = ptsList.filter((d) => d >= 3).length;
+    const nPar = ptsList.filter((d) => d === 2).length;
+    const mean = ptsList.reduce((a, b) => a + b, 0) / ptsList.length;
+    const sd = Math.sqrt(ptsList.reduce((a, b) => a + (b - mean) * (b - mean), 0) / ptsList.length);
+    // Field's median per-hole stddev this event -- the relative yardstick.
+    const fieldSds: number[] = [];
+    ctx.players.forEach((q) => {
+      const list: number[] = [];
+      for (let h = 1; h <= ctx.maxHole; h++) {
+        const v = ctx.pointsAt[q.golferId + "|" + h];
+        if (v != null) list.push(v);
+      }
+      if (list.length < ctx.maxHole) return;
+      const m = list.reduce((a, b) => a + b, 0) / list.length;
+      fieldSds.push(Math.sqrt(list.reduce((a, b) => a + (b - m) * (b - m), 0) / list.length));
+    });
+    if (fieldSds.length < 3) return;
+    fieldSds.sort((a, b) => a - b);
+    const medianSd = fieldSds[Math.floor(fieldSds.length / 2)];
+    // Meaningfully steadier than the field, and not a fireworks card.
+    if (sd > medianSd * 0.8) return;
+    if (nBird > nPar) return;
+    if (nBlank > 1) return;
     const finishW = [1, 0.85, 0.7][ctx.ranks[i]] ?? 0.5;
     out.push({
       angle: "grinder",
       slot: "middle",
       protagonistId: p.golferId,
       hole: null,
-      strength: clamp01(finishW * (0.55 + consistency * 0.45)),
+      strength: clamp01(finishW * (0.45 + clamp01((medianSd - sd) / 0.4) * 0.4)),
       surprise: i === ctx.winnerIdx ? 0.45 : 0.65,
-      evidence: { netPars: ptsList.filter((d) => d === 2).length, netBogeys: ptsList.filter((d) => d === 1).length, rank: ctx.ranks[i] },
+      evidence: { netPars: nPar, netBogeys: ptsList.filter((d) => d === 1).length, blanks: nBlank, sd, medianSd, rank: ctx.ranks[i] },
       build: (c, seed) => {
         const fn = firstName(p.name);
-        const nPars = ptsList.filter((d) => d === 2).length;
         const nBogs = ptsList.filter((d) => d === 1).length;
         const place = ["first", "second", "third"][ctx.ranks[i]] || "near the top";
+        const wreck = nBlank === 0
+          ? [{ t: "zero blowups", b: true }, { t: ` -- the steadiest card in the field, and it lands ${fn} ${place}.` }]
+          : [{ t: "just one blowup", b: true }, { t: ` -- one of the steadiest cards in the field, and it lands ${fn} ${place}.` }];
         return {
           ...beatHead("grinder", "The Grinder", pick([
             `${fn} grinds out a clean card`,
@@ -1244,11 +1440,8 @@ const detectGrinder: Detector = (ctx) => {
           protagonistId: p.golferId, protagonistName: p.name, protagonistInitials: initials(p.name),
           scorecard: { name: p.name, totalPoints: c.totals[i], holes: holes.map((h) => ({ gross: h.gross, par: h.par })) },
           caption: [
-            { t: `${nPars} net pars, ${nBogs} net ${plural(nBogs, "bogey")}, ` },
-            { t: "zero blowouts", b: true },
-            { t: nBirdies === 0
-              ? ` -- ${fn} finishes ${place} without a single net birdie.`
-              : ` -- ${fn} finishes ${place} on steadiness alone.` },
+            { t: `${nPar} net pars, ${nBogs} net ${plural(nBogs, "bogey")}, ` },
+            ...wreck,
           ],
           strength: 0, mood: "cool",
         };
@@ -1295,7 +1488,7 @@ const detectWildcard: Detector = (ctx) => {
           protagonistId: p.golferId, protagonistName: p.name, protagonistInitials: initials(p.name),
           scorecard: { name: p.name, totalPoints: c.totals[i], holes: holes.map((h) => ({ gross: h.gross, par: h.par })) },
           caption: [
-            { t: `${numWord(nBird, true)} net ${plural(nBird, "birdie")} and ${numWord(nBlank)} ${plural(nBlank, "blowouts")} across one scorecard`, b: true },
+            { t: `${numWord(nBird, true)} net ${plural(nBird, "birdie")} and ${numWord(nBlank)} ${plural(nBlank, "blowup")} across one scorecard`, b: true },
             { t: ` -- ${fn} never plays a boring hole.` },
           ],
           strength: 0, mood: "cool",
@@ -1375,44 +1568,79 @@ const detectToughHole: Detector = (ctx) => {
 // holeStatsEventIds), so "this hole" claims below are honest.
 
 const detectNemesis: Detector = (ctx) => {
+  // PERSONAL, NOT HARD. Ranking a player's worst hole by ABSOLUTE gross
+  // average just re-finds the hardest hole on the course -- it is everyone's
+  // worst hole, permanently, so the same hole re-qualifies for every player
+  // every week (probed: hole 14 was the "nemesis" of 2/7 players in one
+  // event; 18 recurred across three). That is the scratch-golf pattern
+  // again: an absolute yardstick where a relative one is meaningful.
+  //
+  // A nemesis is a hole where THIS PLAYER underperforms relative to how the
+  // FIELD plays that hole, after subtracting out their own overall level (a
+  // weaker player is worse everywhere -- that is not a nemesis):
+  //
+  //   deficit = (player mean pts on hole) - (field mean pts on hole)
+  //           - ((player overall mean pts) - (field overall mean pts))
+  //
+  // Most negative deficit = the hole they specifically own least. Units are
+  // POINTS (net), never gross.
   const out: BeatCandidate[] = [];
+  const fb = ctx.fieldBaseline;
+  if (!fb || Object.keys(fb.meanPointsAt).length === 0) return out; // no baseline => no claim
   ctx.players.forEach((p) => {
     const hist = ctx.history[p.golferId];
     if (!hist) return;
-    let worstHole = -1, worstAvgOver = 0;
-    Object.entries(hist.holeAverages).forEach(([hs, avg]) => {
-      const h = Number(hs);
-      const par = ctx.holePars[h - 1];
-      if (par == null) return;
-      const over = avg - par;
-      if (over > worstAvgOver) { worstAvgOver = over; worstHole = h; }
+    // The player's own overall scoring level on this course, in points.
+    let ownAll = 0, ownAllN = 0;
+    Object.values(hist.holePointsByEvent).forEach((arr) => {
+      arr.forEach((v) => { if (v != null) { ownAll += v; ownAllN += 1; } });
     });
-    if (worstHole < 0 || worstAvgOver < 1.2) return;
+    if (ownAllN < 18) return; // need a real sample of this player's scoring
+    const ownOverallMean = ownAll / ownAllN;
+    const playerEdge = ownOverallMean - fb.overallMeanPoints;
+
+    let worstHole = -1, worstDeficit = 0, worstOwnMean = 0;
+    Object.entries(hist.holePointsByEvent).forEach(([hs, arr]) => {
+      const h = Number(hs);
+      const known = arr.filter((v): v is number => v != null);
+      if (known.length < 3) return; // minimum sample on that hole
+      const fieldMean = fb.meanPointsAt[h];
+      if (fieldMean == null || (fb.samplesAt[h] ?? 0) < 6) return;
+      const ownMean = known.reduce((a, b) => a + b, 0) / known.length;
+      const deficit = ownMean - fieldMean - playerEdge;
+      if (deficit < worstDeficit) { worstDeficit = deficit; worstHole = h; worstOwnMean = ownMean; }
+    });
+    // Require a real personal gap: at least ~0.6 points per round worse than
+    // this player's own norm relative to the field on that hole.
+    if (worstHole < 0 || worstDeficit > -0.6) return;
     const sc = scoreAt(ctx, p.golferId, worstHole);
     if (!sc || sc.points < 2) return; // conquered = net par or better this week
     const pastGross = hist.holeGrossByEvent[worstHole] || [];
     const pastPts = hist.holePointsByEvent[worstHole] || [];
+    const deficit = worstDeficit, ownMeanPts = worstOwnMean;
     out.push({
       angle: "nemesis",
       slot: "middle",
       protagonistId: p.golferId,
       hole: worstHole,
-      strength: clamp01(worstAvgOver / 2.2 + 0.15),
+      strength: clamp01(-deficit / 1.5 + 0.15),
       surprise: 0.85,
-      evidence: { hole: worstHole, avgOver: worstAvgOver, thisGross: sc.gross, thisPoints: sc.points },
+      evidence: { hole: worstHole, deficit, ownMeanPts, fieldMeanPts: fb.meanPointsAt[worstHole], thisPoints: sc.points },
       build: (c, seed) => {
         const fn = firstName(p.name);
         const par = c.holePars[worstHole - 1];
+        const pastDates = hist.holeDatesByEvent[worstHole] || [];
         const lastFive = pastGross.slice(-5);
         const lastFivePts = pastPts.slice(-5);
+        const lastFiveDates = pastDates.slice(-5);
         const cells: NonNullable<DataBeat["scoreRow"]>["cells"] = lastFive.map((g, idx) => ({
           gross: g, par, points: lastFivePts[idx] ?? null,
-          label: `Wk -${lastFive.length - idx}`, highlight: false,
+          label: shortDate(lastFiveDates[idx]) || `Rd ${idx + 1}`, highlight: false,
         }));
         cells.push({ gross: sc.gross, par, points: sc.points, label: "Today", highlight: true });
-        const avgGross = pastGross.reduce((a, b) => a + b, 0) / pastGross.length;
         const knownPts = pastPts.filter((v): v is number => v != null);
         const avgPts = knownPts.length ? knownPts.reduce((a, b) => a + b, 0) / knownPts.length : null;
+        const fieldMeanPts = c.fieldBaseline.meanPointsAt[worstHole] ?? 0;
         return {
           ...beatHead("nemesis", "Nemesis No More", pick([
             `${fn} finally beats hole ${worstHole}`,
@@ -1427,13 +1655,15 @@ const detectNemesis: Detector = (ctx) => {
           score: sc,
           scoreRow: {
             cells,
-            avgLabel: "Average before today",
-            avgValue: avgPts != null ? `${avgGross.toFixed(1)} gross - ${avgPts.toFixed(1)} pts` : `${avgGross.toFixed(1)} gross`,
+            avgLabel: `${fn} here vs the field`,
+            // The personal gap IS the story -- state it, not the absolute
+            // gross average (which would just describe a hard hole).
+            avgValue: `${avgPts != null ? avgPts.toFixed(1) : "?"} pts vs field ${fieldMeanPts.toFixed(1)}`,
           },
           caption: [
-            { t: `${fn} has averaged ` },
-            { t: `${avgGross.toFixed(1)} on this par ${par}`, b: true },
-            { t: ` in past rounds here -- today it falls for a net ${netName(sc.points)} and ` },
+            { t: `Everyone finds this par ${par} awkward, but ` },
+            { t: `${fn} loses ${Math.abs(deficit).toFixed(1)} points a round here`, b: true },
+            { t: ` against the rest of the field -- more than on any other hole. Today it falls for a net ${netName(sc.points)} and ` },
             { t: `${sc.points} points`, b: true },
             { t: "." },
           ],
@@ -1466,8 +1696,11 @@ const detectRedemption: Detector = (ctx) => {
       evidence: { thisTotal, bestRecent, weeksAbsent: hist.weeksAbsent, backFromAbsence },
       build: (c, seed) => {
         const fn = firstName(p.name);
-        const bars = window.slice(-5).map((v, idx) => ({
-          label: `Wk -${window.slice(-5).length - idx}`, value: v, text: String(v), highlight: false,
+        const dates = hist.recentDates.slice(-8);
+        const win5 = window.slice(-5);
+        const date5 = dates.slice(-5);
+        const bars = win5.map((v, idx) => ({
+          label: shortDate(date5[idx]) || `Rd ${idx + 1}`, value: v, text: String(v), highlight: false,
         }));
         bars.push({ label: "Today", value: thisTotal, text: String(thisTotal), highlight: true });
         return {
@@ -1527,8 +1760,9 @@ const detectOutOfCharacter: Detector = (ctx) => {
       build: (c, seed) => {
         const fn = firstName(p.name);
         const window = hist.recentPoints.slice(-5);
+        const dates = hist.recentDates.slice(-5);
         const bars = window.map((v, idx) => ({
-          label: `Wk -${window.length - idx}`, value: v, text: String(v), highlight: false,
+          label: shortDate(dates[idx]) || `Rd ${idx + 1}`, value: v, text: String(v), highlight: false,
         }));
         bars.push({ label: "Today", value: thisTotal, text: String(thisTotal), highlight: true });
         return {
@@ -1635,6 +1869,185 @@ const DETECTORS: Detector[] = [
   detectNemesis, detectRedemption, detectOutOfCharacter, detectRivalry,
 ];
 
+// -- Rare fireworks: gross eagle or better -------------------------------------
+//
+// DELIBERATE GROSS EXCEPTION -- DO NOT "fix" this to net.
+// The rest of this engine treats Stableford POINTS as the sole valence unit,
+// because handicaps make a gross bogey on a stroke hole a NET par worth 2
+// points, and gross-based intuition ("birdie-free", tracer valence) is a
+// scratch-golf assumption that does not fit this net league. A NET eagle is
+// common here -- handicaps make net birdies routine -- so it is not a story.
+//
+// This one detector is the intentional exception. A GROSS eagle or better is
+// a real golf achievement independent of handicap: two-under on a hole is
+// two-under whether or not you got a stroke there, and it is what members
+// actually talk about afterwards. So this detector reads gross - par (and
+// gross === 1 for an ace) on purpose. A future "consistency" pass that
+// converts it to net would silently delete the feature -- leave it gross.
+//
+// It is a CERTAINTY, not a competition: if it happened, it is always a
+// highlight. The composer treats fireworks additively and exempt from every
+// anti-repeat rule (rarity is self-limiting -- three eagles in three weeks is
+// three stories, not repetition). See composeBeats().
+export interface FireworksBeat {
+  angle: "ace" | "albatross" | "eagle";
+  hole: number;
+  protagonistId: number;
+  strength: number;
+  build: (ctx: RoundContext, seed: number) => DataBeat;
+}
+
+// Highest tier first, then earliest hole. The rarest applicable label wins:
+// an ace on a par 3 is also an eagle, an ace on a par 4 also an albatross --
+// classify by rarity so the frequency table and history stay legible and an
+// ace never sits under an eagle's cooldown.
+const FIREWORKS_TIER: Record<FireworksBeat["angle"], number> = { ace: 3, albatross: 2, eagle: 1 };
+// Fixed, high strength by tier -- it does not compete on merit, but a higher
+// tier still sorts ahead when the per-event cap trims the list.
+const FIREWORKS_STRENGTH: Record<FireworksBeat["angle"], number> = { ace: 0.99, albatross: 0.97, eagle: 0.95 };
+const FIREWORKS_MAX = 2; // cap per event so a freak day cannot flood the recap
+
+function detectFireworks(ctx: RoundContext): FireworksBeat[] {
+  const hits: FireworksBeat[] = [];
+  ctx.players.forEach((p) => {
+    for (let h = 1; h <= ctx.maxHole; h++) {
+      const gross = ctx.grossAt[p.golferId + "|" + h];
+      const par = ctx.holePars[h - 1];
+      if (gross == null || par == null) continue;
+      const d = gross - par;
+      const isAce = gross === 1;
+      const isAlbatross = d === -3;
+      const isEagle = d === -2;
+      if (!isAce && !isAlbatross && !isEagle) continue;
+      // Rarest applicable label.
+      const angle: FireworksBeat["angle"] = isAce ? "ace" : isAlbatross ? "albatross" : "eagle";
+      hits.push({
+        angle,
+        hole: h,
+        protagonistId: p.golferId,
+        strength: FIREWORKS_STRENGTH[angle],
+        build: (c, seed) => buildFireworksBeat(c, p, h, angle, seed),
+      });
+    }
+  });
+  // Highest tier first, then earliest hole; cap so it cannot flood the recap.
+  hits.sort((a, b) => (FIREWORKS_TIER[b.angle] - FIREWORKS_TIER[a.angle]) || (a.hole - b.hole));
+  return hits.slice(0, FIREWORKS_MAX);
+}
+
+// Was a gross eagle-or-better ever carded on THIS hole by THIS player before?
+// The only rarity claim we can PROVE from the data on hand: holeGrossByEvent
+// is this player's same-course prior gross on this hole. If they have never
+// gone this low here, "first ever on N" is honest; otherwise assert nothing.
+// (A season-wide "first eagle this season" would need all-hole gross history
+// we do not carry, so we do not estimate it -- data honesty, per the spec.)
+function isFirstFireworksHere(ctx: RoundContext, golferId: number, hole: number): boolean {
+  const par = ctx.holePars[hole - 1];
+  const past = ctx.history[golferId]?.holeGrossByEvent[hole];
+  if (par == null || !past || past.length === 0) return false; // no history => cannot claim
+  return past.every((g) => g > par - 2); // none was an eagle-or-better here
+}
+
+function buildFireworksBeat(ctx: RoundContext, p: RecapPlayer, hole: number, angle: FireworksBeat["angle"], seed: number): DataBeat {
+  const fn = firstName(p.name);
+  const par = ctx.holePars[hole - 1];
+  const sc = scoreAt(ctx, p.golferId, hole);
+  const pts = sc ? sc.points : ctx.pointsAt[p.golferId + "|" + hole] ?? 0;
+  const gross = sc ? sc.gross : ctx.grossAt[p.golferId + "|" + hole] ?? 0;
+  const firstHere = isFirstFireworksHere(ctx, p.golferId, hole);
+
+  // More template variety than usual: this is the one beat a member re-watches
+  // and re-shares, so a canned line would wear fast.
+  const heroLabel = angle === "ace" ? "Hole in One" : angle === "albatross" ? "Albatross" : "Eagle";
+  const preview = angle === "ace" ? `${fn}'s Ace` : angle === "albatross" ? `${fn}'s Albatross` : `${fn}'s Eagle`;
+  const mood: DataBeat["mood"] = "warm";
+
+  // Lead with the achievement plainly. State the gross fact; points second.
+  let caption: CaptionPart[];
+  let eyebrow: string;
+  if (angle === "ace") {
+    const eyebrows = [
+      `${fn} aces the ${hole}th`,
+      `A hole-in-one for ${fn}`,
+      `${fn} makes one disappear on ${hole}`,
+      `Ace. ${fn}. Hole ${hole}.`,
+      `${fn} finds the bottom of the cup on ${hole}`,
+      `The tee shot of the day belongs to ${fn}`,
+    ];
+    eyebrow = pick(eyebrows, seed + hole);
+    caption = [
+      { t: `A `, b: false },
+      { t: `hole-in-one`, b: true },
+      { t: ` on the ${hole}${ordSuffix(hole)}` },
+      ...(firstHere ? [{ t: ` -- ${fn}'s first ever here` }] : []),
+      { t: `. Worth ` },
+      { t: `${pts} ${plural(pts, "point")}`, b: true },
+      { t: `, but nobody is talking about the points.` },
+    ];
+  } else if (angle === "albatross") {
+    const eyebrows = [
+      `${fn} makes an albatross on ${hole}`,
+      `A double eagle for ${fn}`,
+      `${fn} does something almost nobody does`,
+      `Three-under on one hole -- ${fn} on ${hole}`,
+      `${fn} pulls off the rarest card in golf`,
+      `An albatross lands on hole ${hole}`,
+    ];
+    eyebrow = pick(eyebrows, seed + hole);
+    caption = [
+      { t: `${fn} makes an ` },
+      { t: `albatross`, b: true },
+      { t: ` on ${hole} -- gross ${gross} on a par ${par}` },
+      ...(firstHere ? [{ t: `, a first ever here` }] : []),
+      { t: `, worth ` },
+      { t: `${pts} ${plural(pts, "point")}`, b: true },
+      { t: `.` },
+    ];
+  } else {
+    const eyebrows = [
+      `${fn} eagles the ${hole}th`,
+      `An eagle for ${fn} on ${hole}`,
+      `${fn} goes two-under on one hole`,
+      `${fn} lights up hole ${hole}`,
+      `Eagle. ${fn}. Hole ${hole}.`,
+      `${fn} takes a big bite out of ${hole}`,
+    ];
+    eyebrow = pick(eyebrows, seed + hole);
+    caption = [
+      { t: `${fn} makes an ` },
+      { t: `eagle`, b: true },
+      { t: ` on ${hole} -- gross ${gross} on a par ${par}` },
+      ...(firstHere ? [{ t: `, a first ever here` }] : []),
+      { t: `, worth ` },
+      { t: `${pts} ${plural(pts, "point")}`, b: true },
+      { t: `.` },
+    ];
+  }
+
+  return {
+    ...beatHead(angle, heroLabel, eyebrow),
+    hole,
+    preview,
+    protagonistId: p.golferId,
+    protagonistName: p.name,
+    protagonistInitials: initials(p.name),
+    holeMeta: holeMetaFor(ctx, hole, p.golferId),
+    // The tracer valence is points-based and an eagle scores 4, so shot/tracer
+    // already draws the best arc; a scoreRow-less score payload carries the
+    // gross fact for the notation strip.
+    score: sc,
+    caption,
+    strength: FIREWORKS_STRENGTH[angle],
+    mood,
+  };
+}
+
+// "1" -> "st", "2" -> "nd" ... for inline ordinals ("the 7th").
+function ordSuffix(n: number): string {
+  const r10 = n % 10, r100 = n % 100;
+  return r10 === 1 && r100 !== 11 ? "st" : r10 === 2 && r100 !== 12 ? "nd" : r10 === 3 && r100 !== 13 ? "rd" : "th";
+}
+
 // ===== COMPOSER ================================================================
 
 export interface SelectBeatsInput {
@@ -1648,6 +2061,9 @@ export interface SelectBeatsInput {
   history: BeatHistoryRow[]; // last ~4 events' surfaced beats
   prevEventId: number | null; // most recent completed event before this one
   playerHistory?: Record<number, PlayerHistoryEntry>; // Tier-2 fuel; {} => Tier-2 no-ops
+  // Field's historical per-hole baseline on this course (nemesis yardstick).
+  // Omitted => nemesis no-ops rather than guessing.
+  fieldBaseline?: FieldHoleBaseline;
   // Yardage for the hole meta block. Per-golfer arrays follow each player's
   // own tee (event_signups.tee_box_course_id); the field array is the most
   // common tee, used for field-wide beats and as the per-golfer fallback.
@@ -1694,6 +2110,7 @@ export function buildRoundContext(input: SelectBeatsInput, series: number[][], t
     finalStandings: input.finalStandings,
     winnerIdx, totals, ranks, grossAt, pointsAt, fieldMeanAt, yardsFor,
     history: input.playerHistory || {},
+    fieldBaseline: input.fieldBaseline || { meanPointsAt: {}, overallMeanPoints: 0, samplesAt: {} },
   };
 }
 
@@ -1710,20 +2127,50 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
   const isHidden = (angle: string, pid: number | null) =>
     hiddenRows.some((h) => h.angle_type === angle && (h.protagonist_id == null || h.protagonist_id === pid));
 
-  // Recency + spotlight penalties from story_beats_history.
+  // ---- ANTI-REPEAT from story_beats_history --------------------------------
+  // The pool is thin, so soft penalties alone cannot dislodge a sticky
+  // candidate (nemesis re-qualifies the same worst hole every week by
+  // definition). Three layers:
+  //   HARD COOLDOWNS (blocks, not multipliers):
+  //     - exact identity (angle, protagonist, hole) blocked for 4 events
+  //     - (angle, protagonist) blocked for 3 events
+  //   STEEP ANGLE DECAY: 0.45^n over a 5-6 event window rotates angle types.
+  //   PREV-PROTAGONIST soft penalty: last week's stars are less likely.
+  // eventsAgo is 1-based-ish (0 = immediately-prior event). Rows without it
+  // are treated as "1 event ago".
+  const RECENCY_WINDOW = 6;
+  const ago = (h: BeatHistoryRow) => (h.eventsAgo != null ? h.eventsAgo : 1);
+  const recent = input.history.filter((h) => ago(h) <= RECENCY_WINDOW);
+
   const angleCount: Record<string, number> = {};
-  input.history.forEach((h) => { angleCount[h.angle_type] = (angleCount[h.angle_type] || 0) + 1; });
+  recent.forEach((h) => { angleCount[h.angle_type] = (angleCount[h.angle_type] || 0) + 1; });
   const prevProtagonists = new Set(
-    input.history.filter((h) => h.event_id === input.prevEventId && h.protagonist_id != null).map((h) => h.protagonist_id),
+    recent.filter((h) => ago(h) === 0 && h.protagonist_id != null).map((h) => h.protagonist_id),
   );
 
+  // Hard cooldown predicates.
+  const IDENTITY_COOLDOWN = 4; // (angle, protagonist, hole)
+  const PROTAG_COOLDOWN = 3;   // (angle, protagonist)
+  const identityBlocked = (c: BeatCandidate) => c.protagonistId != null && recent.some((h) =>
+    ago(h) < IDENTITY_COOLDOWN
+    && h.angle_type === c.angle
+    && h.protagonist_id === c.protagonistId
+    && (h.hole ?? null) === (c.hole ?? null));
+  const protagBlocked = (c: BeatCandidate) => c.protagonistId != null && recent.some((h) =>
+    ago(h) < PROTAG_COOLDOWN
+    && h.angle_type === c.angle
+    && h.protagonist_id === c.protagonistId);
+  const cooldownBlocked = (c: BeatCandidate) => identityBlocked(c) || protagBlocked(c);
+
   const pool: BeatCandidate[] = [];
-  DETECTORS.forEach((d) => { pool.push(...d(ctx).filter((c) => !isHidden(c.angle, c.protagonistId))); });
+  DETECTORS.forEach((d) => {
+    pool.push(...d(ctx).filter((c) => !isHidden(c.angle, c.protagonistId) && !cooldownBlocked(c)));
+  });
 
   const weightOf = (c: BeatCandidate) =>
     c.strength
     * (0.5 + c.surprise)
-    * Math.pow(0.6, angleCount[c.angle] || 0)
+    * Math.pow(0.45, angleCount[c.angle] || 0)
     * (c.protagonistId != null && prevProtagonists.has(c.protagonistId) ? 0.5 : 1);
 
   // Opening slot: the opening detectors compete.
@@ -1769,6 +2216,12 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
   if (opening && opening.protagonistId != null) usedProtagonists.add(opening.protagonistId);
   const distMult = (c: BeatCandidate) => {
     if (c.hole == null) return 1;
+    // The turning point is EXEMPT from the spread penalty. It is the one
+    // odds-ranked beat, and it names the hole that actually decided the
+    // round -- which genuinely is often late. Nudging it off that hole to
+    // satisfy a distribution target would make it false. Every other beat
+    // spreads around it.
+    if (c.angle === "collapse") return 1;
     let m = 1;
     if (thirdCount[thirdOf(c.hole)] > 0) m *= 0.55;
     for (const h of usedHoles) {
@@ -1792,7 +2245,13 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
     if (c.protagonistId != null) usedProtagonists.add(c.protagonistId);
     if (c.protagonistId === winnerGid) winnerBeats++;
   };
-  const pickPass = (requireFreshProtagonist: boolean) => {
+  // DIVERSITY FLOOR: past the first middle beat, only take a candidate whose
+  // recency-decayed weight clears a floor. An angle seen last week is
+  // decayed by 0.45 (twice => 0.2), so a stale repeat falls below the floor
+  // and we emit FEWER beats instead -- an honest 3-beat recap beats a 5-beat
+  // one that repeats last week (mirrors the blowout single-beat behaviour).
+  const FLOOR = 0.05;
+  const pickPass = (requireFreshProtagonist: boolean, floor: number) => {
     while (chosen.length < capN) {
       let best: BeatCandidate | null = null, bestW = -1;
       for (const c of middlePool) {
@@ -1800,12 +2259,14 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
         const wgt = weightOf(c) * distMult(c);
         if (wgt > bestW) { bestW = wgt; best = c; }
       }
-      if (!best) break;
+      // The first middle beat is always taken (a recap needs a middle); after
+      // that the floor applies so we stop rather than pad with a stale beat.
+      if (!best || (chosen.length >= 1 && bestW < floor)) break;
       take(best);
     }
   };
-  pickPass(true);
-  pickPass(false);
+  pickPass(true, FLOOR);
+  pickPass(false, FLOOR);
 
   chosen.sort((a, b) => (a.hole ?? 99) - (b.hole ?? 99));
 
@@ -1820,8 +2281,31 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
     b.strength = c.strength;
     beats.push(b);
   });
-  if (!isHidden("final", null)) beats.push(buildFinalBeat(ctx, input, chosen, blowout, seed));
-  return beats;
+
+  // RARE FIREWORKS (gross eagle or better): additive and exempt from EVERY
+  // anti-repeat rule above -- it is detected outside the pool, so it never
+  // saw a cooldown, the angle-decay weight, the protagonist-rotation penalty,
+  // the spread/thirds constraint, or the diversity floor. Rarity is
+  // self-limiting, so there is nothing for anti-repeat to protect against:
+  // an eagle on the same hole two weeks running still fires. It is ADDITIVE,
+  // not competitive -- it takes a guaranteed slot and does NOT displace an arc
+  // middle (an event with an eagle simply emits one more beat). Admin hides
+  // still apply, so a mis-scored "eagle" can be pulled.
+  detectFireworks(ctx).forEach((f) => {
+    if (isHidden(f.angle, f.protagonistId)) return;
+    const b = f.build(ctx, seed);
+    b.strength = f.strength;
+    beats.push(b);
+  });
+
+  // Order middles + fireworks by hole so the arc reads chronologically; the
+  // opening stays first (throughHole) and final stays last.
+  const opN = opening ? 1 : 0;
+  const body = beats.slice(opN).sort((a, b) => (a.hole ?? 99) - (b.hole ?? 99));
+  const ordered = [...beats.slice(0, opN), ...body];
+
+  if (!isHidden("final", null)) ordered.push(buildFinalBeat(ctx, input, chosen, blowout, seed));
+  return ordered;
 }
 
 export function selectDataBeats(input: SelectBeatsInput): DataBeat[] {
@@ -1837,23 +2321,29 @@ export function selectDataBeats(input: SelectBeatsInput): DataBeat[] {
 function buildFinalBeat(ctx: RoundContext, input: SelectBeatsInput, middle: BeatCandidate[], blowout: boolean, seed: number): DataBeat {
   const winnerFirst = firstName(input.winnerName);
   const standings = input.finalStandings;
-  const runnersTied = standings.filter((s) => s.pos.startsWith("T2")).length > 1;
+  // Tie-aware: pos strings are already T-prefixed ("T1"/"T2"). "takes second"
+  // is false when second is shared, and a shared win is not a solo win.
+  const winnersTied = standings.filter((s) => s.pos === "T1").length > 1;
+  const runnersTied = standings.filter((s) => s.pos === "T2").length > 1;
 
-  const caption: CaptionPart[] = runnersTied
-    ? [{ t: "A " }, { t: "tie for second", b: true }, { t: " sits just behind." }]
-    : standings[1]
-      ? [{ t: standings[1].name, b: true }, { t: ` takes second with ${standings[1].pts}.` }]
-      : [{ t: "The field never got close.", b: false }];
+  const caption: CaptionPart[] = winnersTied
+    ? [{ t: "It ends in a " }, { t: "share of the title", b: true }, { t: " at the top." }]
+    : runnersTied
+      ? [{ t: "A " }, { t: "tie for second", b: true }, { t: " sits just behind." }]
+      : standings[1]
+        ? [{ t: standings[1].name, b: true }, { t: ` takes second with ${standings[1].pts}.` }]
+        : [{ t: "The field never got close.", b: false }];
 
-  if (blowout) {
+  if (blowout && !winnersTied) {
     caption.push({ t: pick([
       " It was never really in doubt.",
       ` ${winnerFirst} led this one from start to finish.`,
       " The chase pack never landed a punch.",
     ], seed + 3) });
-  } else {
+  } else if (!winnersTied) {
     // Only a swing beat (charge/collapse/hold) can be "the hole that decided
-    // it" -- a nemesis or tough-hole beat is a story, not the decider.
+    // it" -- a nemesis or tough-hole beat is a story, not the decider. A
+    // shared title had no single decider, so skip it there.
     const SWING = new Set(["charge", "collapse", "hold"]);
     const decider = [...middle].filter((c) => c.hole != null && SWING.has(c.angle)).sort((a, b) => b.strength - a.strength)[0];
     if (decider && decider.protagonistId != null) {
@@ -1874,15 +2364,23 @@ function buildFinalBeat(ctx: RoundContext, input: SelectBeatsInput, middle: Beat
     }
   }
 
+  // Tie-aware title: a shared win is not "X wins" outright.
+  const title = winnersTied
+    ? pick([
+        `${input.winnerName} shares ${input.eventLabel}`,
+        `${input.eventLabel} ends in a tie at the top`,
+        `${input.winnerName} ties for ${input.eventLabel}`,
+      ], seed + 7)
+    : pick([
+        `${input.winnerName} wins ${input.eventLabel}`,
+        `${input.winnerName} takes ${input.eventLabel}`,
+        `${input.eventLabel} belongs to ${input.winnerName}`,
+        `${input.winnerName} closes out ${input.eventLabel}`,
+      ], seed + 7);
   return {
-    ...beatHead("final", "Final", pick([
-      `${input.winnerName} wins ${input.eventLabel}`,
-      `${input.winnerName} takes ${input.eventLabel}`,
-      `${input.eventLabel} belongs to ${input.winnerName}`,
-      `${input.winnerName} closes out ${input.eventLabel}`,
-    ], seed + 7)),
+    ...beatHead("final", "Final", title),
     hole: null,
-    preview: `${winnerFirst} Wins`,
+    preview: winnersTied ? `${winnerFirst} Ties` : `${winnerFirst} Wins`,
     protagonistId: null,
     finalStandings: standings,
     caption,

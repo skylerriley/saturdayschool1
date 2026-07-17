@@ -64,9 +64,48 @@ supabase functions deploy r2-presign
 
 ## 5. Database migration
 
-Apply `supabase/migrations/20260713_highlights.sql` (SQL editor or
-`supabase db push`). Creates `highlights`, `highlight_likes`,
-`highlight_comments`, `story_beats_history` with anon RLS matching the app.
+Apply, in order (SQL editor or `supabase db push`):
+
+- `supabase/migrations/20260713_highlights.sql` — creates `highlights`,
+  `highlight_likes`, `highlight_comments`, `story_beats_history` with anon RLS
+  matching the app.
+- `supabase/migrations/20260715_highlights_visuals.sql` — `hole_images.view_type`
+  / `anchors`; `story_beats_history.hidden` / `caption_override` + anon update.
+- `supabase/migrations/20260716_beat_hole.sql` — `story_beats_history.hole`
+  (needed by the exact-identity anti-repeat cooldown).
+
+## 5b. Beat history — WHEN TO REBUILD
+
+`story_beats_history` is **sequence state**, not a cache. Each event's beats
+are chosen partly by what the previous ~6 events already used (anti-repeat
+cooldowns + angle decay), so event N's rows depend on N-1..N-6.
+
+**The rebuild is the only thing that writes this table. Reads never write.**
+That is a load-bearing invariant: if a read wrote, the story would depend on
+who viewed what in which order — a viewer opening the newest event first finds
+no rows for the preceding events, the anti-repeat never engages, and every
+event composes as if it were the first ever played. (Measured on real data
+before this was fixed: 6/7 events told a different story depending on viewing
+order, and the `wildcard` angle fired in 7/7 events instead of 2/7.)
+
+Run **Admin > Events > "Rebuild Beat History"** whenever:
+
+- **any recap detector, threshold, or the composer changes** — existing rows
+  were authored by the engine as it was then, and they feed the anti-repeat of
+  every later event;
+- scores are corrected on a past event (its beats, and every later event's
+  cooldowns, may change);
+- the table is ever cleared or looks wrong.
+
+It replays every hole-by-hole event in date order, is idempotent (seeded Monte
+Carlo ⇒ two runs produce identical rows), preserves admin hides/caption edits,
+and clears this device's `sessionStorage` beat cache. It also runs
+automatically when an event is finalized in Score Entry, so a new event's rows
+exist before anyone views it. At ~25 events/year it is a few hundred ms of
+client-side compute; no edge function needed.
+
+If you change the engine and want other devices to drop cached beats
+immediately, bump `BEATS_CACHE_VERSION` in `src/lib/buildBeatsInput.ts`.
 
 ## 6. Smoke test
 

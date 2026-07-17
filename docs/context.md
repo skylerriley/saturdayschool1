@@ -147,6 +147,118 @@ generate/move/swap rely on its diff-writes for persistence.
   rivalry fire on real data. duel/wire/grinder verified genuinely absent in
   this 7-event window (conditions checked directly against the fixture),
   not threshold-starved.
+  UPDATE 2026-07-16 (Handoff #5, "repetition / notation / labels"): beat
+  SELECTION + one CSS fix; NO viewer/tracer changes. (1) Anti-repeat: the
+  pool was too thin for soft penalties to work (wildcard recurred, dead
+  detectors starved competition). Revived DEAD detectors by tuning to the
+  real distribution: grinder was "birdie-free top-3" (mythical -- every real
+  top-3 card has 7+ net birdies) -> now "few BLOWUPS" (<=1 blank, birdies<=pars);
+  duel g23 relaxed 3->2 (early Stableford leaders rarely open a 3pt gap to
+  3rd by hole 9). Added HARD COOLDOWNS in composeBeats (blocks, not
+  multipliers): (angle,protagonist,hole) 4 events, (angle,protagonist) 3
+  events -- nemesis is structurally sticky (worst hole is stable) so a soft
+  decay could never dislodge it. Steepened angle decay 0.6^n->0.45^n over a
+  6-event window (was 4). Added a DIVERSITY FLOOR: past the first middle beat,
+  a candidate must clear a recency-decayed weight floor or we emit FEWER
+  beats (an honest 3-beat recap beats a 5-beat one that repeats last week).
+  Threads `hole` + `eventsAgo` through BeatHistoryRow; module persists
+  b.hole to story_beats_history (new col via migration 20260716_beat_hole.sql,
+  additive, null=whole-round); recentEventIds widened 4->6 in LeaderboardTab.
+  (2) DATA-HONESTY: .sr-c.hi emphasised the glyph with border-radius:50% + a
+  gold ring -- a CIRCLE MEANS BIRDIE in golf notation, so a par rendered as a
+  birdie. Moved emphasis to the CELL (bg/border/scale), added a durable CSS
+  rule comment: .sc-* notation is the ONLY thing allowed to encode
+  score-to-par; emphasis never adds shape to a glyph. Audited st-c.on /
+  sccard sc-cell / vb.hi / st-win -- all clean (scale/bg/window only).
+  (3) finalStandings now full "First Last" (was "Joe F"); the board uses the
+  ellipsising .lb-name-main cell. (4) Chart labels are real event dates
+  ("May 30", "Jun 6") not "Wk -N" offsets -- threaded recentDates /
+  holeDatesByEvent through buildPlayerHistories + a shortDate() helper.
+  (5) TIE-AWARE copy: added standingPhrase()/leadByPhrase() and routed all
+  position claims (openings, fade, fast_start, final title+caption) through
+  them -- "XYZ has the lead" during a 4-way tie was a false statement, not a
+  grammar nit. Backtest: +5 asserts (no-exact-repeats, angle-rotation <=4/7,
+  detector-liveness, tie-safety, date-labels) + per-angle frequency table;
+  20/20 pass. Fixed pre-existing "blowoutss" double-plural in wildcard.
+  Result: every registered detector fires (the_turn exempt as starvation
+  filler); no angle > 3/7 events; openings 9,3,8,8,6,4,6.
+  UPDATE 2026-07-16 (Handoff #6, "scratch-golf assumptions + history rebuild").
+  (A) DETERMINISM -- the big one. story_beats_history was written ON READ
+  (HighlightsModule persisted surfaced beats), so the story was a side effect
+  of who viewed what in which order. Opening the newest event first finds no
+  rows for events N-1..N-6 => no cooldowns => every event composed as if it
+  were the first ever played. MEASURED on the real fixture: 6/7 events told a
+  different story by viewing order, wildcard fired 7/7 (vs 2/7 chronological),
+  and only 10 of 17 angles ever surfaced. This is why "wildcard recurs" and
+  "Joe's nemesis 3 weeks running" were reported while the backtest passed --
+  the backtest replays chronologically, i.e. only ever tests the ideal case.
+  FIX: reads are now PURE (write removed; invariant comment in the effect).
+  New src/lib/rebuildBeatHistory.ts is the SOLE author: chronological replay,
+  idempotent (seeded MC), preserves admin hidden/caption_override across the
+  wipe, applies carried hides DURING composition. Run from Admin > Events
+  ("Rebuild Beat History", client-side, ~hundreds of ms at 25 events/yr) and
+  automatically on ScoreEntry finalize. New src/lib/buildBeatsInput.ts is
+  shared by BOTH the read path and the rebuild so they cannot drift (it also
+  fixes the history fetch window, which used the globally-newest events rather
+  than the ones preceding THIS event -- wrong for mid-season). Cache key ->
+  hl_beats_v5_ via BEATS_CACHE_VERSION in buildBeatsInput. Verified: 0/7
+  events differ across forward/reverse/random read order; reads leave history
+  byte-identical. NOT frozen -- while HIGHLIGHTS_AUDIENCE='admin' beats stay
+  live/re-derivable so engine improvements improve past recaps; revisit
+  immutability when flipping to 'all'.
+  (B) SCRATCH-GOLF AUDIT (same class as the tracer-valence and grinder bugs:
+  gross where net belongs, absolute where relative belongs). NEMESIS was
+  ranking a player's worst hole by ABSOLUTE gross average -- that just
+  re-finds the hardest hole on the course, which is everyone's worst hole
+  permanently (probed: hole 14 was the "nemesis" of 2/7 players in one event;
+  18 recurred across three). Now field- AND baseline-relative in POINTS:
+  deficit = (player mean pts on hole) - (field mean pts on hole) - (player
+  overall mean - field overall mean), min 3 rounds on the hole + 6 field
+  samples, needs <= -0.6. New buildFieldHoleBaseline() + ctx.fieldBaseline.
+  Caption now states the personal gap, not the absolute average. GRINDER now
+  ranks on VARIANCE (per-hole points stddev < 0.8x field median) + birdies <=
+  pars -- "birdies <= pars" alone let a 7-birdie card be called "no
+  fireworks". DUEL was probed and rebuilt: a 3+ point gap to third never
+  happens over holes 3-9 ([1,0,1,2,1,1,2]) and a 3-cushion two-horse race
+  never survives 2 holes; so it is now a whole-round MIDDLE beat requiring a
+  2-point cushion SUSTAINED >= 4 holes (duration is the evidence the gap is
+  real). Fires 1/7, honestly. COLLAPSE is exempt from the spread penalty --
+  the turning point is allowed to be late because it is true.
+  (C) Backtest 20 -> 26 tests: viewing-order independence (forward/reverse/
+  random reads identical), reads-do-not-write, rebuild determinism, nemesis-
+  is-personal (never shadows tough_hole, <=2 protagonists per hole), grinder-
+  low-variance, turning-point-truth (argmax |delta| within its merit gate).
+  Docs: docs/highlights-r2-setup.md section 5b documents when to rebuild.
+
+  UPDATE 2026-07-16 (Handoff #7, "rare fireworks: gross eagle or better"). One
+  new detector: detectFireworks in recapEngine.ts emits ace / albatross / eagle
+  from GROSS score (gross === 1 => ace; gross - par === -3 => albatross; -2 =>
+  eagle), classified by the RAREST applicable label (an ace on a par 3 is an
+  ace, not an eagle). THIS IS THE DELIBERATE GROSS EXCEPTION to the net-points
+  valence rule -- a gross eagle is a real achievement regardless of handicap,
+  where a NET eagle is routine here; the exception is commented prominently at
+  the detector so a future "consistency" pass does not convert it to net and
+  delete the feature. It is a CERTAINTY, not a competition: detected OUTSIDE the
+  DETECTORS pool and appended additively in composeBeats, so it is exempt from
+  every anti-repeat rule (cooldowns, angle decay, protagonist rotation, the
+  spread/thirds constraint, the diversity floor) -- an eagle on the same hole
+  three weeks running still fires. Additive means it takes a slot ON TOP of the
+  arc (an eagle event may emit 6-7 beats) and never displaces a middle. Capped
+  at 2 per event (highest tier first, then earliest hole) so a freak day cannot
+  flood the recap. Admin hides still apply. Rarity claims are data-honest: the
+  only claim we can PROVE is "first ever here" (from same-course per-hole gross
+  history); a season-wide "first this season" is NOT asserted (we do not carry
+  the all-hole gross history to prove it). Real fixture: event 303 has Greg's
+  gross eagle on 16 (par 5) -- it surfaces alongside the full arc, displacing
+  nothing. Backtest 26 -> 31 tests: always-fires (real + synthetic), cooldown
+  exemption, tier classification, cap, additive (arc unchanged with/without the
+  eagle); fireworks angles exempted from the rotation and liveness asserts (0
+  aces/albatrosses in the fixture is not a dead detector). No viewer/CSS work;
+  reuses the existing score payload (tracer valence is points-based, eagle = 4
+  pts, so the best arc already draws). Milestone gold-badge visual deferred
+  (asset-library follow-up, out of scope). BEATS_CACHE_VERSION bumped v5 -> v6
+  (new detector changes output; other devices must drop cached beats), and a
+  history rebuild is required after deploy.
 
 - DONE 2026-07-08: Member identity + persistent logins. Admin unlock moved from
   sessionStorage to localStorage (`ss_admin`) and auto-restored on boot, so it

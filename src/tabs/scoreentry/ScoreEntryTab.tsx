@@ -4,6 +4,7 @@ import { golferName, teeBoxesForCourse, scrollMainTop, eventPickerLabel } from "
 import { calcPlayingHandicap, calcHoleNetScore, calcStablefordPoints, calcHoleScores } from "../../lib/golfMath";
 import { calcNinesHolePoints, calcSixes } from "../../lib/sideGames";
 import { supabase, SUPABASE_URL, SUPABASE_KEY, reportWriteError, pendingWriteCount as outboxPendingCount, subscribeOutbox } from "../../lib/supabaseClient";
+import { rebuildBeatHistory } from "../../lib/rebuildBeatHistory";
 
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false,started:false,summaryId:null as number|null});
 
@@ -12,6 +13,32 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   const mode=scoreMode;
   const setMode=setScoreMode;
   const selEventId=scoreEventId;
+
+  // Rebuild the recap anti-repeat state (story_beats_history) after an event
+  // is finalized. Beats are computed on read but NEVER written on read, so a
+  // newly-completed event needs its rows authored here -- otherwise the first
+  // viewer composes against an empty window and the anti-repeat never
+  // engages. Chronological + seeded + idempotent, so replaying the whole
+  // chain is always safe and always correct. Silent on failure; an admin can
+  // re-run it from Admin > Events.
+  const runBeatHistoryRebuild=async(eventsAfterFinalize:any[])=>{
+    try{
+      let existingRows:any[]=[];
+      try{ existingRows=await supabase.from("story_beats_history").select("*",""); }catch(_:any){}
+      await rebuildBeatHistory({
+        events:eventsAfterFinalize, courses, signups, golfers, leaderboard, holeScores, golferName,
+        existingRows,
+        deleteAll:async()=>{
+          const ids=[...new Set(existingRows.map((r:any)=>r.event_id))];
+          for(const id of ids) await supabase.from("story_beats_history").delete({event_id:id});
+        },
+        insertRows:async(rows:any[])=>{ await supabase.from("story_beats_history").insert(rows); },
+      });
+      try{
+        Object.keys(sessionStorage).filter((k)=>k.startsWith("hl_beats_")).forEach((k)=>sessionStorage.removeItem(k));
+      }catch(_:any){}
+    }catch(_:any){/* non-blocking: admin can rebuild from Admin > Events */}
+  };
   const setSelEventId=setScoreEventId;
   // scorers/setScorers are passed directly from App
 
@@ -1233,6 +1260,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
               <button
                 onClick={()=>{
                   setShowFinalizeConfirm(false);
+                  const finalizedEvents=(events||[]).map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Completed"}:e);
                   setEvents((p:any)=>p.map((e:any)=>e.event_id===selEvent.event_id?{...e,status:"Completed"}:e));
                   setScoreEventId("");
                   setScorers([emptyScorer()]);
@@ -1244,6 +1272,13 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                     headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_KEY},
                     body:JSON.stringify({event_id:selEvent.event_id}),
                   }).catch((_:any)=>{});
+                  // Fire-and-forget: rebuild the recap anti-repeat state so this
+                  // event's history rows exist before anyone views it. Reads never
+                  // write, so without this the first viewer would compose against
+                  // an empty window. Seeded + idempotent => replaying the whole
+                  // chain is always safe. Failure is silent; an admin can re-run
+                  // it from Admin > Events.
+                  runBeatHistoryRebuild(finalizedEvents);
                 }}
                 style={{flex:1,padding:"12px 0",borderRadius:"var(--radius-md)",border:"none",background:"#78350f",fontSize:15,fontWeight:700,color:"white",cursor:"pointer"}}
               >Yes, Finalize</button>

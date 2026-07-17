@@ -5,12 +5,17 @@
 //
 // Data model: human moments persist in the `highlights` table (media on R2);
 // auto data beats are regenerated on read from hole scores via
-// src/lib/recapEngine.ts and are never stored (only their angle/protagonist
-// go to story_beats_history for anti-repeat).
+// src/lib/recapEngine.ts and are never stored.
+//
+// READS ARE PURE. This module NEVER writes story_beats_history -- those rows
+// are sequence state authored solely by the chronological rebuild
+// (src/lib/rebuildBeatHistory.ts, run from Admin > Events and on scoring
+// finalization). See the invariant comment in the beat-generation effect.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase, reportWriteError } from "../../../lib/supabaseClient";
 import { golferName } from "../../../lib/formatters";
-import { selectDataBeats, buildPlayerHistories, watchOrderCompare, type DataBeat, type BeatStandingRow } from "../../../lib/recapEngine";
+import { selectDataBeats, watchOrderCompare, type DataBeat } from "../../../lib/recapEngine";
+import { buildBeatsInput, hasHoleByHoleData, ANTI_REPEAT_WINDOW, beatsCacheKey } from "../../../lib/buildBeatsInput";
 import { holeAerialUrl, type RecapCard } from "./highlightsShared";
 import { HighlightsViewer } from "./HighlightsViewer";
 import { AddHighlightFlow } from "./AddHighlightFlow";
@@ -26,7 +31,7 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
 
   // Hard gate for auto beats: same predicate the skins card uses -- every
   // leaderboard entry must be Hole-by-Hole. Otherwise zero data beats.
-  const hasHoleData = eventEntries.length > 0 && eventEntries.every((e: any) => e.entry_type === "Hole-by-Hole");
+  const hasHoleData = hasHoleByHoleData(eventEntries);
 
   const [rows, setRows] = useState<any[] | null>(null); // null = loading
   const [likes, setLikes] = useState<any[]>([]);
@@ -83,15 +88,22 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
   // the sessionStorage cache is purely an instant-reopen optimization.
   useEffect(() => {
     if (!hasHoleData) { setBeats([]); return; }
-    const cacheKey = `hl_beats_v4_${eventId}`;
+    const cacheKey = beatsCacheKey(eventId);
 
     let cancelled = false;
     (async () => {
-      // Recent history for anti-repeat (last ~4 completed events + this one).
-      // Always fetched (even on a beats cache hit) so hidden flags and
-      // caption overrides apply.
+      // Anti-repeat window: the 6 completed events immediately PRECEDING this
+      // one by date, plus this event (for hidden flags / caption overrides).
+      // Derived from dates here rather than the recentEventIds prop, which is
+      // the globally-newest events -- wrong for a mid-season event, and the
+      // window must match the rebuild's chronology exactly or the same event
+      // would compose differently depending on where it sits in the season.
+      const priorByDate = (events || [])
+        .filter((e: any) => e.status === "Completed" && e.date < event.date)
+        .sort((a: any, b: any) => b.date.localeCompare(a.date)); // most recent first
+      const windowIds = priorByDate.slice(0, ANTI_REPEAT_WINDOW).map((e: any) => e.event_id);
       let history: any[] = [];
-      const histIds = [...(recentEventIds || []), eventId];
+      const histIds = [...windowIds, eventId];
       try {
         history = await supabase.from("story_beats_history").select("*", `&event_id=in.(${histIds.join(",")})`);
       } catch (_: any) {}
@@ -103,108 +115,33 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
         if (cached) { setBeats(JSON.parse(cached)); return; }
       } catch (_: any) {}
 
-      const players = eventEntries
-        .filter((e: any) => e.entry_type === "Hole-by-Hole")
-        .map((e: any) => ({ golferId: e.golfer_id, name: golferName(golfers, e.golfer_id), summaryId: e.summary_id }));
-      const summaryToGolfer: Record<number, number> = {};
-      players.forEach((p: any) => { summaryToGolfer[p.summaryId] = p.golferId; });
-      const scores = holeScores
-        .filter((h: any) => summaryToGolfer[h.summary_id] != null && h.stableford_points != null)
-        .map((h: any) => ({
-          golferId: summaryToGolfer[h.summary_id],
-          hole: h.hole_number,
-          stableford: h.stableford_points,
-          gross: h.gross_score ?? null,
-        }));
-
-      // Cross-event history for Tier-2 detectors (nemesis / redemption /
-      // out-of-character / rivalry), built from tables the app already holds.
-      const completedEvts = (events || []).filter((e: any) => e.status === "Completed").map((e: any) => ({ event_id: e.event_id, date: e.date }));
-      const priorEventIds = new Set(completedEvts.filter((e: any) => e.date < event.date).map((e: any) => e.event_id));
-      const priorSummaryInfo: Record<number, { golfer_id: number; event_id: number }> = {};
-      (leaderboard || []).forEach((r: any) => {
-        if (priorEventIds.has(r.event_id)) priorSummaryInfo[r.summary_id] = { golfer_id: r.golfer_id, event_id: r.event_id };
-      });
-      const priorHoleRows = holeScores
-        .filter((h: any) => priorSummaryInfo[h.summary_id] && h.gross_score != null)
-        .map((h: any) => ({
-          golfer_id: priorSummaryInfo[h.summary_id].golfer_id,
-          event_id: priorSummaryInfo[h.summary_id].event_id,
-          hole: h.hole_number,
-          gross: h.gross_score,
-          points: h.stableford_points ?? null,
-        }));
-      // Per-hole aggregates (nemesis etc.) must only pool SAME-COURSE prior
-      // events -- "hole 16" at another course is a different hole. Season
-      // points baselines stay cross-course inside buildPlayerHistories.
-      const holeStatsEventIds = (events || [])
-        .filter((e: any) => e.status === "Completed" && e.date < event.date && e.course_name === event.course_name)
-        .map((e: any) => e.event_id);
-      const playerHistory = buildPlayerHistories({
-        eventId,
-        playerIds: players.map((p: any) => p.golferId),
-        allEvents: completedEvts,
-        allTotals: (leaderboard || [])
-          .filter((r: any) => completedEvts.some((e: any) => e.event_id === r.event_id))
-          .map((r: any) => ({ event_id: r.event_id, golfer_id: r.golfer_id, total: r.total_stableford_points })),
-        priorHoleRows,
-        holeStatsEventIds,
-      });
-
-      // Yardage for the hole meta block: each golfer's own tee
-      // (event_signups.tee_box_course_id), with the event's most common tee
-      // as the field-wide value and per-golfer fallback.
-      const yardsOf = (courseId: any): (number | null)[] | null => {
-        const row = courseId != null ? (courses || []).find((c: any) => c.course_id === courseId) : null;
-        return Array.isArray(row?.hole_yards) ? row.hole_yards : null;
-      };
-      const evSignups = (signups || []).filter((s: any) => s.event_id === eventId && s.tee_box_course_id != null);
-      const holeYardsByGolfer: Record<number, (number | null)[] | null> = {};
-      evSignups.forEach((s: any) => { holeYardsByGolfer[s.golfer_id] = yardsOf(s.tee_box_course_id); });
-      const teeCounts: Record<number, number> = {};
-      evSignups.forEach((s: any) => { teeCounts[s.tee_box_course_id] = (teeCounts[s.tee_box_course_id] || 0) + 1; });
-      const modalTee = Object.entries(teeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-      const fieldHoleYards = yardsOf(modalTee != null ? Number(modalTee) : null)
-        ?? (Array.isArray(course?.hole_yards) ? course.hole_yards : null);
-
-      const standings = buildStandings(eventEntries, golfers);
-      // Full name for the final title ("Joe Fischman closes out Week 27");
-      // standings rows keep the short display form.
-      const winnerEntry = [...eventEntries].sort((a: any, b: any) => b.total_stableford_points - a.total_stableford_points)[0];
-      const winnerFullName = winnerEntry ? golferName(golfers, winnerEntry.golfer_id) : "";
       // Week label scoped to the season (the all-time event number reads as
       // "Week 264" after a few years).
       const seasonWeek = (events || []).filter((e: any) => e.status === "Completed" && e.season === event.season && e.date <= event.date).length || eventNumber;
-      const generated = selectDataBeats({
-        eventId,
-        players: players.map((p: any) => ({ golferId: p.golferId, name: p.name })),
-        scores,
-        holePars: course?.hole_pars || [],
-        finalStandings: standings.slice(0, 5),
-        winnerName: winnerFullName || standings[0]?.name || "",
+      // Same builder the rebuild uses -- read and write CANNOT drift.
+      const generated = selectDataBeats(buildBeatsInput({
+        event, course, courses, signups, golfers, eventEntries, holeScores,
+        leaderboard, events,
         eventLabel: `Week ${seasonWeek || ""}`.trim(),
-        history: history.filter((h: any) => h.event_id !== eventId),
-        prevEventId: (recentEventIds || [])[0] ?? null,
-        playerHistory,
-        holeYardsByGolfer,
-        fieldHoleYards,
-        hiddenBeats: history.filter((h: any) => h.event_id === eventId && h.hidden === true),
-      });
+        historyRows: history,
+        hiddenRows: history,
+        golferName,
+      }));
       if (cancelled) return;
       setBeats(generated);
       try { sessionStorage.setItem(cacheKey, JSON.stringify(generated)); } catch (_: any) {}
 
-      // Persist surfaced beats for future anti-repeat -- once per event.
-      const already = history.some((h: any) => h.event_id === eventId);
-      if (!already && generated.length > 0) {
-        const histRows = generated.map((b) => ({
-          event_id: eventId,
-          angle_type: b.angle,
-          protagonist_id: b.protagonistId,
-          strength: b.strength,
-        }));
-        supabase.from("story_beats_history").insert(histRows).catch(reportWriteError("Highlight history save"));
-      }
+      // INVARIANT: A READ NEVER WRITES story_beats_history.
+      // Beats are a pure function of (event data + stored history). The
+      // history rows are authored ONLY by the chronological rebuild
+      // (rebuildBeatHistory in src/lib/rebuildBeatHistory.ts, run from Admin
+      // and on scoring finalization). Persisting here would make the story a
+      // side effect of who viewed what in which order: a viewer opening the
+      // newest event first finds no rows for events N-1..N-6, so the
+      // anti-repeat never engages and every event is composed as if it were
+      // the first ever played -- measured at 6/7 events telling a different
+      // story by viewing order, with wildcard firing 7/7 instead of 2/7.
+      // Do not reintroduce a write here.
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,7 +189,7 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
   }, [displayBeats, humanRows]);
 
   // ---- admin/owner actions from the viewer's dots menu ----------------------
-  const bustBeatCache = () => { try { sessionStorage.removeItem(`hl_beats_v4_${eventId}`); } catch (_: any) {} };
+  const bustBeatCache = () => { try { sessionStorage.removeItem(beatsCacheKey(eventId)); } catch (_: any) {} };
   const histRowFor = (b: DataBeat) => beatHistory.find((h: any) => h.angle_type === b.angle);
 
   const hideBeat = async (b: DataBeat) => {
@@ -448,30 +385,4 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
 
 function firstNameOf(name: string): string {
   return (name || "").trim().split(" ")[0];
-}
-
-// Tie-aware standings rows ("1", "T2", "T2", "4"...) from event entries.
-function buildStandings(eventEntries: any[], golfers: any[]): BeatStandingRow[] {
-  const sorted = [...eventEntries].sort((a: any, b: any) => b.total_stableford_points - a.total_stableford_points);
-  const rows: BeatStandingRow[] = [];
-  let pos = 0, prevPts: number | null = null, prevPos = 0;
-  sorted.forEach((e: any) => {
-    pos += 1;
-    const isTie = prevPts != null && e.total_stableford_points === prevPts;
-    const effPos = isTie ? prevPos : pos;
-    prevPos = effPos;
-    prevPts = e.total_stableford_points;
-    rows.push({ pos: String(effPos), name: shortName(golferName(golfers, e.golfer_id)), pts: e.total_stableford_points });
-  });
-  // Mark ties with T prefix.
-  const posCounts: Record<string, number> = {};
-  rows.forEach((r) => { posCounts[r.pos] = (posCounts[r.pos] || 0) + 1; });
-  rows.forEach((r) => { if (posCounts[r.pos] > 1) r.pos = "T" + r.pos; });
-  return rows;
-}
-
-function shortName(full: string): string {
-  const parts = (full || "").trim().split(" ").filter(Boolean);
-  if (parts.length < 2) return full;
-  return parts[0] + " " + parts[parts.length - 1][0];
 }

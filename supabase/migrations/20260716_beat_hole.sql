@@ -1,0 +1,14 @@
+-- Anti-repeat: record the hole each surfaced beat anchored on, so the recap
+-- selector can hard-block an exact (angle_type, protagonist_id, hole) triple
+-- from recurring week after week (a player's nemesis hole is stable by
+-- definition and re-qualifies every event otherwise).
+--
+-- Additive + backward compatible: rows written before this migration have a
+-- null hole, which the engine treats as "whole-round / field-wide" -- the
+-- weaker (angle_type, protagonist_id) cooldown still applies to them.
+--
+-- Note: the unique (event_id, angle_type, protagonist_id) constraint from
+-- 20260713 is intentionally left as-is. The selector already emits at most
+-- one beat per (angle, protagonist) within an event, so hole is metadata for
+-- cross-event cooldown, not part of the identity key.
+alter table story_beats_history add column if not exists hole int;

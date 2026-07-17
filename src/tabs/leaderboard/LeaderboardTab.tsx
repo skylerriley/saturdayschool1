@@ -2592,7 +2592,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                       memberGolferId={memberGolferId}
                       adminMode={adminMode}
                       eventNumber={overlayEventNumMap[displayEvent.event_id]||1}
-                      recentEventIds={completedEvents.filter((e:any)=>e.event_id!==displayEvent.event_id).slice(0,4).map((e:any)=>e.event_id)}
+                      recentEventIds={completedEvents.filter((e:any)=>e.event_id!==displayEvent.event_id).slice(0,6).map((e:any)=>e.event_id)}
                       leaderboard={leaderboard}
                       events={events}
                     />

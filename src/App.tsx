@@ -1504,16 +1504,24 @@ const CSS = `
   .sccard .sc-cell .h{font-size:15px;color:rgba(255,255,255,.5);font-weight:600;}
   .sccard .sc-cell .sc-score{font-size:22px;width:30px;height:30px;}
   @keyframes scPop{from{opacity:0;transform:scale(.6);}to{opacity:1;transform:none;}}
-  /* nemesis score row: scorecard notation + points, no magnitude bars */
+  /* nemesis score row: scorecard notation + points, no magnitude bars.
+     DATA-HONESTY RULE: .sc-* notation is the ONLY thing permitted to encode
+     score-to-par (a circle = birdie, a square = triple, etc.). Emphasis must
+     NEVER add a circle, ring, square, or outline to a score glyph -- doing so
+     speaks the data's language and can contradict it (a circled par reads as
+     a birdie). Emphasise the CELL (background / border / pill / scale), never
+     the glyph. */
   .srow{display:flex;gap:7px;align-items:flex-end;}
-  .sr-c{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;opacity:0;animation:srIn .4s cubic-bezier(.2,1,.3,1) both;min-width:0;}
+  .sr-c{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;opacity:0;animation:srIn .4s cubic-bezier(.2,1,.3,1) both;min-width:0;border:1px solid transparent;border-radius:12px;padding:6px 4px;}
   @keyframes srIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
   .sr-c .sc-score{font-size:17px;width:26px;height:26px;}
-  .sr-c.hi .sc-score{font-size:21px;width:34px;height:34px;box-shadow:0 0 0 3px rgba(245,176,0,.32);border-radius:50%;}
+  /* emphasise the CELL, not the glyph -- scale the notation only (no ring). */
+  .sr-c.hi{background:rgba(245,176,0,.16);border-color:rgba(245,176,0,.45);}
+  .sr-c.hi .sc-score{font-size:21px;width:30px;height:30px;}
   .sr-c .pt{font-size:11.5px;font-weight:800;color:rgba(255,255,255,.55);}
   .sr-c.hi .pt{color:var(--gold-300);font-size:13px;}
   .sr-c .wk{font-size:10.5px;font-weight:600;color:rgba(255,255,255,.5);white-space:nowrap;}
-  .sr-c.hi .wk{color:#fff;}
+  .sr-c.hi .wk{color:var(--gold-300);font-weight:700;}
   .sr-avg{margin-top:11px;padding-top:10px;border-top:1px solid rgba(255,255,255,.14);display:flex;justify-content:space-between;align-items:baseline;gap:10px;}
   .sr-avg .l{font-size:13px;color:rgba(255,255,255,.62);font-weight:600;}
   .sr-avg .v{font-size:16px;color:#fff;font-weight:800;white-space:nowrap;}
