@@ -2,7 +2,42 @@
 
 _Date: 2026-07-16. No code changed. This is a findings + options document._
 
-## TL;DR
+## RESOLUTION (2026-07-16) -- writer found, severity downgraded
+
+The writer is the Edge Function `supabase/functions/post-event-calibration`
+(now saved to the repo). Confirmed: NO db trigger, NO pg_cron (probes 1+2
+returned zero rows); Probe 3 showed all `brier_score_ewma` values in [0,1] or
+NULL (no catastrophic corruption).
+
+**The bug is real but invisible and non-urgent:**
+- The EWMA loop (bottom of the function) does one SELECT + one UPDATE per player
+  with NO event_id idempotency guard. Client calls it ~once/event via two guarded
+  paths (App.tsx startup backfill + live-completion effect), but the guard keys on
+  `model_calibration_log` existence and protects the LOG write, not the EWMA loop.
+  Leaks (swallowed log-upsert errors -> event never logged -> re-backfilled every
+  boot; startup+live both firing pre-log) get amplified 25x by the loop.
+  67,727 writes / 25 players ~= 2,700 invocations for ~125 events ~= 22x/event.
+- So `brier_score_ewma` HAS drifted (over-folded ~22x toward recent FIELD Brier;
+  also it was never per-player -- mPre.brier is one field-wide number stamped on
+  everyone). In-range, but not the intended number.
+- **Nothing in the client reads `brier_score_ewma`** (grep: only a PK-map entry).
+  The wrong values reach zero users. The user-facing calibration data
+  (`model_calibration_log`, the weight optimiser) is idempotent and correct.
+
+**Verdict: cost + latent landmine, NOT a correctness emergency.** ~67k needless
+writes; a corrupted column nobody reads yet (becomes a problem the day someone
+surfaces "per-player prediction accuracy" and trusts it).
+
+**Recommended fix (pending approval):** delete the `if (mPre) { for (gid...) }`
+EWMA block from the Edge Function and redeploy. Nothing reads the column, so
+removing the write breaks nothing, and it eliminates ~all 67k writes (the loop IS
+the N+1). If a per-player Brier trend is ever wanted, derive it on read from
+`model_calibration_log.brier_score`, or guard a cached write on event_id like the
+log upsert already does. The calibration log + weight optimiser stay untouched.
+
+---
+
+## TL;DR (original diagnosis, before the function was located)
 
 **The Brier / EWMA read-modify-write loop is not in this repository.** There is
 no client code that reads, writes, or computes `brier_score_ewma`,
