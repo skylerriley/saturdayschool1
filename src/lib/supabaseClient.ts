@@ -304,16 +304,22 @@ export const supabase = (() => {
       },
     }),
     // Storage helpers for scorecard image uploads.
-    // cache-control: one year, immutable. Safe because every upload path
-    // embeds Date.now() in the filename (hole-5-<ts>.jpg, event_<id>_<ts>.jpg),
-    // so a replaced image gets a new URL -- the filename IS the cache-buster,
-    // and a stale long-lived cache entry can never be served for fresh content.
-    // Without this header Supabase Storage defaults objects to no-cache, which
-    // forces an origin revalidation (billed cached egress) on every view.
+    // cache-control MUST be BARE SECONDS ("31536000"), not a full directive:
+    // storage-api PREPENDS "max-age=" to whatever value it receives, so a bare
+    // "31536000" becomes "max-age=31536000" (valid) while "public, max-age=...,
+    // immutable" becomes "max-age=public, max-age=..." (unparseable -> no-cache
+    // fallback). One year. Safe because every upload path embeds Date.now() in
+    // the filename (hole-5-<ts>.jpg, event_<id>_<ts>.jpg), so a replaced image
+    // gets a new URL -- the filename IS the cache-buster.
+    // NOTE (2026-07-16): on THIS project the served response is still no-cache
+    // even with a correctly-stored max-age=31536000 (verified over the wire on a
+    // public bucket, origin MISS/REVALIDATED) -- the header does not take effect
+    // on Supabase Storage here. This value is kept because it is the correct
+    // shape and R2 (the planned media backend) honors it at PUT time.
     storage: {
       upload: async (bucket:string, path:string, file:Blob):Promise<{url:string}|null>=>{
         const url=SUPABASE_URL+"/storage/v1/object/"+bucket+"/"+path;
-        const res=await fetch(url,{method:"POST",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":file.type,"cache-control":"public, max-age=31536000, immutable","x-upsert":"true"},body:file});
+        const res=await fetch(url,{method:"POST",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":file.type,"cache-control":"31536000","x-upsert":"true"},body:file});
         if(!res.ok){
           const err=await res.text().catch(()=>"");
           console.error("Storage upload failed:",res.status,err);
