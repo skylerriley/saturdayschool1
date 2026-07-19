@@ -1439,12 +1439,23 @@ const CSS = `
   .hl-overlay .h-meta{position:absolute;top:calc(64px + var(--safe-area-top));left:16px;z-index:6;pointer-events:none;}
 
   /* data beats: hero label directly above the focus card, glass panel, caption */
+  /* Top padding clears the eyebrow/dots/close topbar so the centered hero never
+     crowds it (a tighter value collided with the topbar). */
   .beat{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;padding:calc(74px + var(--safe-area-top)) 14px calc(16px + var(--safe-area-bottom));pointer-events:none;}
   /* Handoff #9 2a: the caption and the "Auto highlight" footer are SIBLINGS
      in a flex column that CANNOT overlap. .beat-mid takes the flexible space
      (min-height:0 so it can shrink; overflow:hidden so nothing escapes onto
      the footer); .beat-auto is flex:0 0 auto and always keeps its own row. */
-  .beat-mid{flex:1 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:11px;}
+  /* overflow:visible so the full-bleed .shot can extend to the screen edges
+     (a horizontal clip here would cut its negative-margin bleed). Caption/footer
+     no-overlap is enforced by their own flex sizing + the caption's own
+     overflow:hidden, not by clipping this container. */
+  /* CENTER the group as a unit: hero + shot + panel + caption read as one
+     block, with the hero sitting directly above the focus card as its label
+     (Handoff #3). The hole is WIDTH-limited (its height caps at the 1024:760
+     ratio of the full-bleed width), so handing the column extra vertical only
+     opens dead gaps -- centering keeps the group together instead. */
+  .beat-mid{flex:1 1 auto;min-height:0;overflow:visible;display:flex;flex-direction:column;justify-content:center;gap:11px;}
   .beat-hero{font-weight:800;font-size:31px;line-height:1.04;letter-spacing:-.025em;color:#fff;text-align:right;margin:0 2px -2px;text-shadow:0 2px 18px rgba(0,0,0,.5);flex:0 0 auto;}
   /* 2b: match the glass panels' visual boundary + 3px side padding so the
      caption reads inside the card edges, not against them. 2c: font size is
@@ -1472,15 +1483,23 @@ const CSS = `
   .beat-auto{flex:0 0 auto;color:rgba(255,255,255,.5);font-size:12.5px;display:flex;align-items:center;gap:7px;padding-top:8px;}
   .beat-date{color:rgba(255,255,255,.5);}
   /* hole meta: big number growing up out of the ground + Par / Yds */
-  .hl-overlay .hole-meta{color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.75);line-height:1;}
+  .hl-overlay .hole-meta{color:#fff;text-shadow:0 2px 5px rgba(0,0,0,.75);line-height:1;}
   .hl-overlay .hole-meta b{display:block;font-weight:800;font-size:44px;letter-spacing:-.03em;overflow:hidden;line-height:.98;}
   .hl-overlay .hole-meta b i{display:block;font-style:normal;animation:holeGrow .62s cubic-bezier(.16,1,.3,1) .12s both;}
   @keyframes holeGrow{from{transform:translateY(105%);}to{transform:translateY(0);}}
   .hl-overlay .hole-meta span{display:block;font-size:15px;font-weight:600;margin-top:6px;opacity:.96;}
-  /* focus shot card */
-  .hl-overlay .shot{position:relative;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.18);aspect-ratio:1024/660;box-shadow:0 6px 18px rgba(0,0,0,.22);flex:0 0 auto;}
-  .hl-overlay .shot.tall{aspect-ratio:1024/860;}
-  .hl-overlay .shot img{width:100%;height:100%;object-fit:cover;object-position:center 42%;}
+  /* Focus shot. Tracer alignment: the SVG uses preserveAspectRatio="none" so
+     its 1024:760 viewBox STRETCHES to the shot box exactly like the AnchorWizard
+     normalises anchors against its own 1024:760 box -- so the arc lands in ANY
+     equally-proportioned box, independent of the image's object-fit. The box is
+     kept at 1024:760; the image uses contain to show the whole render. Full
+     bleed to the screen edges. */
+  .hl-overlay .shot{position:relative;border-radius:18px;overflow:hidden;aspect-ratio:1024/800;flex:0 0 auto;margin:0 -5px;}
+  .hl-overlay .shot img{display:block;width:100%;height:100%;object-fit:contain;}
+  /* CUTOUT (transparent alpha render): no card chrome -- it carries its own
+     shadow -- and it may exceed the frame ratio since object-fit:contain never
+     crops (the tracer follows via preserveAspectRatio="none"). */
+  .hl-overlay .shot.cutout{border-radius:0;box-shadow:none;}
   .hl-overlay .shot .hole-meta{position:absolute;top:12px;left:14px;}
   .tracer{position:absolute;inset:0;width:100%;height:100%;}
   .trace{stroke-dasharray:100;stroke-dashoffset:100;animation:hlTrace 1.7s cubic-bezier(.3,.55,.35,1) .25s forwards;}
@@ -1620,7 +1639,7 @@ const CSS = `
   .st-c .pt{font-size:11px;font-weight:800;color:rgba(255,255,255,.6);}
   .st-c.on .pt{color:var(--gold-300);font-size:13px;}
   .st-win{position:relative;}
-  .st-win::before{content:"";position:absolute;left:calc(var(--s) * 100%);width:calc(var(--n) * 100%);top:-7px;bottom:-7px;border:1.5px solid var(--gold-400);border-radius:12px;background:rgba(245,176,0,.1);animation:hlWinIn .5s cubic-bezier(.2,1,.3,1) .25s both;}
+  .st-win::before{content:"";position:absolute;left:calc(var(--s) * 97%);width:calc(var(--n) * 103%);top:-7px;bottom:-7px;border:1.5px solid var(--gold-400);border-radius:12px;background:rgba(245,176,0,.1);animation:hlWinIn .5s cubic-bezier(.2,1,.3,1) .25s both;}
   @keyframes hlWinIn{from{opacity:0;transform:scaleX(.7);}to{opacity:1;transform:none;}}
   /* h2h momentum polyline (duel/rivalry) */
   .hl-h2h{width:100%;height:120px;display:block;}

@@ -171,9 +171,9 @@ export function AnchorWizard({ view, hole, row, setHoleImages, showSuccess, onCl
           onPointerMove={onBoxPointerMove}
           onPointerUp={onBoxPointerUp}
           onPointerCancel={onBoxPointerUp}
-          style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)", aspectRatio: "1024/660", background: "#111", cursor: "crosshair", userSelect: "none", touchAction: "none" }}
+          style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)", aspectRatio: "1024/760", background: "#111", cursor: "crosshair", userSelect: "none", touchAction: "none" }}
         >
-          <img src={row.public_url} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
+          <img src={row.public_url} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
 
           {/* placed anchor dots (draggable to re-tune) */}
           {steps.map((s) => anchors[s.key] && (

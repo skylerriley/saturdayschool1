@@ -34,21 +34,35 @@ async function presign(eventId: number, contentType: string, ext: string, kind: 
 // map). hole is null for a 'course' map. Distinct key namespace from highlights
 // media -- see r2-presign.
 async function presignCourse(courseId: number, hole: number | null, viewType: string, contentType: string, ext: string): Promise<{ uploadUrl: string; publicUrl: string }> {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/r2-presign`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + SUPABASE_KEY,
-    },
-    body: JSON.stringify({ asset: "course", course_id: courseId, hole, view_type: viewType, contentType, ext }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/r2-presign`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + SUPABASE_KEY,
+      },
+      body: JSON.stringify({ asset: "course", course_id: courseId, hole, view_type: viewType, contentType, ext }),
+    });
+  } catch (_: any) {
+    // A TypeError here means the request never reached the function -- the
+    // r2-presign Edge Function is not deployed, or is unreachable/CORS-blocked.
+    throw new Error("Could not reach the upload service (r2-presign). Is the Edge Function deployed?");
+  }
   const json = await res.json().catch(() => ({}));
   if (!res.ok || !json.uploadUrl) throw new Error(json.error || `Presign failed (${res.status})`);
   return json;
 }
 
 async function putToR2(uploadUrl: string, blob: Blob): Promise<void> {
-  const res = await fetch(uploadUrl, { method: "PUT", body: blob });
+  let res: Response;
+  try {
+    res = await fetch(uploadUrl, { method: "PUT", body: blob });
+  } catch (_: any) {
+    // Presign succeeded but the PUT to R2 failed at the network layer -- almost
+    // always the R2 bucket is missing a CORS policy allowing PUT from this origin.
+    throw new Error("Upload to storage was blocked (R2 CORS?). The presign worked but the file PUT failed.");
+  }
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);
 }
 
@@ -67,15 +81,34 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Image compression failed"))), "image/jpeg", quality);
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Image compression failed"))), type, quality);
   });
 }
 
-// Resize longest edge at JPEG quality q. Defaults tuned for highlight photos
-// (~5 MB phone photo -> ~300 KB); course layouts pass a larger edge/quality.
-async function compressImage(file: File, maxEdge: number, quality: number): Promise<Blob> {
+function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return canvasToBlob(canvas, "image/jpeg", quality);
+}
+
+// Encode preserving ALPHA. JPEG has no alpha channel and fills transparency
+// with black, so a PNG/WebP with a transparent background comes out opaque --
+// which is why the course/hole layouts lost their transparent backgrounds.
+// WebP keeps alpha and stays small; PNG is the fallback if a browser cannot
+// encode WebP (older Safari). Returns the blob and the resolved type/ext so the
+// presign/PUT use the RIGHT content type.
+async function canvasToAlpha(canvas: HTMLCanvasElement, quality: number): Promise<{ blob: Blob; contentType: string; ext: string }> {
+  const webp = await canvasToBlob(canvas, "image/webp", quality).catch(() => null);
+  // Some browsers ignore an unsupported type and silently return PNG; only
+  // trust it if the blob's type actually came back as webp.
+  if (webp && webp.type === "image/webp") return { blob: webp, contentType: "image/webp", ext: "webp" };
+  const png = await canvasToBlob(canvas, "image/png", 1);
+  return { blob: png, contentType: "image/png", ext: "png" };
+}
+
+// Draw a resized copy of `file` onto a canvas (longest edge <= maxEdge) and
+// hand it back for encoding. Alpha is preserved in the canvas itself.
+async function drawResized(file: File, maxEdge: number): Promise<HTMLCanvasElement> {
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImage(url);
@@ -85,11 +118,18 @@ async function compressImage(file: File, maxEdge: number, quality: number): Prom
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
+    // The context starts fully transparent; drawing an image with alpha keeps it.
     canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
-    return await canvasToJpeg(canvas, quality);
+    return canvas;
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+// Resize longest edge at JPEG quality q -- for opaque highlight PHOTOS only
+// (camera photos have no transparency; JPEG is smallest).
+async function compressImage(file: File, maxEdge: number, quality: number): Promise<Blob> {
+  return canvasToJpeg(await drawResized(file, maxEdge), quality);
 }
 
 function compressPhoto(file: File): Promise<Blob> {
@@ -198,20 +238,44 @@ export async function uploadHighlightMedia(eventId: number, file: File): Promise
 // Course assets (Handoff #11): artistic / hole / green layouts + the course map.
 // These are uploaded once per hole from a phone and READ REPEATEDLY (every
 // highlight beat pulls the artistic background), so they can be larger than a
-// highlight photo -- 1600px longest edge at q0.85. Everything comes out JPEG.
-// hole is null for a 'course' map. Returns the R2 publicUrl to store on the
-// hole_images row.
+// highlight photo -- 1600px longest edge at q0.85. Encoded as WebP so the
+// TRANSPARENT BACKGROUND is preserved (JPEG has no alpha and would fill it with
+// black); PNG fallback if the browser cannot encode WebP. hole is null for a
+// 'course' map. Returns the R2 publicUrl to store on the hole_images row.
 const COURSE_MAX_EDGE = 1600;
 const COURSE_QUALITY = 0.85;
 
 export type CourseViewType = "artistic" | "hole" | "green" | "course";
 
-export async function uploadCourseAsset(courseId: number, hole: number | null, viewType: CourseViewType, file: File): Promise<string> {
+// Does the drawn canvas contain any transparent pixel? Sampling a coarse grid
+// (not every pixel) is enough to tell a cutout with a transparent background
+// from an opaque photo, and stays cheap on a large image.
+function canvasHasAlpha(canvas: HTMLCanvasElement): boolean {
+  try {
+    const ctx = canvas.getContext("2d")!;
+    const { width: w, height: h } = canvas;
+    const step = Math.max(1, Math.floor(Math.min(w, h) / 64));
+    // Corners are the most likely transparent region for a centered cutout;
+    // scan a grid to catch interior holes too.
+    for (let y = 0; y < h; y += step) {
+      for (let x = 0; x < w; x += step) {
+        if (ctx.getImageData(x, y, 1, 1).data[3] < 250) return true;
+      }
+    }
+  } catch (_: any) { /* tainted canvas etc. -- treat as opaque */ }
+  return false;
+}
+
+export interface UploadedCourseAsset { publicUrl: string; hasAlpha: boolean; }
+
+export async function uploadCourseAsset(courseId: number, hole: number | null, viewType: CourseViewType, file: File): Promise<UploadedCourseAsset> {
   if (!file.type.startsWith("image/")) {
     throw new Error("That file type is not supported -- use a photo.");
   }
-  const blob = await compressImage(file, COURSE_MAX_EDGE, COURSE_QUALITY);
-  const { uploadUrl, publicUrl } = await presignCourse(courseId, hole, viewType, "image/jpeg", "jpg");
+  const canvas = await drawResized(file, COURSE_MAX_EDGE);
+  const hasAlpha = canvasHasAlpha(canvas);
+  const { blob, contentType, ext } = await canvasToAlpha(canvas, COURSE_QUALITY);
+  const { uploadUrl, publicUrl } = await presignCourse(courseId, hole, viewType, contentType, ext);
   await putToR2(uploadUrl, blob);
-  return publicUrl;
+  return { publicUrl, hasAlpha };
 }

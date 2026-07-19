@@ -3005,7 +3005,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
     setUploadingHole(hole);
     try{
       if(!courseId)throw new Error("No course id for this course");
-      const publicUrl=await uploadCourseAsset(courseId,hole,"artistic",file);
+      const {publicUrl}=await uploadCourseAsset(courseId,hole,"artistic",file);
       const existing=imgByHole[hole];
       if(existing){
         // Fresh R2 key per upload => cache-bust is automatic; just repoint the

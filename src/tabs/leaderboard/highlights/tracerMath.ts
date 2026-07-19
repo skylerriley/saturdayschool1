@@ -6,7 +6,7 @@
 // 4-5 dots are ever authored.
 
 export const VB_W = 1024;
-export const VB_H = 660;
+export const VB_H = 760;
 
 export interface Pt { x: number; y: number }
 export const toPx = (a: Pt) => ({ x: a.x * VB_W, y: a.y * VB_H });

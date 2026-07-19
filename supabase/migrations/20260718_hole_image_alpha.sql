@@ -1,0 +1,11 @@
+-- hole_images.has_alpha: does this image have a transparent background?
+--
+-- The story viewer treats an alpha image as a CUTOUT -- no card frame (border /
+-- radius / shadow), full-bleed, the render carries its own shadow. An opaque
+-- photographic layout keeps the framed card treatment. The upload path sets
+-- this: WebP/PNG (alpha-preserving) => true, JPEG => false.
+--
+-- Backfill: existing 'hole'/'green' layout rows were uploaded before the
+-- alpha-preserving pipeline (they are opaque JPEGs), so default false is
+-- correct for them until they are re-uploaded. Idempotent.
+alter table hole_images add column if not exists has_alpha boolean not null default false;

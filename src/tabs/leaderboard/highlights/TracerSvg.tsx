@@ -52,14 +52,21 @@ export function TracerSvg({ points, anchors, view }: { points: number; anchors: 
     // GREEN VIEW -- HONESTY CONSTRAINT: we have gross+points only, never
     // shot-level data, so putt counts are unknowable. This renders OUTCOME
     // only: net birdie tracks into the cup, net par settles beside the pin,
-    // worse slides past. Do NOT "improve" this into 1-putt/2-putt claims.
+    // worse comes up short of the hole. Do NOT "improve" this into 1-putt/
+    // 2-putt claims.
     const edge: Pt = anchors.edge, pin: Pt = anchors.pin;
     if (!edge || !pin) return null;
-    const end: Pt = points >= 3 ? pin : points === 2 ? { x: pin.x - 0.03, y: pin.y + 0.03 } : { x: pin.x + 0.09, y: pin.y - 0.05 };
+    // net birdie+ -> into the cup; net par -> settles just beside the pin;
+    // worse -> comes up SHORT along the putt line (a left-short first putt is
+    // the classic 3-putt), NOT sailing past off-line. "Short" = ~78% of the way
+    // from the edge to the pin, so it stops on-line before the hole regardless
+    // of green orientation.
+    const shortOf = (t: number): Pt => ({ x: edge.x + (pin.x - edge.x) * t, y: edge.y + (pin.y - edge.y) * t });
+    const end: Pt = points >= 3 ? pin : points === 2 ? { x: pin.x - 0.03, y: pin.y + 0.03 } : shortOf(0.78);
     const col = points >= 3 ? "#ffd76a" : points === 2 ? "#88e6a6" : "#e4c98a";
     const E = P(end);
     return (
-      <svg className="tracer" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid slice">
+      <svg className="tracer" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none">
         <circle cx={P(edge).x} cy={P(edge).y} r="7" fill="#fff" opacity=".9" />
         <circle cx={P(pin).x} cy={P(pin).y} r="5" fill="none" stroke="#fff" strokeWidth="2.5" opacity=".8" />
         <path className="trace" d={puttPath(edge, end)} pathLength={100} fill="none" stroke={col} strokeWidth="7" strokeLinecap="round" opacity=".28" />
@@ -80,7 +87,7 @@ export function TracerSvg({ points, anchors, view }: { points: number; anchors: 
   const d = arcPath(tee, end, kind === "spray" ? 0.22 : 0.34, endType === "green" ? anchors.apex : undefined);
   const E = P(end);
   return (
-    <svg className="tracer" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid slice">
+    <svg className="tracer" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none">
       <circle cx={P(tee).x} cy={P(tee).y} r="7" fill="#fff" opacity=".9" />
       <path className="trace" d={d} pathLength={100} fill="none" stroke={col} strokeWidth="8" strokeLinecap="round" opacity=".28" />
       <path className="trace" d={d} pathLength={100} fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" />

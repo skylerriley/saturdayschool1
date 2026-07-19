@@ -63,15 +63,15 @@ export function HoleImageManager({ courseName, courseId, holeImages, setHoleImag
   const doUpload = async (slot: Slot, file: File) => {
     setUploading(true);
     try {
-      const publicUrl = await uploadCourseAsset(courseId, slot.hole, slot.view, file);
+      const { publicUrl, hasAlpha } = await uploadCourseAsset(courseId, slot.hole, slot.view, file);
       const existing = rowFor(slot.hole, slot.view);
       if (existing) {
         // R2 key already changed (new uuid) => cache-bust is automatic; just
         // repoint the row. Old R2 object is orphaned (zero egress, negligible).
-        await supabase.from("hole_images").update({ public_url: publicUrl }, { hole_image_id: existing.hole_image_id }).catch(reportWriteError("Image save"));
-        setHoleImages((p: any[]) => p.map((r: any) => r.hole_image_id === existing.hole_image_id ? { ...r, public_url: publicUrl } : r));
+        await supabase.from("hole_images").update({ public_url: publicUrl, has_alpha: hasAlpha }, { hole_image_id: existing.hole_image_id }).catch(reportWriteError("Image save"));
+        setHoleImages((p: any[]) => p.map((r: any) => r.hole_image_id === existing.hole_image_id ? { ...r, public_url: publicUrl, has_alpha: hasAlpha } : r));
       } else {
-        const row: any = { course_name: courseName, hole_number: slot.hole, view_type: slot.view, public_url: publicUrl, storage_path: publicUrl };
+        const row: any = { course_name: courseName, hole_number: slot.hole, view_type: slot.view, public_url: publicUrl, storage_path: publicUrl, has_alpha: hasAlpha };
         const inserted = await supabase.from("hole_images").insert(row).catch((e: any) => { reportWriteError("Image save")(e); return null; });
         const ir = Array.isArray(inserted) ? inserted[0] : null;
         setHoleImages((p: any[]) => [...p, { ...row, hole_image_id: ir?.hole_image_id || Date.now() }]);
@@ -166,11 +166,14 @@ export function HoleImageManager({ courseName, courseId, holeImages, setHoleImag
         </div>
       </div>
 
-      {/* Slot editor sheet: upload/replace + (for hole/green) open the wizard */}
+      {/* Slot editor sheet: upload/replace + (for hole/green) open the wizard.
+          Stays inside the app shell (below the bottom nav in stacking order);
+          the sheet's bottom padding clears the floating nav + safe area so its
+          buttons are never covered. */}
       {openSlot && !wizardOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9400, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
           onClick={(e) => { if (e.target === e.currentTarget) setOpenSlot(null); }}>
-          <div style={{ background: "var(--bg)", borderRadius: "16px 16px 0 0", width: "100%", maxWidth: 620, padding: "16px 16px 24px" }}>
+          <div style={{ background: "var(--bg)", borderRadius: "16px 16px 0 0", width: "100%", maxWidth: 620, padding: "16px 16px calc(110px + var(--safe-area-bottom))" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               <div style={{ fontFamily: "var(--font-serif,serif)", fontSize: 18, color: "var(--green-800)" }}>
                 {VIEW_LABEL[openSlot.view]}{openSlot.hole ? ` · Hole ${openSlot.hole}` : ""}
@@ -180,8 +183,8 @@ export function HoleImageManager({ courseName, courseId, holeImages, setHoleImag
             <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 12 }}>{VIEW_HINT[openSlot.view]}</div>
 
             {activeRow && (
-              <div style={{ borderRadius: 12, overflow: "hidden", marginBottom: 12, aspectRatio: "1024/660", background: "#111" }}>
-                <img src={activeRow.public_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <div style={{ borderRadius: 12, overflow: "hidden", marginBottom: 12, aspectRatio: "1024/760", background: "#111" }}>
+                <img src={activeRow.public_url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
               </div>
             )}
 

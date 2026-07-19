@@ -44,10 +44,13 @@ const ALLOWED_CONTENT_TYPES: Record<string, string[]> = {
   "video/mp4": ["mp4"],
   "video/quicktime": ["mov"],
 };
-// Course assets are static imagery only -- no video. Client compresses to JPEG.
+// Course assets are static imagery only -- no video. The client encodes as
+// WebP (or PNG fallback) to PRESERVE the transparent background; JPEG is still
+// allowed for any legacy/opaque uploads.
 const COURSE_CONTENT_TYPES: Record<string, string[]> = {
   "image/jpeg": ["jpg", "jpeg"],
   "image/webp": ["webp"],
+  "image/png": ["png"],
 };
 const COURSE_VIEW_TYPES = ["artistic", "hole", "green", "course"];
 const PRESIGN_EXPIRES_SECONDS = 600; // 10 minutes to complete the PUT

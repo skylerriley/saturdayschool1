@@ -550,7 +550,9 @@ export function HighlightsViewer({
             key={heroFinalIn ? `hero-${idx}` : undefined}
           >{b.heroLabel}</div>
           {focusRow && !isStandings && (
-            <div className="shot">
+            // hole/green cutout (has_alpha): .cutout drops the card chrome --
+            // the 3D render carries its own shadow. Opaque layouts keep the frame.
+            <div className={"shot" + (focusRow.has_alpha ? " cutout" : "")}>
               <img src={focusRow.public_url} alt="" />
               {b.holeMeta && <HoleMetaBlock meta={b.holeMeta} animKey={idx} />}
               {showTracer && (
