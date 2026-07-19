@@ -10,13 +10,12 @@ const P = toPx;
 function landingMarker(x: number, y: number, col: string, end: "green" | "bunker" | "trouble") {
   const shadow = <ellipse cx={x} cy={y + 9} rx="9" ry="3" fill="#000" opacity=".3" className="endm" />;
   if (end === "green") {
+    // Ring only -- no ground shadow (it was under the removed landing dot).
     return (
       <>
-        {shadow}
-        <circle className="tring" cx={x} cy={y} r="14" fill="none" stroke={col} strokeWidth="2.5" />
+        <circle className="tring" cx={x} cy={y} r="16" fill="none" stroke={col} strokeWidth="4" />
         <g className="endm">
-          <circle cx={x} cy={y} r="14" fill="none" stroke={col} strokeWidth="3.5" />
-          <circle cx={x} cy={y} r="5" fill={col} />
+          <circle cx={x} cy={y} r="16" fill="none" stroke={col} strokeWidth="5.5" />
         </g>
       </>
     );
@@ -28,19 +27,20 @@ function landingMarker(x: number, y: number, col: string, end: "green" | "bunker
         <g className="endm">
           {[0, 60, 120, 180, 240, 300].map((a) => {
             const r = (Math.PI * a) / 180;
-            return <line key={a} x1={x} y1={y} x2={Math.round(x + Math.cos(r) * 14)} y2={Math.round(y + Math.sin(r) * 14)} stroke={col} strokeWidth="2.5" strokeLinecap="round" />;
+            return <line key={a} x1={x} y1={y} x2={Math.round(x + Math.cos(r) * 19)} y2={Math.round(y + Math.sin(r) * 19)} stroke={col} strokeWidth="3" strokeLinecap="round" />;
           })}
-          <circle cx={x} cy={y} r="4.5" fill={col} />
+          <circle cx={x} cy={y} r="6" fill={col} />
         </g>
       </>
     );
   }
+  // Trouble X in a brighter red than the tracer's soft coral, so the miss reads.
   return (
     <>
       {shadow}
       <g className="endm">
-        <line x1={x - 9} y1={y - 9} x2={x + 9} y2={y + 9} stroke={col} strokeWidth="4" strokeLinecap="round" />
-        <line x1={x + 9} y1={y - 9} x2={x - 9} y2={y + 9} stroke={col} strokeWidth="4" strokeLinecap="round" />
+        <line x1={x - 12} y1={y - 12} x2={x + 12} y2={y + 12} stroke="#ff3b30" strokeWidth="5" strokeLinecap="round" />
+        <line x1={x + 12} y1={y - 12} x2={x - 12} y2={y + 12} stroke="#ff3b30" strokeWidth="5" strokeLinecap="round" />
       </g>
     </>
   );
@@ -69,10 +69,9 @@ export function TracerSvg({ points, anchors, view }: { points: number; anchors: 
       <svg className="tracer" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none">
         <circle cx={P(edge).x} cy={P(edge).y} r="7" fill="#fff" opacity=".9" />
         <circle cx={P(pin).x} cy={P(pin).y} r="5" fill="none" stroke="#fff" strokeWidth="2.5" opacity=".8" />
-        <path className="trace" d={puttPath(edge, end)} pathLength={100} fill="none" stroke={col} strokeWidth="7" strokeLinecap="round" opacity=".28" />
-        <path className="trace" d={puttPath(edge, end)} pathLength={100} fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+        <path className="trace" d={puttPath(edge, end)} pathLength={100} fill="none" stroke={col} strokeWidth="9" strokeLinecap="round" opacity=".28" />
+        <path className="trace" d={puttPath(edge, end)} pathLength={100} fill="none" stroke="#fff" strokeWidth="4.6" strokeLinecap="round" />
         {points >= 3 && <circle className="tring" cx={E.x} cy={E.y} r="13" fill="none" stroke={col} strokeWidth="2.5" />}
-        <g className="endm"><circle cx={E.x} cy={E.y} r="5" fill={col} /></g>
       </svg>
     );
   }
@@ -89,9 +88,12 @@ export function TracerSvg({ points, anchors, view }: { points: number; anchors: 
   return (
     <svg className="tracer" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none">
       <circle cx={P(tee).x} cy={P(tee).y} r="7" fill="#fff" opacity=".9" />
-      <path className="trace" d={d} pathLength={100} fill="none" stroke={col} strokeWidth="8" strokeLinecap="round" opacity=".28" />
-      <path className="trace" d={d} pathLength={100} fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+      {/* landing marker renders BEFORE the paths so the green landing rings sit
+          UNDER the tracer (paint order = z-order within one SVG) rather than
+          overlapping it. */}
       {landingMarker(E.x, E.y, col, endType)}
+      <path className="trace" d={d} pathLength={100} fill="none" stroke={col} strokeWidth="10" strokeLinecap="round" opacity=".28" />
+      <path className="trace" d={d} pathLength={100} fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
     </svg>
   );
 }

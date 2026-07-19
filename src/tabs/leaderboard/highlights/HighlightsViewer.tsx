@@ -91,7 +91,7 @@ function GlassPanel({ beat }: { beat: DataBeat }) {
     const s = beat.streak;
     return (
       <div className="glass">
-        <div className="glass-lbl">{beat.subtext ? `${beat.subtext} · gross and points` : "Gross and points"}</div>
+        <div className="glass-lbl">{beat.subtext ? `${beat.subtext}` : "Gross and points"}</div>
         <div className="streak st-win" style={{ "--s": s.focusStart / s.cells.length, "--n": s.focusCount / s.cells.length } as any}>
           {s.cells.map((c, i) => {
             const on = i >= s.focusStart && i < s.focusStart + s.focusCount;
@@ -111,7 +111,7 @@ function GlassPanel({ beat }: { beat: DataBeat }) {
     const r = beat.scoreRow;
     return (
       <div className="glass">
-        <div className="glass-lbl">{fn ? `${fn} · hole ${beat.hole}, rounds here` : "Recent rounds here"}</div>
+        <div className="glass-lbl">{fn ? `${fn} · hole ${beat.hole}, recent scores` : "Recent Scores"}</div>
         <div className="srow">
           {r.cells.map((c, i) => (
             <div key={i} className={"sr-c" + (c.highlight ? " hi" : "")} style={{ animationDelay: `${i * 90}ms` }}>
@@ -130,7 +130,7 @@ function GlassPanel({ beat }: { beat: DataBeat }) {
     const max = Math.max(1, ...vals);
     return (
       <div className="glass">
-        <div className="glass-lbl">{beat.hole != null ? `Hole ${beat.hole} · net scoring across the field` : "Net scoring across the field"}</div>
+        <div className="glass-lbl">{beat.hole != null ? `Hole ${beat.hole} · today's net scores` : "Today's Net Scores"}</div>
         <div className="hbars">
           {beat.fieldBars.map((b, i) => {
             // Defensive: a non-finite value renders 0 width, never NaN%.
@@ -155,7 +155,7 @@ function GlassPanel({ beat }: { beat: DataBeat }) {
     const max = Math.max(1, ...beat.weekBars.map((b) => b.value));
     return (
       <div className="glass">
-        <div className="glass-lbl">{fn ? `${fn} · points week by week` : "Points week by week"}</div>
+        <div className="glass-lbl">{fn ? `${fn} · recent form` : "Recent Form"}</div>
         <div className="vbars">
           {beat.weekBars.map((b, i) => (
             <div key={i} className={"vb" + (b.highlight ? " hi" : "")}>

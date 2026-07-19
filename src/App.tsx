@@ -1504,10 +1504,17 @@ const CSS = `
   .tracer{position:absolute;inset:0;width:100%;height:100%;}
   .trace{stroke-dasharray:100;stroke-dashoffset:100;animation:hlTrace 1.7s cubic-bezier(.3,.55,.35,1) .25s forwards;}
   @keyframes hlTrace{to{stroke-dashoffset:0;}}
-  .endm{opacity:0;animation:hlEndm .5s ease 1.65s forwards;}
-  @keyframes hlEndm{0%{opacity:0;transform:scale(.2);}60%{opacity:1;transform:scale(1.15);}100%{opacity:1;transform:scale(1);}}
-  .tring{opacity:0;animation:hlTring 1s ease 1.8s forwards;transform-origin:center;transform-box:fill-box;}
-  @keyframes hlTring{0%{opacity:.9;transform:scale(.6);}100%{opacity:0;transform:scale(1.7);}}
+  /* End effect FADES in (no scale-pop / shake), then PULSES in place. The marker
+     fades to full opacity, then a soft in-place scale pulse repeats twice from
+     its own center (transform-box:fill-box so it pivots on the marker, not the
+     SVG viewport). */
+  .endm{opacity:0;transform-box:fill-box;transform-origin:center;animation:hlEndmIn .45s ease 1.65s forwards, hlEndmPulse 1.1s ease-in-out 2.1s 2;}
+  @keyframes hlEndmIn{from{opacity:0;}to{opacity:1;}}
+  @keyframes hlEndmPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.14);}}
+  /* Ring is a glow pulse: fades in and out at a fixed size (a halo throb), not
+     an expanding ring travelling outward. */
+  .tring{opacity:0;transform-box:fill-box;transform-origin:center;animation:hlTringPulse 1.2s ease-in-out 1.9s 2;}
+  @keyframes hlTringPulse{0%,100%{opacity:0;transform:scale(1);}50%{opacity:.8;transform:scale(1.12);}}
   /* glass data panel */
   /* ---- LIQUID GLASS (highlight cards) --------------------------------------
      Ported from the liquid-glass look (rdev/liquid-glass-react) minus its SVG
