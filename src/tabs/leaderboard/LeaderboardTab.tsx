@@ -752,7 +752,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     ...(showUpcomingTab?[{id:"upcoming",label:"Upcoming"}]:[]),
     {id:"season",label:"Season Avg"},
     {id:"top15",label:"Top 15 Avg"},
-    {id:"weekly",label:"Weekly"},
+    {id:"weekly",label:"COMPLETED"},
   ];
 
   // Helper: assign tie positions to a sorted array
