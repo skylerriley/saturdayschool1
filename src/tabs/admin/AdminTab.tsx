@@ -113,7 +113,7 @@ export function AdminTab({ golfers, setGolfers, courses, setCourses, events, set
           { id: "hcp", label: "Handicaps" },
           { id: "coursehcp", label: "Course HCPs" },
           { id: "scores", label: "Scores" },
-          { id: "payouts", label: "Payouts" },
+          { id: "payouts", label: "Charity" },
           { id: "courses", label: "Courses" },
           { id: "roster", label: "Roster" },
           { id: "message", label: "Message" },
