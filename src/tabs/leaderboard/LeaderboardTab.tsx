@@ -115,15 +115,19 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
       {imgUrl&&!imgLoaded&&(
         <div className="wx-skel" style={{position:"absolute",inset:0,borderRadius:0}}/>
       )}
-      {/* Background image — fades in once decoded */}
+      {/* Background image — fades in once decoded. When the URL is already in
+          the module image cache (imgLoaded true on mount), load eagerly + decode
+          synchronously so the pixels are present on the very first paint; a
+          lazy/async <img> otherwise "pops in" on scroll even with bytes cached.
+          Only uncached images stay lazy/async to avoid re-fetching offscreen. */}
       {imgUrl&&(
         <img
           src={imgUrl}
           alt={`${courseName} hole ${holeNum}`}
           style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 60%",
             opacity:imgLoaded?1:0,transition:"opacity 0.4s ease"}}
-          loading="lazy"
-          decoding="async"
+          loading={imgLoaded?"eager":"lazy"}
+          decoding={imgLoaded?"sync":"async"}
           draggable={false}
           onLoad={onImgLoad}
         />

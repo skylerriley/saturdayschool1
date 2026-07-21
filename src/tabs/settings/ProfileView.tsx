@@ -254,59 +254,25 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
       )}
 
       {/* Quick stats strip — equal grid columns so the middle stat sits dead-center */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", maxWidth: 300, margin: "14px auto 16px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", maxWidth: 300, margin: "30px auto 22px" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{golfer.current_handicap_index != null ? <CountUp value={golfer.current_handicap_index} decimals={1} /> : "--"}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>HCP</div>
+          <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{golfer.current_handicap_index != null ? <CountUp value={golfer.current_handicap_index} decimals={1} /> : "--"}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>HCP</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}><CountUp value={seasonRow?.rounds ?? 0} /></div>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Rounds</div>
+          <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1,color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{posLabel(seasonRow.pos, seasonRow.tied)}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Season Avg</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{lastRound ? <CountUp value={lastRound.pts} /> : "--"}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Last Pts</div>
+          <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1,color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{posLabel(top15Row.pos, top15Row.tied)}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Top 15</div>
         </div>
       </div>
 
       {/* Pairings are set -> your tee time & group lead the page */}
       {pairingsSet && nextEventCard}
 
-      {/* Standings — two tappable cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-        <div style={cardStyle} onClick={onNavigateSeason} role="button">
-          {cardRim}
-          <div style={labelStyle}>Season Avg</div>
-          {seasonRow ? (
-            <>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <span style={{ fontSize: 29, fontWeight: 800, color: "var(--green-700)", lineHeight: 1 }}>{posLabel(seasonRow.pos, seasonRow.tied)}</span>
-                <ChevronRight size={17} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginTop: 5 }}>{seasonRow.avg.toFixed(2)} <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>pts avg</span></div>
-              <div style={{ marginTop: 5 }}>{deltaChip(seasonDelta)}</div>
-            </>
-          ) : (
-            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No rounds yet</div>
-          )}
-        </div>
-        <div style={cardStyle} onClick={onNavigateTop15} role="button">
-          {cardRim}
-          <div style={labelStyle}>Top 15 Avg</div>
-          {top15Row ? (
-            <>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <span style={{ fontSize: 29, fontWeight: 800, color: "var(--green-700)", lineHeight: 1 }}>{posLabel(top15Row.pos, top15Row.tied)}</span>
-                <ChevronRight size={17} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginTop: 5 }}>{top15Row.avg.toFixed(2)} <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>pts avg</span> &middot; {top15Row.rounds} rds</div>
-              <div style={{ marginTop: 5 }}>{deltaChip(top15Delta)}</div>
-            </>
-          ) : (
-            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No rounds yet</div>
-          )}
-        </div>
-      </div>
+      
 
       {/* Last round played */}
       {lastRound && (

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMe
 import { calcPlayingHandicap, calcHoleNetScore, calcStablefordPoints, calcHoleScores, runPairingEngine, assignLateAdd } from "./lib/golfMath";
 import { golferName, scrollMainTop, formatDate, uniqueCourseNames, teeBoxesForCourse } from "./lib/formatters";
 import { fuzzyMatchCourseName } from "./lib/courseNameUtils";
+import { markImageLoaded } from "./lib/imageCache";
 
 // Weather utilities, hooks, and components
 import { wmoToDesc, degToCompass } from "./components/weather/weatherUtils";
@@ -2549,8 +2550,11 @@ export default function App(){
         setHoleImages(rows);
         // Preload all hole images, but only once the browser is idle so this
         // doesn't compete with (and delay) the images the Upcoming/Weekly
-        // tabs need to fetch immediately on first paint.
-        const preload=()=>rows.forEach((r:any)=>{if(r.public_url){const i=new Image();i.src=r.public_url;}});
+        // tabs need to fetch immediately on first paint. On decode we also mark
+        // the URL in the module-level image cache (markImageLoaded) so that when
+        // a card <img> first mounts it's already "loaded" -- no shimmer/fade and
+        // no re-decode, even for cards the user hasn't scrolled to yet.
+        const preload=()=>rows.forEach((r:any)=>{if(r.public_url){const i=new Image();i.onload=()=>markImageLoaded(r.public_url);i.src=r.public_url;}});
         if(typeof (window as any).requestIdleCallback==="function"){
           (window as any).requestIdleCallback(preload,{timeout:2000});
         }else{

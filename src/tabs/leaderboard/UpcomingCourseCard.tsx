@@ -57,7 +57,10 @@ export function UpcomingCourseCard({ event, courses, holeImages, onClick, fieldC
       {imgUrl && (
         <img src={imgUrl} alt={courseName}
           loading="eager"
-          decoding="async"
+          // Decode synchronously when the URL is already in the module image
+          // cache so the pixels are on the first paint (no pop-in on revisit);
+          // async only for an uncached first load. Mirrors the weekly EventFeedCard.
+          decoding={imgLoaded ? "sync" : "async"}
           onLoad={onImgLoad}
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 70%",
             opacity: imgLoaded ? 1 : 0, transition: "opacity 0.4s ease" }} />

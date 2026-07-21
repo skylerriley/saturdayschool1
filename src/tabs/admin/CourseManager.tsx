@@ -1,9 +1,75 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useLayoutEffect } from "react";
 import { scrollMainTop, scrollMainToEl } from "../../lib/formatters";
 import { fuzzyMatchCourseName } from "../../lib/courseNameUtils";
 import { GCAPI_KEY } from "../../lib/supabaseClient";
 import { HoleImageManager } from "./HoleImageManager";
-import { ToggleGroup, GlassPicker } from "../../components/common";
+import { GlassPicker } from "../../components/common";
+
+// ── Course / Images view nav ───────────────────────────────────────────────────
+// Text-title tabs with an animated ink line underneath the active view.
+// Mirrors OddsViewNav in the pre-event odds module, retuned for the light
+// admin theme (earth text tones + gold ink).
+function CourseViewNav({ view, setView }: { view: string; setView: (v: any) => void }) {
+  const tabs = [
+    { id: "tees", label: "COURSE" },
+    { id: "images", label: "IMAGES" },
+  ];
+
+  const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [inkStyle, setInkStyle] = useState<{ left: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const idx = tabs.findIndex(t => t.id === view);
+    const el = btnRefs.current[idx];
+    if (!el) return;
+    const parent = el.parentElement;
+    if (!parent) return;
+    const parentRect = parent.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    setInkStyle({ left: elRect.left - parentRect.left, width: elRect.width });
+  }, [view]);
+
+  return (
+    <div style={{ position: "relative", display: "flex", justifyContent: "center", gap: 24, marginBottom: 14 }}>
+      {tabs.map((t, i) => (
+        <button
+          key={t.id}
+          ref={el => { btnRefs.current[i] = el; }}
+          onClick={() => setView(t.id)}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            padding: "0 4px 12px",
+            fontSize: 13, fontWeight: 700,
+            color: view === t.id ? "var(--text-primary)" : "var(--text-muted)",
+            WebkitTapHighlightColor: "transparent",
+            transition: "color 0.2s",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+          }}
+        >
+          {t.label}
+        </button>
+      ))}
+      {/* Track line */}
+      <div style={{
+        position: "absolute", bottom: 0, left: 0, right: 0,
+        height: 1, background: "var(--border)",
+      }} />
+      {/* Ink indicator */}
+      {inkStyle && (
+        <div style={{
+          position: "absolute", bottom: 0,
+          left: inkStyle.left,
+          width: inkStyle.width,
+          height: 2,
+          background: "var(--gold-400)",
+          borderRadius: 2,
+          transition: "left 0.28s cubic-bezier(0.4,0,0.2,1), width 0.28s cubic-bezier(0.4,0,0.2,1)",
+        }} />
+      )}
+    </div>
+  );
+}
 
 // -- 3b) COURSE MANAGER ---------------------------------------
 
@@ -150,12 +216,7 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
 
   return (
     <div>
-      <ToggleGroup
-        value={view}
-        onChange={(v) => setView(v)}
-        options={[{ value: "tees", label: "Tees" }, { value: "images", label: "Images" }]}
-        style={{ marginBottom: 14 }}
-      />
+      <CourseViewNav view={view} setView={setView} />
 
       {view === "tees" && (<>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>

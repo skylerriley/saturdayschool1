@@ -125,7 +125,7 @@ export function SaturdayHandicapChart({
       {/* Header: title top-left, big index metric top-right */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
         <div style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: TEXT_MUTED_DARK, fontWeight: 700 }}>
-          Saturday Handicap
+          Competition Handicap
         </div>
         <div style={{ textAlign: "right", lineHeight: 1 }}>
           <div style={{ fontSize: 40, fontWeight: 700, color: TEXT_ON_DARK, fontVariantNumeric: "tabular-nums" }}>
