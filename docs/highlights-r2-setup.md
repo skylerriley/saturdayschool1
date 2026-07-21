@@ -27,6 +27,17 @@ cost that would break Supabase Storage on a single busy Saturday.
 (Tighten `AllowedOrigins` to the deployed app origin(s) once known, e.g.
 `https://saturdayschool.vercel.app` plus `http://localhost:5173` for dev.)
 
+> **CORS gotcha (2026-07-21, cost a debugging session):** an origin is
+> scheme+host+port, exactly. If the list only has `http://localhost:5173`,
+> uploads fail with "presign worked but the file PUT failed" from:
+> - `http://localhost:5174` (Vite silently bumps the port when 5173 is busy),
+> - `http://<lan-ip>:5173` (phone testing over LAN is a DIFFERENT origin),
+> - the deployed domain.
+> CORS is NOT the security boundary here -- writes are gated by the 10-minute
+> SigV4 presigned URL and reads are public anyway -- so `["*"]` is safe and
+> avoids this whole class of failure. If you keep an explicit list, it must
+> contain every origin above.
+
 ## 2. Public read access
 
 1. Bucket -> Settings -> Public access: either connect a **custom domain**
