@@ -14,6 +14,7 @@
 // Admin-gated by construction: this only renders inside AdminTab, which App
 // gates on adminMode.
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { supabase, reportWriteError } from "../../lib/supabaseClient";
 import { uploadCourseAsset, type CourseViewType } from "../../lib/r2Upload";
 import { AnchorWizard } from "./AnchorWizard";
@@ -167,11 +168,15 @@ export function HoleImageManager({ courseName, courseId, holeImages, setHoleImag
       </div>
 
       {/* Slot editor sheet: upload/replace + (for hole/green) open the wizard.
-          Stays inside the app shell (below the bottom nav in stacking order);
-          the sheet's bottom padding clears the floating nav + safe area so its
-          buttons are never covered. */}
-      {openSlot && !wizardOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9400, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+          Portaled to .app-shell (not <body>) so the fixed overlay escapes the
+          subtab panel's translateX transform — which otherwise scopes
+          position:fixed to the panel, letting the sticky subtab pills cover the
+          sheet's top — while STAYING inside the phone frame's stacking context.
+          z-index 150 keeps it below the floating bottom nav (.bottom-nav,
+          z-index 200) exactly as before; the sheet's bottom padding clears that
+          nav + safe area so its buttons are never covered. */}
+      {openSlot && !wizardOpen && createPortal(
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 150, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
           onClick={(e) => { if (e.target === e.currentTarget) setOpenSlot(null); }}>
           <div style={{ background: "var(--bg)", borderRadius: "16px 16px 0 0", width: "100%", maxWidth: 620, padding: "16px 16px calc(110px + var(--safe-area-bottom))" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
@@ -210,7 +215,8 @@ export function HoleImageManager({ courseName, courseId, holeImages, setHoleImag
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.querySelector(".app-shell") || document.body
       )}
 
       {/* Anchor wizard (hole/green only) */}

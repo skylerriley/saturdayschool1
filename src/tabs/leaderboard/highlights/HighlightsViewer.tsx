@@ -29,6 +29,168 @@ function netLabel(points: number): string {
 
 // ---- Building blocks -----------------------------------------------------------
 
+// Pinch / double-tap zoom that is ISOLATED to the hole/green shot card. The
+// tracer + hole-meta live INSIDE this element positioned in normalized image
+// coords, so scaling the whole card keeps them locked to the image while the
+// hero label, glass panel and caption (siblings above/below) never move.
+// Reports zoom!=idle up to the viewer via onZoomChange so auto-advance, the
+// swipe-to-close and tap-navigation all stand down while the user is exploring.
+const ZOOM_MAX = 4;
+function ZoomableShot({
+  className, onZoomChange, passthrough, children,
+}: {
+  className: string;
+  onZoomChange: (zoomed: boolean) => void;
+  // At 1x with a single finger the shot is transparent to gestures: it forwards
+  // to the viewer's own tap/hold/swipe handlers so tapping over the hole image
+  // still navigates and a downward drag still closes. Zoom (pinch / 2nd finger /
+  // double-tap / pan-while-zoomed) is owned here and never forwarded.
+  passthrough: { down: (e: any) => void; move: (e: any) => void; up: (e: any) => void; cancel: (e: any) => void };
+  children: any;
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [t, setT] = useState({ scale: 1, x: 0, y: 0 });
+  // Live gesture bookkeeping kept in a ref so pointer moves don't re-render
+  // until we commit a frame.
+  const g = useRef<{
+    pts: Map<number, { x: number; y: number }>;
+    startDist: number;
+    startScale: number;
+    startMid: { x: number; y: number };
+    startT: { x: number; y: number };
+    lastTap: number;
+    moved: boolean;
+    // "pass" -> this gesture is being forwarded to the viewer (tap/hold/swipe);
+    // "zoom" -> owned here (pinch / pan-while-zoomed / double-tap).
+    mode: "pass" | "zoom";
+  }>({ pts: new Map(), startDist: 0, startScale: 1, startMid: { x: 0, y: 0 }, startT: { x: 0, y: 0 }, lastTap: 0, moved: false, mode: "pass" });
+
+  const zoomed = t.scale > 1.01;
+  useEffect(() => { onZoomChange(zoomed); }, [zoomed, onZoomChange]);
+  // On unmount (beat change), make sure the viewer's zoom-active flag clears.
+  useEffect(() => () => onZoomChange(false), [onZoomChange]);
+
+  // Keep the image inside its own frame so panning can't drag it off-card.
+  const clamp = (scale: number, x: number, y: number) => {
+    const el = wrapRef.current;
+    if (!el) return { scale, x, y };
+    const r = el.getBoundingClientRect();
+    const maxX = (r.width * (scale - 1)) / 2;
+    const maxY = (r.height * (scale - 1)) / 2;
+    return { scale, x: Math.max(-maxX, Math.min(maxX, x)), y: Math.max(-maxY, Math.min(maxY, y)) };
+  };
+
+  const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+  const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+  const onDown = (e: any) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const st = g.current;
+    st.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    st.moved = false;
+    if (st.pts.size === 2) {
+      // Second finger -> this becomes a pinch. Tell the viewer to abandon the
+      // single-finger gesture it thought it had, then own the pointers here.
+      st.mode = "zoom";
+      passthrough.cancel(e);
+      const [a, b] = [...st.pts.values()];
+      st.startDist = dist(a, b);
+      st.startScale = t.scale;
+      st.startMid = mid(a, b);
+      st.startT = { x: t.x, y: t.y };
+    } else if (st.pts.size === 1) {
+      st.startMid = { x: e.clientX, y: e.clientY };
+      st.startT = { x: t.x, y: t.y };
+      // Already zoomed -> own it (pan / double-tap-to-reset). At 1x, forward to
+      // the viewer so tap-nav / hold-pause / swipe-close keep working.
+      st.mode = zoomed ? "zoom" : "pass";
+      if (st.mode === "pass") passthrough.down(e);
+    }
+  };
+
+  const onMove = (e: any) => {
+    const st = g.current;
+    if (!st.pts.has(e.pointerId)) return;
+    st.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (st.mode === "pass") { passthrough.move(e); return; }
+    if (st.pts.size >= 2) {
+      const [a, b] = [...st.pts.values()];
+      const d = dist(a, b);
+      if (st.startDist > 0) {
+        const scale = Math.max(1, Math.min(ZOOM_MAX, st.startScale * (d / st.startDist)));
+        const m = mid(a, b);
+        const x = st.startT.x + (m.x - st.startMid.x);
+        const y = st.startT.y + (m.y - st.startMid.y);
+        st.moved = true;
+        setT(clamp(scale, x, y));
+      }
+    } else if (st.pts.size === 1 && zoomed) {
+      // One-finger pan while zoomed in.
+      const p = [...st.pts.values()][0];
+      const x = st.startT.x + (p.x - st.startMid.x);
+      const y = st.startT.y + (p.y - st.startMid.y);
+      if (Math.abs(p.x - st.startMid.x) + Math.abs(p.y - st.startMid.y) > 4) st.moved = true;
+      setT(clamp(t.scale, x, y));
+    }
+  };
+
+  const finishPointer = (e: any, forwardUp: boolean) => {
+    const st = g.current;
+    const wasPass = st.mode === "pass";
+    st.pts.delete(e.pointerId);
+    if (wasPass) { if (forwardUp) passthrough.up(e); return; }
+    // Pinch -> one finger left: re-seed the pan origin from the survivor so the
+    // continuing drag doesn't jump from the old two-finger midpoint.
+    if (st.pts.size === 1) {
+      const p = [...st.pts.values()][0];
+      st.startMid = { x: p.x, y: p.y };
+      st.startT = { x: t.x, y: t.y };
+      return;
+    }
+    if (st.pts.size === 0 && !st.moved) {
+      // Double-tap toggles between fit and 2.4x. Zooming in keeps the tapped
+      // point stationary on screen (tx = -offset*(s-1)); clamp then pulls it
+      // back inside the frame if that pushed an edge past the bounds.
+      const now = e.timeStamp || 0;
+      if (now - st.lastTap < 300) {
+        st.lastTap = 0;
+        if (zoomed) { setT({ scale: 1, x: 0, y: 0 }); }
+        else {
+          const el = wrapRef.current;
+          const r = el?.getBoundingClientRect();
+          const s = 2.4;
+          if (r) {
+            const cx = e.clientX - (r.left + r.width / 2);
+            const cy = e.clientY - (r.top + r.height / 2);
+            setT(clamp(s, -cx * (s - 1), -cy * (s - 1)));
+          } else setT({ scale: s, x: 0, y: 0 });
+        }
+      } else {
+        st.lastTap = now;
+      }
+    }
+    // Reset to passthrough for the next gesture once all fingers lift.
+    if (st.pts.size === 0) st.mode = "pass";
+  };
+  const onUp = (e: any) => finishPointer(e, true);
+  const onCancel = (e: any) => { if (g.current.mode === "pass") passthrough.cancel(e); finishPointer(e, false); };
+
+  return (
+    <div
+      ref={wrapRef}
+      className={className + (zoomed ? " zoomed" : "")}
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onPointerCancel={onCancel}
+    >
+      <div className="shot-zoom" style={{ transform: `translate(${t.x}px,${t.y}px) scale(${t.scale})` }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function HoleMetaBlock({ meta, animKey }: { meta: NonNullable<DataBeat["holeMeta"]>; animKey: any }) {
   return (
     <div className="hole-meta">
@@ -320,8 +482,11 @@ export function HighlightsViewer({
   const [commentsFor, setCommentsFor] = useState<number | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [zoomActive, setZoomActive] = useState(false); // hole-image zoomed past fit
   const pausedRef = useRef(false);
   const [holdPaused, setHoldPaused] = useState(false); // press-and-hold
+  const [dragY, setDragY] = useState(0); // swipe-down-to-close progress
+  const swipeRef = useRef<{ id: number | null; startX: number; startY: number; active: boolean }>({ id: null, startX: 0, startY: 0, active: false });
   const holdRef = useRef<{ timer: any; held: boolean }>({ timer: null, held: false });
   const segRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const rafRef = useRef<number>(0);
@@ -376,10 +541,14 @@ export function HighlightsViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, reduced, cards.length]);
 
-  // Comments sheet, the dots menu, and press-and-hold stop the clock.
+  // Comments sheet, the dots menu, press-and-hold, and an active image zoom
+  // all stop the clock.
   useEffect(() => {
-    pausedRef.current = commentsFor != null || menuOpen || holdPaused;
-  }, [commentsFor, menuOpen, holdPaused]);
+    pausedRef.current = commentsFor != null || menuOpen || holdPaused || zoomActive;
+  }, [commentsFor, menuOpen, holdPaused, zoomActive]);
+
+  // Reset the swipe-to-close drag whenever the beat changes.
+  useEffect(() => { setDragY(0); }, [idx]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -406,13 +575,34 @@ export function HighlightsViewer({
   // never navigates; shorter presses are taps and keep the zones:
   // left/right third = prev/next. Under prefers-reduced-motion there is no
   // timer, so pressing does nothing and taps still navigate.
+  // Swipe-down-to-close: a mostly-vertical downward drag past SWIPE_CLOSE_PX
+  // dismisses the viewer; anything shorter springs back. Tracked alongside the
+  // tap/hold flow. Suppressed while the image is zoomed (that gesture pans).
+  const SWIPE_CLOSE_PX = 110;
   const onPointerDown = (e: any) => {
-    if (reduced) return;
     if ((e.target as HTMLElement).closest("button")) return;
+    if (!zoomActive) {
+      swipeRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, active: true };
+    }
+    if (reduced) return;
     holdRef.current.held = false;
     clearTimeout(holdRef.current.timer);
     setHoldPaused(true);
     holdRef.current.timer = setTimeout(() => { holdRef.current.held = true; }, 180);
+  };
+  const onPointerMove = (e: any) => {
+    const s = swipeRef.current;
+    if (!s.active || s.id !== e.pointerId || zoomActive) return;
+    const dy = e.clientY - s.startY;
+    const dx = e.clientX - s.startX;
+    // Commit to a vertical swipe once it clearly beats horizontal drift; then
+    // follow the finger (down only). Cancels the hold so release won't navigate.
+    if (dy > 8 && dy > Math.abs(dx)) {
+      holdRef.current.held = true;
+      clearTimeout(holdRef.current.timer);
+      setHoldPaused(true);
+      setDragY(dy);
+    }
   };
   const endHold = (): boolean => {
     clearTimeout(holdRef.current.timer);
@@ -423,13 +613,31 @@ export function HighlightsViewer({
   };
   const onPointerUp = (e: any) => {
     if ((e.target as HTMLElement).closest("button")) return;
-    if (endHold()) return; // hold release only -- no navigation
+    const s = swipeRef.current;
+    const swiping = s.active && s.id === e.pointerId;
+    swipeRef.current.active = false;
+    if (swiping && dragY > SWIPE_CLOSE_PX) { setDragY(0); onClose(); return; }
+    const wasSwipe = dragY > 0;
+    if (wasSwipe) setDragY(0); // spring back
+    if (endHold()) return; // hold release (incl. a spring-back swipe) -- no navigation
     if (menuOpen) { setMenuOpen(false); return; } // outside tap closes the menu
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    if (x > rect.width * 0.68) nav(1);
-    else if (x < rect.width * 0.32) nav(-1);
+    if (zoomActive) return; // zoom gesture owns this pointer
+    // Tap zones are viewport-relative (.v-media is full-screen) so the same
+    // logic works whether the event lands on .v-media or is forwarded from the
+    // full-bleed .shot card.
+    const w = window.innerWidth || 1;
+    const x = e.clientX;
+    if (x > w * 0.68) nav(1);
+    else if (x < w * 0.32) nav(-1);
   };
+  // The zoom component forwards its 1x single-finger gestures here, and calls
+  // cancel when a pinch takes over so we drop any half-started swipe/hold.
+  const cancelGesture = () => {
+    swipeRef.current.active = false;
+    if (dragY > 0) setDragY(0);
+    endHold();
+  };
+  const shotPassthrough = { down: onPointerDown, move: onPointerMove, up: onPointerUp, cancel: cancelGesture };
 
   // ---- per-card derived data -------------------------------------------------
   // Background fallback: any ARTISTIC image on the course (never a hole/green
@@ -552,7 +760,15 @@ export function HighlightsViewer({
           {focusRow && !isStandings && (
             // hole/green cutout (has_alpha): .cutout drops the card chrome --
             // the 3D render carries its own shadow. Opaque layouts keep the frame.
-            <div className={"shot" + (focusRow.has_alpha ? " cutout" : "")}>
+            // Wrapped in ZoomableShot so pinch / double-tap zooms the hole image
+            // (and its tracer + meta, which are anchored to it) in isolation --
+            // nothing else in the beat moves. key on idx resets zoom per beat.
+            <ZoomableShot
+              key={`shot-${idx}`}
+              className={"shot" + (focusRow.has_alpha ? " cutout" : "")}
+              onZoomChange={setZoomActive}
+              passthrough={shotPassthrough}
+            >
               <img src={focusRow.public_url} alt="" />
               {b.holeMeta && <HoleMetaBlock meta={b.holeMeta} animKey={idx} />}
               {showTracer && (
@@ -563,7 +779,7 @@ export function HighlightsViewer({
                   view={useGreen ? "green" : "hole"}
                 />
               )}
-            </div>
+            </ZoomableShot>
           )}
           {isStandings
             ? <StandingsBoard standings={b.standings!} reduced={reduced} animKey={idx} />
@@ -581,17 +797,23 @@ export function HighlightsViewer({
   const body = (
     <div className="hl-overlay" role="dialog" aria-label="Event highlights">
       <div
-        className={"viewer" + (visualPaused ? " paused" : "")}
+        className={"viewer" + (visualPaused ? " paused" : "") + (dragY > 0 ? " dragging" : "")}
+        style={dragY > 0 ? {
+          transform: `translateY(${dragY}px) scale(${Math.max(0.86, 1 - dragY / 1400)})`,
+          borderRadius: Math.min(24, dragY / 5),
+          opacity: Math.max(0.4, 1 - dragY / 500),
+        } : undefined}
         onContextMenu={(e) => e.preventDefault()}
         onDragStart={(e) => e.preventDefault()}
       >
-        {/* media / background layer with tap + hold surface */}
+        {/* media / background layer with tap + hold + swipe-down surface */}
         <div
           className="v-media"
           onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={endHold}
-          onPointerLeave={endHold}
+          onPointerCancel={() => { swipeRef.current.active = false; if (dragY > 0) setDragY(0); endHold(); }}
+          onPointerLeave={() => { swipeRef.current.active = false; if (dragY > 0) setDragY(0); endHold(); }}
         >
           {card.kind === "data" ? (() => {
             const b = card.beat!;

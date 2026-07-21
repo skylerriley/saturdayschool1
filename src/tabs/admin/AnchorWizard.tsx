@@ -16,6 +16,7 @@
 // Geometry is reused from TracerSvg / tracerMath so the preview is EXACTLY what
 // the viewer renders.
 import { useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { supabase, reportWriteError } from "../../lib/supabaseClient";
 import { TracerSvg } from "../leaderboard/highlights/TracerSvg";
 
@@ -147,7 +148,12 @@ export function AnchorWizard({ view, hole, row, setHoleImages, showSuccess, onCl
     };
   };
 
-  return (
+  // Portal to .app-shell so the fixed overlay escapes the subtab panel's
+  // translateX transform (which otherwise scopes position:fixed to the panel,
+  // letting the sticky subtab pills cover the modal's top edge) while staying
+  // inside the phone-frame column. This is a full-screen placement surface, so
+  // z-index 10001 intentionally covers the bottom nav too.
+  return createPortal(
     <div style={{ position: "fixed", inset: 0, zIndex: 10001, background: "rgba(20,14,10,0.82)", display: "flex", alignItems: "center", justifyContent: "center", padding: 10 }}>
       <div style={{ background: "var(--bg)", borderRadius: "var(--radius-lg)", width: "100%", maxWidth: 560, maxHeight: "94vh", overflowY: "auto", padding: 14, touchAction: "none" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -254,7 +260,8 @@ export function AnchorWizard({ view, hole, row, setHoleImages, showSuccess, onCl
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.querySelector(".app-shell") || document.body
   );
 
   function nudgeBtn(label: string, onClick: () => void) {

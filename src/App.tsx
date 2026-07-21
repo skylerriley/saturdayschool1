@@ -1387,7 +1387,13 @@ const CSS = `
      the iOS Save Image sheet or text selection on the story surface. */
   .hl-overlay{position:fixed;inset:0;z-index:320;}
   .hl-overlay .viewer{position:absolute;inset:0;background:var(--green-900);overflow:hidden;
-    -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+    -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;
+    transform-origin:center top;transition:transform .32s cubic-bezier(.16,1,.3,1),opacity .32s ease,border-radius .32s ease;}
+  /* swipe-down-to-close: while the finger is down the inline transform drives
+     the card 1:1 (no transition fight); on release it springs back or the
+     component closes. A subtle dim behind sells the "pull to dismiss". */
+  .hl-overlay .viewer.dragging{transition:none;}
+  .hl-overlay:has(.viewer.dragging){background:rgba(0,0,0,.55);}
   .hl-overlay .viewer img{-webkit-touch-callout:none;pointer-events:none;}
   /* one class freezes EVERY css animation mid-flight: tracer draw, bar rises,
      scorecard pops, leaderboard reveal, shine (press-and-hold; no visible
@@ -1495,7 +1501,16 @@ const CSS = `
      equally-proportioned box, independent of the image's object-fit. The box is
      kept at 1024:760; the image uses contain to show the whole render. Full
      bleed to the screen edges. */
-  .hl-overlay .shot{position:relative;border-radius:18px;overflow:hidden;aspect-ratio:1024/800;flex:0 0 auto;margin:0 -5px;}
+  /* pointer-events:auto re-enables gestures on the shot (its .beat ancestor is
+     pointer-events:none so taps fall through to .v-media); ZoomableShot forwards
+     1x taps back to the viewer and owns pinch/zoom itself. */
+  .hl-overlay .shot{position:relative;border-radius:18px;overflow:hidden;aspect-ratio:1024/800;flex:0 0 auto;margin:0 -5px;touch-action:none;pointer-events:auto;}
+  /* .shot-zoom is the transformed layer (pinch/double-tap zoom, ISOLATED to the
+     hole image + its anchored tracer/meta). Springs back smoothly when the
+     gesture ends; while zoomed the finger drives it directly (no transition). */
+  .hl-overlay .shot .shot-zoom{position:absolute;inset:0;transform-origin:center center;transition:transform .28s cubic-bezier(.16,1,.3,1);will-change:transform;}
+  .hl-overlay .shot.zoomed{cursor:grab;}
+  .hl-overlay .shot.zoomed .shot-zoom{transition:none;}
   .hl-overlay .shot img{display:block;width:100%;height:100%;object-fit:contain;}
   /* CUTOUT (transparent alpha render): no card chrome -- it carries its own
      shadow -- and it may exceed the frame ratio since object-fit:contain never

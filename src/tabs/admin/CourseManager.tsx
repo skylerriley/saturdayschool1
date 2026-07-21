@@ -338,8 +338,6 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
       )}
 
       {courseNames.map(name => {
-        // Placed = any per-hole slot (artistic/hole/green) with an image; out of 54.
-        const imgCount = (holeImages || []).filter((r: any) => r.course_name === name && r.hole_number != null && r.view_type !== "course").length;
         return (
           <div key={name} className="card" style={{ padding: "12px 14px" }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>{name}</div>
@@ -356,13 +354,6 @@ export function CourseManager({ courses, setCourses, holeImages, setHoleImages, 
                 </div>
               );
             })}
-            {/* Hole Images: jump to the Images subtab for this course */}
-            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{imgCount} of 54 images placed</span>
-              <button className="btn btn-sm btn-outline" onClick={() => { setImgCourse(name); setView("images"); setTimeout(() => scrollMainTop(), 50); }}>
-                {imgCount === 0 ? "+ Add Images" : "Manage Images"}
-              </button>
-            </div>
           </div>
         );
       })}
