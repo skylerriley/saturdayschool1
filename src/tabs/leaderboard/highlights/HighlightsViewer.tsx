@@ -6,10 +6,11 @@
 // tracers, and the real .lb-* leaderboard for the final beat.
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
-import { ScoreSymbol } from "../../../components/common";
+import { ScoreSymbol, GlassPicker } from "../../../components/common";
 import type { DataBeat } from "../../../lib/recapEngine";
 import { holeAerialUrl, holeImageRow, courseArtisticUrl, type RecapCard } from "./highlightsShared";
 import { TracerSvg } from "./TracerSvg";
+import { composeBeatShareImage, loadShareImage } from "./shareBeatImage";
 
 const AUTO_ICON = <svg viewBox="0 0 24 24"><path d="M4 20V6l7 4 9-6v14l-9 5-7-4z" /></svg>;
 
@@ -17,14 +18,38 @@ const DUR_DATA = 8000;
 const DUR_PHOTO = 6500;
 const DUR_VIDEO = 7000;
 
-// Net score word from Stableford points -- the ONLY valence language allowed
-// in user-facing copy (gross words appear solely as scorecard notation).
-function netLabel(points: number): string {
-  if (points >= 4) return "Net eagle";
-  if (points === 3) return "Net birdie";
-  if (points === 2) return "Net par";
-  if (points === 1) return "Net bogey";
-  return "Blank";
+// Gross score word for the HUMAN-highlight eyebrow ("Danny Reyes . Birdie (3)").
+// Auto-beat copy stays points-valence (that rule lives in the engine); a photo
+// of a real shot is about the gross number the group actually saw.
+function grossLabel(gross: number, par: number): string {
+  if (gross === 1) return "Ace";
+  const d = gross - par;
+  if (d <= -3) return "Albatross";
+  if (d === -2) return "Eagle";
+  if (d === -1) return "Birdie";
+  if (d === 0) return "Par";
+  if (d === 1) return "Bogey";
+  if (d === 2) return "Double";
+  if (d === 3) return "Triple";
+  return "+" + d;
+}
+
+// Word-wrap for the share-image canvas.
+function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = (text || "").split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+  words.forEach((w) => {
+    const trial = line ? line + " " + w : w;
+    if (ctx.measureText(trial).width > maxWidth && line) {
+      lines.push(line);
+      line = w;
+    } else {
+      line = trial;
+    }
+  });
+  if (line) lines.push(line);
+  return lines;
 }
 
 // ---- Building blocks -----------------------------------------------------------
@@ -476,13 +501,30 @@ export function HighlightsViewer({
   cards, startIndex, event, course, courses, signups, golfers, eventEntries, holeScores, holeImages,
   likes, comments, memberName, adminMode,
   onClose, onToggleLike, onAddComment,
-  onHideBeat, onEditBeatCaption, onDeleteHighlight, onEditHighlightCaption,
+  onHideBeat, onEditBeatCaption, onDeleteHighlight, onEditHighlightCaption, onEditHighlightDetails,
 }: any) {
   const [idx, setIdx] = useState<number>(Math.max(0, Math.min(startIndex, cards.length - 1)));
   const [commentsFor, setCommentsFor] = useState<number | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [zoomActive, setZoomActive] = useState(false); // hole-image zoomed past fit
+  // Video sound: ON by default (the file keeps its audio -- it was only ever
+  // muted at playback). If the browser blocks unmuted autoplay we fall back to
+  // muted and the speaker button (a real user gesture) unmutes.
+  const [videoMuted, setVideoMuted] = useState(false);
+  const [vidReady, setVidReady] = useState(false); // fade video in over its blurred poster
+  const [editDetailsFor, setEditDetailsFor] = useState<any | null>(null); // row being re-attributed
+  const [editGolfer, setEditGolfer] = useState<string>("");
+  const [editHole, setEditHole] = useState<number | "none" | "pre">("none");
+  const [sharing, setSharing] = useState(false); // composing the share image
+  // Composed share image awaiting the user's tap. The native share sheet only
+  // opens from a LIVE tap (iOS home-screen PWAs enforce this hardest), so we
+  // compose first, show a preview sheet, and call navigator.share directly in
+  // that button's handler with zero awaits in front of it. png is kept for
+  // clipboard copy (iOS clipboard accepts PNG, not JPEG).
+  const [sharePrep, setSharePrep] = useState<{ file: File; url: string; png: Blob | null } | null>(null);
+  const [shareNote, setShareNote] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const pausedRef = useRef(false);
   const [holdPaused, setHoldPaused] = useState(false); // press-and-hold
   const [dragY, setDragY] = useState(0); // swipe-down-to-close progress
@@ -493,6 +535,9 @@ export function HighlightsViewer({
   const startRef = useRef<number>(0);
   const elapsedRef = useRef<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // The on-screen photo, loaded with crossOrigin so the share canvas can reuse
+  // its already-decoded pixels without a second network fetch.
+  const photoImgRef = useRef<HTMLImageElement | null>(null);
   const reduced = useMemo(() => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches, []);
 
   const card: RecapCard = cards[idx];
@@ -541,14 +586,30 @@ export function HighlightsViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, reduced, cards.length]);
 
-  // Comments sheet, the dots menu, press-and-hold, and an active image zoom
-  // all stop the clock.
+  // Comments sheet, the dots menu, press-and-hold, an active image zoom, the
+  // edit-details sheet and an in-flight share all stop the clock.
   useEffect(() => {
-    pausedRef.current = commentsFor != null || menuOpen || holdPaused || zoomActive;
-  }, [commentsFor, menuOpen, holdPaused, zoomActive]);
+    pausedRef.current = commentsFor != null || menuOpen || holdPaused || zoomActive || editDetailsFor != null || sharing || sharePrep != null;
+  }, [commentsFor, menuOpen, holdPaused, zoomActive, editDetailsFor, sharing, sharePrep]);
 
-  // Reset the swipe-to-close drag whenever the beat changes.
-  useEffect(() => { setDragY(0); }, [idx]);
+  // Release the share preview's object URL when the sheet closes / card changes.
+  useEffect(() => () => { if (sharePrep) URL.revokeObjectURL(sharePrep.url); }, [sharePrep]);
+  useEffect(() => { setSharePrep(null); }, [idx]);
+
+  // Reset the swipe-to-close drag + video fade whenever the beat changes.
+  useEffect(() => { setDragY(0); setVidReady(false); }, [idx]);
+
+  // Warm the cache for the NEXT video card so it doesn't pop in late when the
+  // story reaches it (the blurred poster covers whatever latency remains).
+  useEffect(() => {
+    const next = cards.slice(idx + 1).find((c: RecapCard) => c.kind === "human" && c.row?.media_type === "video");
+    if (!next) return;
+    const v = document.createElement("video");
+    v.preload = "auto";
+    v.muted = true;
+    v.src = next.row.media_url;
+    return () => { v.removeAttribute("src"); try { v.load(); } catch (_: any) {} };
+  }, [idx, cards]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -561,13 +622,46 @@ export function HighlightsViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx]);
 
-  // Keep the video element in sync with every pause source (hold included).
+  // Pin the comments sheet to the iOS keyboard. When the keyboard opens the
+  // VISUAL viewport shrinks but this fixed overlay does not -- Safari then
+  // pans the page to expose the input, which (a) lifts the sheet so the card
+  // shows through underneath it and (b) draws the text caret at the pre-pan
+  // offset, visually outside the field. Translating the sheet up by the
+  // keyboard height (and undoing any pan) keeps it flush and the caret true.
+  useEffect(() => {
+    if (commentsFor == null) return;
+    const vv: any = (window as any).visualViewport;
+    if (!vv) return;
+    const apply = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      const s = document.querySelector(".hl-overlay .hl-sheet") as HTMLElement | null;
+      if (s) s.style.transform = kb > 0 ? `translateY(-${kb}px)` : "";
+      if (kb > 0) window.scrollTo(0, 0);
+    };
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    apply();
+    return () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+      const s = document.querySelector(".hl-overlay .hl-sheet") as HTMLElement | null;
+      if (s) s.style.transform = "";
+    };
+  }, [commentsFor]);
+
+  // Keep the video element in sync with every pause source (hold included),
+  // and with the sound preference. If unmuted playback is blocked by the
+  // browser's autoplay policy, fall back to muted (the effect re-runs and
+  // plays); the speaker button unmutes inside a user gesture.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    if (holdPaused || commentsFor != null || menuOpen) v.pause();
-    else v.play().catch(() => {});
-  }, [holdPaused, commentsFor, menuOpen, idx]);
+    if (holdPaused || commentsFor != null || menuOpen || editDetailsFor != null) { v.pause(); return; }
+    v.muted = videoMuted;
+    v.play().catch(() => {
+      if (!videoMuted) setVideoMuted(true);
+    });
+  }, [holdPaused, commentsFor, menuOpen, editDetailsFor, videoMuted, idx]);
 
   // ---- press-and-hold pause + tap zones -------------------------------------
   // Pressing down pauses IMMEDIATELY (no indicator); releasing always
@@ -657,24 +751,188 @@ export function HighlightsViewer({
     return y != null && y > 0 ? y : null;
   };
 
-  // Subject's NET result for the human eyebrow ("Danny Reyes . Net birdie").
-  const subjectNet = (r: any): string | null => {
+  // Subject's GROSS result for the human eyebrow ("Danny Reyes . Bogey (5)").
+  const subjectGross = (r: any): string | null => {
     if (r.hole_number == null) return null;
     const g = (golfers || []).find((x: any) => `${x.first_name} ${x.last_name}` === r.golfer_name);
     if (!g) return null;
     const entry = (eventEntries || []).find((e: any) => e.golfer_id === g.golfer_id);
     if (!entry) return null;
     const hs = (holeScores || []).find((h: any) => h.summary_id === entry.summary_id && h.hole_number === r.hole_number);
-    return hs && hs.stableford_points != null ? netLabel(hs.stableford_points) : null;
+    if (!hs || hs.gross_score == null) return null;
+    const par = holePars[r.hole_number - 1];
+    return par != null ? grossLabel(hs.gross_score, par) : null;
   };
 
   const eyebrowFor = (c: RecapCard): string => {
     if (c.kind === "data") return c.beat!.eyebrow;
     const r = c.row;
     if (r.pre_round) return `${r.golfer_name} • Pre-round`;
-    const net = subjectNet(r);
-    return net ? `${r.golfer_name} • ${net}` : r.golfer_name;
+    const gross = subjectGross(r);
+    return gross ? `${r.golfer_name} • ${gross}` : r.golfer_name;
   };
+
+  // ---- share/save a rendered image of the highlight ---------------------------
+  // Canvas-composited (no DOM-screenshot library allowed): media cover-cropped
+  // to a 1080x1920 story frame + the overlay text (eyebrow, hole meta, caption,
+  // credit). R2/Storage both send ACAO for GET, so crossOrigin loads keep the
+  // canvas untainted; video cards grab the CURRENT frame from the player.
+  const shareCard = async (c: RecapCard) => {
+    setSharing(true);
+    try {
+      const canvas = c.kind === "data"
+        ? await composeDataShareCanvas(c)
+        : await composeHumanShareCanvas(c);
+      const blob: Blob = await new Promise((res, rej) =>
+        canvas.toBlob((b) => (b ? res(b) : rej(new Error("encode failed"))), "image/jpeg", 0.9));
+      const png: Blob | null = await new Promise((res) => canvas.toBlob((b) => res(b), "image/png"));
+      const file = new File([blob], "highlight.jpg", { type: "image/jpeg" });
+      // Do NOT call navigator.share here: the awaits above already burned the
+      // tap's transient activation (iOS standalone PWAs then reject with
+      // NotAllowedError and the user got a bare download). Stage the image and
+      // let the preview sheet's Share button call share() in a fresh tap.
+      setShareNote(null);
+      setCopied(false);
+      setSharePrep({ file, url: URL.createObjectURL(blob), png });
+    } catch (_: any) {
+      window.alert("Couldn't create the share image for this highlight.");
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  // AUTO beat: re-rendered natively on canvas by shareBeatImage (background,
+  // hero, tracer shot, viz panel, caption).
+  const composeDataShareCanvas = (c: RecapCard): Promise<HTMLCanvasElement> => {
+    const b = c.beat!;
+    const { focusRow, anchors, useGreen } = beatFocusFor(b);
+    const bgUrl = (b.hole != null ? holeAerialUrl(holeImages, courseName, b.hole) : null) || firstCourseImg;
+    return composeBeatShareImage({
+      beat: b,
+      bgUrl,
+      focusUrl: b.score != null && focusRow && anchors ? focusRow.public_url : null,
+      anchors,
+      greenView: useGreen,
+      dateLabel: eventDateLabel,
+    });
+  };
+
+  const composeHumanShareCanvas = async (c: RecapCard): Promise<HTMLCanvasElement> => {
+    const r = c.row;
+    {
+      try { await (document as any).fonts?.ready; } catch (_: any) {}
+      const W = 1080, H = 1920, PAD = 54;
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d")!;
+
+      // Fast source first: the frame/pixels ALREADY on screen. Awaiting a fresh
+      // network load here burns the tap's transient user activation, and then
+      // navigator.share is refused -- which is why photos fell back to a bare
+      // download while videos (in-memory frame) got the real share sheet.
+      let source: HTMLImageElement | HTMLVideoElement | null = null;
+      const v = videoRef.current;
+      if (r.media_type === "video" && v && v.readyState >= 2 && v.videoWidth > 0) source = v;
+      const live = photoImgRef.current;
+      if (!source && r.media_type === "photo" && live && live.complete && live.naturalWidth > 0) source = live;
+      if (!source) {
+        // loadShareImage retries with a cache-busted CORS fetch -- the rail
+        // shows thumb_url as a plain <img>, which poisons Safari's cache for
+        // a direct crossOrigin load of the same URL.
+        source = await loadShareImage(r.media_type === "video" ? r.thumb_url : r.media_url);
+        if (!source) throw new Error("media load failed");
+      }
+      const sw = (source as any).videoWidth || (source as any).naturalWidth;
+      const sh = (source as any).videoHeight || (source as any).naturalHeight;
+      const scale = Math.max(W / sw, H / sh);
+      ctx.fillStyle = "#0a2e1a";
+      ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(source, (W - sw * scale) / 2, (H - sh * scale) / 2, sw * scale, sh * scale);
+
+      // scrims (top for the eyebrow, bottom for the text block)
+      let g = ctx.createLinearGradient(0, 0, 0, 300);
+      g.addColorStop(0, "rgba(0,0,0,.55)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, 300);
+      g = ctx.createLinearGradient(0, H - 760, 0, H);
+      g.addColorStop(0, "rgba(0,0,0,0)");
+      g.addColorStop(1, "rgba(0,0,0,.85)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, H - 760, W, 760);
+
+      // eyebrow (top-left, matching the viewer)
+      ctx.fillStyle = "#fff";
+      ctx.font = "700 42px 'DM Sans', sans-serif";
+      ctx.fillText(eyebrowFor(c), PAD, 118);
+
+      // bottom-up text block: caption, then hole meta (no "Added by" credit on
+      // the shared image -- that chrome stays in-app)
+      let y = H - 96;
+      if (r.caption) {
+        ctx.font = "700 62px 'DM Sans', sans-serif";
+        ctx.fillStyle = "#fff";
+        const lines = wrapCanvasText(ctx, r.caption, W - PAD * 2).slice(0, 4);
+        y -= (lines.length - 1) * 76;
+        lines.forEach((ln, i) => ctx.fillText(ln, PAD, y + i * 76));
+        y -= 96;
+      }
+
+      const hole = r.pre_round ? null : r.hole_number;
+      const par = hole != null ? holePars[hole - 1] : null;
+      if (hole != null && par != null) {
+        ctx.fillStyle = "#fff";
+        ctx.shadowColor = "rgba(0,0,0,.6)";
+        ctx.shadowBlur = 18;
+        ctx.font = "400 96px 'DM Serif Display', serif";
+        ctx.fillText(String(hole), PAD, y);
+        const numW = ctx.measureText(String(hole)).width;
+        ctx.shadowBlur = 0;
+        ctx.font = "700 36px 'DM Sans', sans-serif";
+        const yds = yardsForGolferName(r.golfer_name, hole);
+        ctx.fillText(`Par ${par}${yds != null ? ` | ${yds} Yds` : ""}`, PAD + numW + 26, y - 8);
+      }
+
+      return canvas;
+    }
+  };
+
+  // Plain-download fallback (desktop, or a device where share() refuses).
+  const saveShareLocal = (prep: { file: File; url: string }) => {
+    const a = document.createElement("a");
+    a.href = prep.url;
+    a.download = prep.file.name;
+    a.style.display = "none";
+    document.body.appendChild(a); // some browsers ignore download on detached anchors
+    a.click();
+    setTimeout(() => a.remove(), 5000);
+    setSharePrep(null);
+  };
+
+  // Native share sheet availability for the staged file.
+  const canNativeShare = (prep: { file: File } | null): boolean => {
+    const nav: any = navigator;
+    if (!prep || !nav.share) return false;
+    try { return !nav.canShare || nav.canShare({ files: [prep.file] }); } catch (_: any) { return false; }
+  };
+
+  const openEditDetails = (row: any) => {
+    setEditGolfer(row.golfer_name || "");
+    setEditHole(row.pre_round ? "pre" : row.hole_number ?? "none");
+    setEditDetailsFor(row);
+  };
+
+  // Golfers who played THIS event (edit-details picker).
+  const eventGolferNames = useMemo(() => {
+    const names = (eventEntries || [])
+      .map((e: any) => {
+        const g = (golfers || []).find((x: any) => x.golfer_id === e.golfer_id);
+        return g ? `${g.first_name} ${g.last_name}` : null;
+      })
+      .filter(Boolean) as string[];
+    return [...new Set(names)].sort();
+  }, [eventEntries, golfers]);
 
   // Context menu items for the current card.
   const isOwner = card.kind === "human" && memberName != null && card.row.created_by_name === memberName;
@@ -682,6 +940,12 @@ export function HighlightsViewer({
   const ICO_EYE = <svg viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>;
   const ICO_EDIT = <svg viewBox="0 0 24 24"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>;
   const ICO_TRASH = <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>;
+  const ICO_SHARE = <svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5" /><path d="M4 14v6h16v-6" /></svg>;
+  const ICO_TAG = <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>;
+  if (card.kind === "data") {
+    // Everyone can share/save a rendered image of an auto beat too.
+    menuItems.push({ label: "Share / save image", icon: ICO_SHARE, run: () => shareCard(card) });
+  }
   if (card.kind === "data" && adminMode) {
     menuItems.push({ label: "Hide this beat", icon: ICO_EYE, run: () => onHideBeat && onHideBeat(card.beat) });
     menuItems.push({
@@ -692,13 +956,18 @@ export function HighlightsViewer({
       },
     });
   }
+  if (card.kind === "human") {
+    // Everyone can share/save a rendered image of a highlight.
+    menuItems.push({ label: "Share / save image", icon: ICO_SHARE, run: () => shareCard(card) });
+  }
   if (card.kind === "human" && (isOwner || adminMode)) {
     menuItems.push({
-      label: "Edit highlight", icon: ICO_EDIT, run: () => {
+      label: "Edit caption", icon: ICO_EDIT, run: () => {
         const next = window.prompt("Edit caption:", card.row.caption || "");
         if (next != null && onEditHighlightCaption) onEditHighlightCaption(card.row, next.trim());
       },
     });
+    menuItems.push({ label: "Edit golfer / hole", icon: ICO_TAG, run: () => openEditDetails(card.row) });
     menuItems.push({
       label: "Delete highlight", danger: true, icon: ICO_TRASH, run: () => {
         if (window.confirm("Delete this highlight?") && onDeleteHighlight) onDeleteHighlight(card.row.id);
@@ -715,19 +984,24 @@ export function HighlightsViewer({
   // indicator by design).
   const visualPaused = holdPaused;
 
-  // ---- data-beat body ---------------------------------------------------------
-  const renderBeat = (b: DataBeat) => {
+  // Focus-image derivation shared by the beat renderer and the share-image
+  // composer. A layout row is only usable when it has ANCHORS (Handoff #11
+  // sec 7 -- no fixed-arc fallback). Prefer the green view for a made net
+  // birdie+ when anchored; else the hole view.
+  const beatFocusFor = (b: DataBeat) => {
     const holeRow = b.hole != null ? holeImageRow(holeImages, courseName, b.hole, "hole") : null;
     const greenRow = b.hole != null ? holeImageRow(holeImages, courseName, b.hole, "green") : null;
-    // A layout row is only usable for the focus card if it has ANCHORS. A tracer
-    // now requires BOTH a layout image AND anchors (Handoff #11 sec 7) -- the
-    // fixed-arc fallback is gone (a wrong arc is worse than no arc). Prefer the
-    // green view for a made net birdie+ when it is anchored; else the hole view.
     const anchoredHole = holeRow && holeRow.anchors && typeof holeRow.anchors === "object" ? holeRow : null;
     const anchoredGreen = greenRow && greenRow.anchors && typeof greenRow.anchors === "object" ? greenRow : null;
     const useGreen = !!(anchoredGreen && b.score && b.score.points >= 3);
     const focusRow = useGreen ? anchoredGreen : anchoredHole;
     const anchors = focusRow?.anchors && typeof focusRow.anchors === "object" ? focusRow.anchors : null;
+    return { focusRow, anchors, useGreen };
+  };
+
+  // ---- data-beat body ---------------------------------------------------------
+  const renderBeat = (b: DataBeat) => {
+    const { focusRow, anchors, useGreen } = beatFocusFor(b);
     // Focus card + tracer only when we have a layout image AND its anchors AND a
     // score to draw. Otherwise the beat renders its glass panel only.
     const showTracer = b.score != null && focusRow != null && anchors != null;
@@ -823,9 +1097,26 @@ export function HighlightsViewer({
               ? <div className={"v-bg" + tint}><img src={bgUrl} alt="" /></div>
               : <div className={"beatbg" + tint} />;
           })() : card.row.media_type === "video" ? (
-            <video ref={videoRef} key={card.row.id} src={card.row.media_url} autoPlay muted playsInline loop />
+            // Blurred thumbnail poster underneath; the video fades in over it
+            // once it can actually paint (no green-background pop-in).
+            <div className="v-vidwrap" key={card.row.id}>
+              {card.row.thumb_url && <img className="v-vidposter" src={card.row.thumb_url} alt="" />}
+              <video
+                ref={videoRef}
+                className={vidReady ? "ready" : ""}
+                src={card.row.media_url}
+                autoPlay
+                muted={videoMuted}
+                playsInline
+                loop
+                preload="auto"
+                crossOrigin="anonymous"
+                onLoadedData={() => setVidReady(true)}
+                onCanPlay={() => setVidReady(true)}
+              />
+            </div>
           ) : (
-            <img key={card.row.id} src={card.row.media_url} alt="" />
+            <img key={card.row.id} ref={photoImgRef} crossOrigin="anonymous" src={card.row.media_url} alt="" />
           )}
         </div>
         {card.kind === "human" && <div className="v-scrim-b" />}
@@ -855,7 +1146,7 @@ export function HighlightsViewer({
         {/* frosted context menu */}
         {menuOpen && menuItems.length > 0 && (
           <div className="hl-menu">
-            <div className="who">{card.kind === "data" ? "Admin" : isOwner ? "Your highlight" : "Admin"}</div>
+            <div className="who">{card.kind === "data" ? (adminMode ? "Admin" : "Highlight") : isOwner ? "Your highlight" : adminMode ? "Admin" : "Highlight"}</div>
             {menuItems.map((m) => (
               <button key={m.label} className={m.danger ? "danger" : ""} onClick={() => { setMenuOpen(false); m.run(); }}>
                 {m.icon} {m.label}
@@ -894,11 +1185,117 @@ export function HighlightsViewer({
                     <svg className="bub" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20l1.1-5.4A8.5 8.5 0 1 1 21 11.5z" /></svg>
                     <span className="n">{cardComments.length}</span>
                   </button>
+                  {r.media_type === "video" && (
+                    <button className="act" onClick={() => setVideoMuted((m) => !m)} aria-label={videoMuted ? "Turn sound on" : "Turn sound off"}>
+                      {videoMuted ? (
+                        <svg className="snd" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z" /><path d="M22 9l-6 6M16 9l6 6" /></svg>
+                      ) : (
+                        <svg className="snd" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /></svg>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             </>
           );
         })()}
+
+        {/* share preview bottom sheet. Two reliable paths:
+            1) Share... calls navigator.share inside THIS fresh tap -- works in
+               Safari tabs / Android; some iOS home-screen PWAs still refuse
+               file shares, in which case we show a note instead of silently
+               dumping the user on the file-download page.
+            2) The preview image itself allows the NATIVE long-press callout
+               (Save to Photos / Share / Copy) -- touch-callout and pointer
+               events are re-enabled here, and stopPropagation keeps the
+               viewer's contextmenu suppression away. That path always works
+               in the installed PWA. */}
+        {sharePrep && (
+          <div className="hl-sheet-scrim" onClick={() => setSharePrep(null)}>
+            <div className="hl-sheet" onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+              <div className="hl-sheet-handle" />
+              <div className="hl-sheet-title">Share highlight</div>
+              <div className="hl-share-preview">
+                <img src={sharePrep.url} alt="Highlight preview" draggable={false} />
+              </div>
+              <div className="hl-share-hint">Tip: touch and hold the picture to save it to Photos or share it.</div>
+              {shareNote && <div className="hl-share-note">{shareNote}</div>}
+              <div className="hl-share-actions">
+                {canNativeShare(sharePrep) && (
+                  <button
+                    className="hl-edit-save"
+                    onClick={() => {
+                      const nav: any = navigator;
+                      nav.share({ files: [sharePrep.file] })
+                        .then(() => setSharePrep(null))
+                        .catch((e: any) => {
+                          if (e && e.name === "AbortError") { setSharePrep(null); return; } // user closed the sheet
+                          setShareNote("Sharing isn't available in the installed app on this phone -- touch and hold the picture above instead.");
+                        });
+                    }}
+                  >Share...</button>
+                )}
+                {typeof ClipboardItem !== "undefined" && (navigator as any).clipboard?.write && sharePrep.png && (
+                  <button
+                    className="hl-edit-cancel"
+                    onClick={() => {
+                      (navigator as any).clipboard.write([new ClipboardItem({ "image/png": sharePrep.png! })])
+                        .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })
+                        .catch(() => setShareNote("Couldn't copy -- touch and hold the picture above instead."));
+                    }}
+                  >{copied ? "Copied!" : "Copy image"}</button>
+                )}
+                <button className="hl-edit-cancel" onClick={() => saveShareLocal(sharePrep)}>Save as file</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* edit golfer / hole bottom sheet */}
+        {editDetailsFor && (
+          <div className="hl-sheet-scrim" onClick={() => setEditDetailsFor(null)}>
+            <div className="hl-sheet" onClick={(e) => e.stopPropagation()}>
+              <div className="hl-sheet-handle" />
+              <div className="hl-sheet-title">Edit highlight</div>
+              <div className="hl-sheet-list">
+                <div className="hl-add-label" style={{ marginTop: 4 }}>Who is it about?</div>
+                <GlassPicker<string>
+                  options={eventGolferNames.map((n: string) => ({ value: n, label: n }))}
+                  value={editGolfer}
+                  onChange={(v) => setEditGolfer(v)}
+                  style={{ width: "100%" }}
+                />
+                <div className="hl-add-label" style={{ marginTop: 16 }}>Which hole?</div>
+                <div className="hl-hole-grid">
+                  {Array.from({ length: 18 }, (_, i) => i + 1).map((h) => (
+                    <button key={h} className={"hl-chip hl-chip--hole" + (editHole === h ? " on" : "")} onClick={() => setEditHole(editHole === h ? "none" : h)}>{h}</button>
+                  ))}
+                </div>
+                <div className="hl-chip-grid" style={{ marginTop: 8 }}>
+                  <button className={"hl-chip" + (editHole === "none" ? " on" : "")} onClick={() => setEditHole("none")}>No specific hole</button>
+                  <button className={"hl-chip" + (editHole === "pre" ? " on" : "")} onClick={() => setEditHole(editHole === "pre" ? "none" : "pre")}>Before the round</button>
+                </div>
+              </div>
+              <div className="hl-edit-actions">
+                <button className="hl-edit-cancel" onClick={() => setEditDetailsFor(null)}>Cancel</button>
+                <button
+                  className="hl-edit-save"
+                  disabled={!editGolfer}
+                  onClick={() => {
+                    if (onEditHighlightDetails) {
+                      onEditHighlightDetails(editDetailsFor, {
+                        golfer_name: editGolfer,
+                        hole_number: typeof editHole === "number" ? editHole : null,
+                        pre_round: editHole === "pre",
+                      });
+                    }
+                    setEditDetailsFor(null);
+                  }}
+                >Save</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* comments bottom sheet */}
         {commentsFor != null && (

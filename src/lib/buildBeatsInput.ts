@@ -25,7 +25,8 @@ export const ANTI_REPEAT_WINDOW = 6;
 // saves recomputation, it is not what holds the story still. BUMP IT whenever
 // the engine's output could change (detector/threshold/composer edits, or a
 // history rebuild), or viewers keep seeing beats from the previous engine.
-export const BEATS_CACHE_VERSION = "v9";
+// v10: duplicate-first-name disambiguation in ptsPanel/h2h labels ("Trevor C")
+export const BEATS_CACHE_VERSION = "v10";
 export const beatsCacheKey = (eventId: number) => `hl_beats_${BEATS_CACHE_VERSION}_${eventId}`;
 
 export interface BeatsInputTables {

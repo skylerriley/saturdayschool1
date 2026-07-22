@@ -3,6 +3,7 @@
 // tap targets, no gestures, plain language, one scrolling page.
 import { useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
+import { GlassPicker } from "../../../components/common";
 import { supabase } from "../../../lib/supabaseClient";
 import { golferName } from "../../../lib/formatters";
 import { uploadHighlightMedia, VIDEO_MAX_SECONDS } from "../../../lib/r2Upload";
@@ -20,13 +21,26 @@ export function AddHighlightFlow({ event, golfers, eventEntries, memberName, onC
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Subject choices: golfers who played this event first, then the rest.
+  // Subject choices: ONLY golfers who played this event (a highlight is about
+  // someone in the field).
   const subjectChoices = useMemo(() => {
     const playedIds = new Set(eventEntries.map((e: any) => e.golfer_id));
-    const played = golfers.filter((g: any) => playedIds.has(g.golfer_id));
-    const others = golfers.filter((g: any) => !playedIds.has(g.golfer_id) && g.is_active !== false && !g.is_guest);
-    return [...played, ...others].map((g: any) => golferName(golfers, g.golfer_id)).filter(Boolean);
+    const names = golfers
+      .filter((g: any) => playedIds.has(g.golfer_id))
+      .map((g: any) => golferName(golfers, g.golfer_id))
+      .filter(Boolean) as string[];
+    return [...new Set(names)].sort();
   }, [golfers, eventEntries]);
+
+  // Uploader fallback (no member identity set): any active member can be the
+  // one posting, playing or not.
+  const uploaderChoices = useMemo(() => {
+    const names = golfers
+      .filter((g: any) => g.is_active !== false && !g.is_guest)
+      .map((g: any) => golferName(golfers, g.golfer_id))
+      .filter(Boolean) as string[];
+    return [...new Set(names)].sort();
+  }, [golfers]);
 
   const pickFile = (f: File | null) => {
     setError(null);
@@ -73,16 +87,17 @@ export function AddHighlightFlow({ event, golfers, eventEntries, memberName, onC
       </div>
       <div className="hl-add-scroll">
 
-        {uploader
-          ? <div className="hl-add-postingas">Posting as <b>{uploader}</b></div>
+        {memberName
+          ? <div className="hl-add-postingas">Posting as <b>{memberName}</b></div>
           : (
             <div className="hl-add-section">
               <div className="hl-add-label">Who are you?</div>
-              <div className="hl-chip-grid">
-                {subjectChoices.map((n) => (
-                  <button key={n} className={"hl-chip" + (uploader === n ? " on" : "")} onClick={() => setUploader(n)}>{n}</button>
-                ))}
-              </div>
+              <GlassPicker<string>
+                options={[{ value: "", label: "Choose your name..." }, ...uploaderChoices.map((n) => ({ value: n, label: n }))]}
+                value={uploader || ""}
+                onChange={(v) => setUploader(v || null)}
+                style={{ width: "100%" }}
+              />
             </div>
           )}
 
@@ -97,7 +112,12 @@ export function AddHighlightFlow({ event, golfers, eventEntries, memberName, onC
           />
           {previewUrl ? (
             <div className="hl-add-preview" onClick={() => fileInputRef.current?.click()}>
-              {isVideo ? <video src={previewUrl} muted playsInline /> : <img src={previewUrl} alt="" />}
+              {/* Video: silent looping preview (a bare <video> paints nothing on
+                  iOS until it plays). Both media kinds letterbox (contain) so the
+                  full frame is visible, never top/bottom-cropped. */}
+              {isVideo
+                ? <video key={previewUrl} src={previewUrl} muted playsInline autoPlay loop preload="metadata" />
+                : <img src={previewUrl} alt="" />}
               <div className="hl-add-preview-swap">Tap to change</div>
             </div>
           ) : (
@@ -113,11 +133,12 @@ export function AddHighlightFlow({ event, golfers, eventEntries, memberName, onC
 
         <div className="hl-add-section">
           <div className="hl-add-label">2. Who is it about?</div>
-          <div className="hl-chip-grid">
-            {subjectChoices.map((n) => (
-              <button key={n} className={"hl-chip" + (subject === n ? " on" : "")} onClick={() => setSubject(n)}>{n}</button>
-            ))}
-          </div>
+          <GlassPicker<string>
+            options={[{ value: "", label: "Choose a golfer..." }, ...subjectChoices.map((n) => ({ value: n, label: n }))]}
+            value={subject || ""}
+            onChange={(v) => setSubject(v || null)}
+            style={{ width: "100%" }}
+          />
         </div>
 
         <div className="hl-add-section">

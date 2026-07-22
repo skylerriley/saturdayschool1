@@ -1442,6 +1442,28 @@ const CSS = `
   .heart{fill:none;stroke:#fff;stroke-width:2;}
   .heart.on{fill:#e8556b;stroke:#e8556b;}
   .bub{fill:none;stroke:#fff;stroke-width:2;}
+  .snd{fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+  /* video card: blurred thumb poster underneath, video fades in once paintable */
+  .v-vidwrap{position:absolute;inset:0;overflow:hidden;}
+  .v-vidwrap .v-vidposter{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(26px) brightness(.8);transform:scale(1.12);}
+  .v-vidwrap video{position:absolute;inset:0;opacity:0;transition:opacity .25s ease;}
+  .v-vidwrap video.ready{opacity:1;}
+  /* share preview sheet. The preview img RE-ENABLES the native long-press
+     callout (Save to Photos / Share / Copy) that the viewer suppresses --
+     that callout is the one share path iOS home-screen PWAs always allow.
+     Selector depth beats ".hl-overlay .viewer img"'s pointer-events:none. */
+  .hl-share-preview{border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--border);background:var(--green-900);}
+  .hl-share-preview img,.hl-overlay .viewer .hl-share-preview img{display:block;width:100%;height:230px;object-fit:contain;pointer-events:auto;-webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto;}
+  .hl-share-hint{font-size:13.5px;color:var(--text-secondary);margin-top:9px;line-height:1.4;}
+  .hl-share-note{font-size:13.5px;color:var(--red-600);background:var(--red-100);border-radius:var(--radius-sm);padding:9px 12px;margin-top:9px;line-height:1.4;}
+  .hl-share-actions{display:flex;flex-direction:column;gap:9px;padding-top:12px;}
+  .hl-share-actions button{width:100%;border-radius:999px;padding:14px 16px;font-family:var(--font-sans);font-size:15.5px;font-weight:700;cursor:pointer;}
+  /* edit golfer/hole sheet actions */
+  .hl-edit-actions{display:flex;gap:10px;padding-top:12px;}
+  .hl-edit-actions button{flex:1;border-radius:999px;padding:13px 16px;font-family:var(--font-sans);font-size:15px;font-weight:700;cursor:pointer;}
+  .hl-edit-cancel{border:1.5px solid var(--border-md);background:var(--surface);color:var(--text-secondary);}
+  .hl-edit-save{border:0;background:var(--green-700);color:#fff;}
+  .hl-edit-save:disabled{opacity:.45;}
   /* human card extras: hole meta on the photo + video play affordance */
   .hl-overlay .h-meta{position:absolute;top:calc(64px + var(--safe-area-top));left:16px;z-index:6;pointer-events:none;}
 
@@ -1724,7 +1746,9 @@ const CSS = `
   .hl-comment-name{font-size:12.5px;font-weight:700;color:var(--text-secondary);}
   .hl-comment-text{font-size:15px;color:var(--text-primary);margin-top:2px;}
   .hl-sheet-composer{display:flex;gap:8px;padding-top:10px;}
-  .hl-sheet-composer input{flex:1;border:1.5px solid var(--border-md);border-radius:999px;padding:11px 16px;font-family:var(--font-sans);font-size:15px;background:var(--surface2);color:var(--text-primary);}
+  /* 16px minimum: an input under 16px makes iOS Safari auto-zoom the page on
+     focus, which zooms the whole story viewer and strands the user zoomed-in */
+  .hl-sheet-composer input{flex:1;border:1.5px solid var(--border-md);border-radius:999px;padding:11px 16px;font-family:var(--font-sans);font-size:16px;background:var(--surface2);color:var(--text-primary);}
   .hl-sheet-composer button{border:0;border-radius:999px;padding:11px 18px;background:var(--green-700);color:#fff;font-weight:700;font-size:14px;cursor:pointer;}
   .hl-sheet-composer button:disabled{opacity:.45;}
 
@@ -1740,7 +1764,9 @@ const CSS = `
   .hl-add-optional{font-weight:500;color:var(--text-muted);font-size:13px;}
   .hl-add-bigbtn{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:20px 14px;border-radius:var(--radius-lg);border:2px dashed var(--border-md);background:var(--surface);color:var(--green-700);font-family:var(--font-sans);font-size:16px;font-weight:700;cursor:pointer;}
   .hl-add-preview{position:relative;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);max-height:260px;cursor:pointer;}
-  .hl-add-preview img,.hl-add-preview video{width:100%;max-height:260px;object-fit:cover;display:block;}
+  /* contain (not cover) so the FULL picked frame is visible -- letterboxed on
+     a dark ground instead of cropping top/bottom */
+  .hl-add-preview img,.hl-add-preview video{width:100%;height:260px;object-fit:contain;display:block;background:var(--green-900);}
   .hl-add-preview-swap{position:absolute;bottom:8px;right:10px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;font-weight:700;padding:5px 10px;border-radius:999px;}
   .hl-add-hint{font-size:12.5px;color:var(--text-muted);margin-top:7px;}
   .hl-chip-grid{display:flex;flex-wrap:wrap;gap:8px;}

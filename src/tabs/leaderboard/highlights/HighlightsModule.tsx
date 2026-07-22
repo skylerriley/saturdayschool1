@@ -246,6 +246,14 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
     showToast("Caption updated");
   };
 
+  // Re-attribute a highlight (wrong golfer / wrong hole on upload). The watch
+  // order re-sorts automatically since cards derive from rows.
+  const editHighlightDetails = (row: any, patch: { golfer_name: string; hole_number: number | null; pre_round: boolean }) => {
+    setRows((prev) => (prev || []).map((r: any) => (r.id === row.id ? { ...r, ...patch } : r)));
+    supabase.from("highlights").update(patch, { id: row.id }).catch(reportWriteError("Edit highlight"));
+    showToast("Highlight updated");
+  };
+
   // Module visibility: hole-data events always show (they have beats); other
   // events only if someone uploaded to them. No empty state, no dangling "+".
   if (!hasHoleData && humanRows.length === 0) return null;
@@ -341,6 +349,7 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
           onEditBeatCaption={adminMode ? editBeatCaption : undefined}
           onDeleteHighlight={deleteHighlight}
           onEditHighlightCaption={editHighlightCaption}
+          onEditHighlightDetails={editHighlightDetails}
           onToggleLike={(highlightId: number) => {
             if (!memberName) { showToast("Pick your profile in Settings to like highlights"); return; }
             const mine = likes.find((l: any) => l.highlight_id === highlightId && l.liker_name === memberName);

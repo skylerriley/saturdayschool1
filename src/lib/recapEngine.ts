@@ -603,6 +603,18 @@ function leadByPhrase(ctx: RoundContext, hole: number, playerIdx: number, fn: st
   return `${fn} leads by ${numWord(m)} ${plural(m, "point")}`;
 }
 
+// First name for DATA LABELS (panels / h2h legends), with a last initial
+// appended whenever another player in the field shares the first name
+// ("Trevor C" vs "Trevor S" -- a bare duplicate reads as the same person).
+// Prose captions/titles keep plain firstName; only labeled data needs this.
+function displayName(ctx: RoundContext, idx: number): string {
+  const full = ctx.players[idx].name;
+  const fn = firstName(full);
+  if (!ctx.players.some((p, i) => i !== idx && firstName(p.name) === fn)) return fn;
+  const parts = full.trim().split(" ").filter(Boolean);
+  return parts.length > 1 ? `${fn} ${parts[parts.length - 1][0]}` : fn;
+}
+
 // Standings panel at a hole: top rows by cumulative points, with any featured
 // players forced in (mockup's "Thru 17" glass panel).
 function ptsPanelAt(
@@ -612,7 +624,7 @@ function ptsPanelAt(
   feature?: { idx: number; dir?: "up" | "dn" }[],
   cap = 3,
 ): NonNullable<DataBeat["ptsPanel"]> {
-  const all = ctx.players.map((p, i) => ({ i, name: firstName(p.name), pts: ctx.totalsSeries[i][hole] }));
+  const all = ctx.players.map((_p, i) => ({ i, name: displayName(ctx, i), pts: ctx.totalsSeries[i][hole] }));
   all.sort((a, b) => b.pts - a.pts);
   let rows = all.slice(0, cap);
   (feature || []).forEach((f) => {
@@ -817,8 +829,8 @@ const detectDuel: Detector = (ctx) => {
         protagonistName: c.players[b.aIdx].name,
         protagonistInitials: initials(c.players[b.aIdx].name),
         h2h: [
-          { name: fa, color: H2H_COLORS[0], points: cumulativePoints(c, b.aIdx, c.maxHole) },
-          { name: fb, color: H2H_COLORS[1], points: cumulativePoints(c, b.bIdx, c.maxHole) },
+          { name: displayName(c, b.aIdx), color: H2H_COLORS[0], points: cumulativePoints(c, b.aIdx, c.maxHole) },
+          { name: displayName(c, b.bIdx), color: H2H_COLORS[1], points: cumulativePoints(c, b.bIdx, c.maxHole) },
         ],
         caption: [
           { t: `From hole ${b.h - b.len + 1} to ${b.h} it is a two-player fight -- ` },
@@ -1924,8 +1936,8 @@ const detectRivalry: Detector = (ctx) => {
             protagonistName: c.players[aIdx].name,
             protagonistInitials: initials(c.players[aIdx].name),
             h2h: [
-              { name: fa, color: H2H_COLORS[0], points: cumulativePoints(c, aIdx, c.maxHole) },
-              { name: fb, color: H2H_COLORS[1], points: cumulativePoints(c, bIdx, c.maxHole) },
+              { name: displayName(c, aIdx), color: H2H_COLORS[0], points: cumulativePoints(c, aIdx, c.maxHole) },
+              { name: displayName(c, bIdx), color: H2H_COLORS[1], points: cumulativePoints(c, bIdx, c.maxHole) },
             ],
             caption: [
               { t: `The points lead between them flips ` },

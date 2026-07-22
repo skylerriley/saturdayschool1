@@ -11,7 +11,10 @@ export const VB_H = 760;
 export interface Pt { x: number; y: number }
 export const toPx = (a: Pt) => ({ x: a.x * VB_W, y: a.y * VB_H });
 
-export function arcPath(a: Pt, b: Pt, lift: number, apex?: Pt): string {
+// Quadratic control point for the flight arc, in VB pixel space. Shared by
+// the SVG path builder (below) and the canvas share-image renderer so both
+// draw identical geometry.
+export function arcControl(a: Pt, b: Pt, lift: number, apex?: Pt): { A: Pt; B: Pt; C: Pt } {
   const A = toPx(a), B = toPx(b);
   let cx: number, cy: number;
   if (apex) {
@@ -27,13 +30,23 @@ export function arcPath(a: Pt, b: Pt, lift: number, apex?: Pt): string {
     const k = len * lift;
     cx = mx + px * k; cy = my + py * k;
   }
-  return `M ${A.x.toFixed(0)} ${A.y.toFixed(0)} Q ${cx.toFixed(0)} ${cy.toFixed(0)} ${B.x.toFixed(0)} ${B.y.toFixed(0)}`;
+  return { A, B, C: { x: cx, y: cy } };
+}
+
+export function arcPath(a: Pt, b: Pt, lift: number, apex?: Pt): string {
+  const { A, B, C } = arcControl(a, b, lift, apex);
+  return `M ${A.x.toFixed(0)} ${A.y.toFixed(0)} Q ${C.x.toFixed(0)} ${C.y.toFixed(0)} ${B.x.toFixed(0)} ${B.y.toFixed(0)}`;
 }
 
 // Low, gently breaking line across the green. NOT a putt-count claim.
-export function puttPath(a: Pt, b: Pt): string {
+export function puttControl(a: Pt, b: Pt): { A: Pt; B: Pt; C: Pt } {
   const A = toPx(a), B = toPx(b);
   const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
   const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
-  return `M ${A.x.toFixed(0)} ${A.y.toFixed(0)} Q ${(mx - (dy / len) * len * 0.12).toFixed(0)} ${(my + (dx / len) * len * 0.12).toFixed(0)} ${B.x.toFixed(0)} ${B.y.toFixed(0)}`;
+  return { A, B, C: { x: mx - (dy / len) * len * 0.12, y: my + (dx / len) * len * 0.12 } };
+}
+
+export function puttPath(a: Pt, b: Pt): string {
+  const { A, B, C } = puttControl(a, b);
+  return `M ${A.x.toFixed(0)} ${A.y.toFixed(0)} Q ${C.x.toFixed(0)} ${C.y.toFixed(0)} ${B.x.toFixed(0)} ${B.y.toFixed(0)}`;
 }

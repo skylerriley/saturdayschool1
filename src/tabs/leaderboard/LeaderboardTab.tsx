@@ -745,6 +745,19 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     if(liveEvent&&subTab!=="live") setSubTab("live");
   },[liveEvent?.event_id]);
 
+  // When the live event goes away while we're on the Live tab -- e.g. another
+  // user finalizes the round and our poll picks up the Completed status -- the
+  // "live" pill vanishes from `tabs` and the live panel stops rendering, but
+  // subTab is still "live", leaving an orphaned blank view with no pill
+  // selected. Redirect to COMPLETED, which auto-selects the just-finalized
+  // event as the most recent completed one.
+  useEffect(()=>{
+    if(!liveEvent&&subTab==="live"){
+      setSubTab("weekly");
+      onSubTabChange?.("weekly");
+    }
+  },[liveEvent,subTab]);
+
   // Default to the Upcoming tab once it becomes available (until the user
   // navigates away from the initial "weekly" default themselves).
   useEffect(()=>{
