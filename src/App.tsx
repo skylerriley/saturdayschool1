@@ -1370,9 +1370,6 @@ const CSS = `
   .thumb.dataimg img{width:100%;height:100%;object-fit:cover;object-position:center 42%;}
   .thumb .ovl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(10,46,26,.22),rgba(10,46,26,.55));color:#fff;font-family:var(--font-serif);font-size:23px;text-shadow:0 1px 4px rgba(0,0,0,.55);}
   .thumb-fallback{position:absolute;inset:0;background:linear-gradient(150deg,var(--green-600),var(--green-900));}
-  .badge-cnr{position:absolute;bottom:-1px;right:-1px;width:22px;height:22px;border-radius:50%;background:var(--gold-600);border:2.5px solid var(--surface);display:flex;align-items:center;justify-content:center;z-index:2;}
-  .badge-cnr svg{width:11px;height:11px;fill:#fff;}
-  .badge-cnr.vid{background:var(--green-800);}
   .story-name{font-size:11.5px;font-weight:700;color:var(--text-secondary);max-width:80px;text-align:center;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
   .story.add .ring{background:var(--earth-100);padding:0;display:flex;align-items:center;justify-content:center;border:2px dashed var(--border-md);}
   .story.add .plus{width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;}

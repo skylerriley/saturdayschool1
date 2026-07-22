@@ -277,10 +277,9 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
           <div className="ring">
             <div className="ring-inner">
               <div className="thumb">
+                {/* Video thumbnails show the plain poster image, same as photo
+                    highlights -- no play-icon overlay on the rail. */}
                 <img src={r.thumb_url} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                {r.media_type === "video" && (
-                  <div className="badge-cnr vid"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div>
-                )}
               </div>
             </div>
           </div>
