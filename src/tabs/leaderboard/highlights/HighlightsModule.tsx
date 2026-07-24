@@ -327,7 +327,7 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
   return (
     <div style={{ marginBottom: 14 }}>
       <div className="hl-head"><div className="hl-title">Highlights</div></div>
-      <div className="hl-sub">Tap to watch</div>
+      
       <div className="rail">
         <div className="story add" onClick={() => setAddOpen(true)}>
           <div className="ring"><div className="plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></div></div>

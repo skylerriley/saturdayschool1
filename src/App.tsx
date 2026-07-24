@@ -1364,7 +1364,7 @@ const CSS = `
   .rail{display:flex;gap:2px;overflow-x:auto;padding:2px 2px 10px;-webkit-overflow-scrolling:touch;}
   .rail::-webkit-scrollbar{height:0;}
   .story{flex:0 0 auto;width:88px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-  .ring{width:72px;height:72px;border-radius:50%;padding:3px;position:relative;background:conic-gradient(from 210deg,var(--green-600),var(--green-800),var(--gold-700),var(--gold-400),var(--green-600));}
+  .ring{width:80px;height:80px;border-radius:50%;padding:3px;position:relative;background:conic-gradient(from 210deg,var(--green-600),var(--green-800),var(--gold-700),var(--gold-400),var(--green-600));}
   .ring-inner{width:100%;height:100%;border-radius:50%;background:var(--surface);padding:3px;display:flex;align-items:center;justify-content:center;}
   .thumb{width:100%;height:100%;border-radius:50%;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-family:var(--font-serif);font-size:22px;color:#fff;}
   .thumb.dataimg img{width:100%;height:100%;object-fit:cover;object-position:center 42%;}
@@ -1661,9 +1661,21 @@ const CSS = `
   .sr-c{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;opacity:0;animation:srIn .4s cubic-bezier(.2,1,.3,1) both;min-width:0;border:1px solid transparent;border-radius:12px;padding:6px 4px;}
   @keyframes srIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
   .sr-c .sc-score{font-size:17px;width:26px;height:26px;}
-  /* emphasise the CELL, not the glyph -- scale the notation only (no ring). */
-  .sr-c.hi{background:rgba(245,176,0,.16);border-color:rgba(245,176,0,.45);}
+  /* emphasise the CELL, not the glyph -- scale the notation only (no ring).
+     Translucent gold via color-mix on a token (no hex/rgba). */
+  .sr-c.hi{background:color-mix(in srgb,var(--gold-400) 16%,transparent);border-color:color-mix(in srgb,var(--gold-400) 45%,transparent);}
   .sr-c.hi .sc-score{font-size:21px;width:30px;height:30px;}
+  /* SKINS single-score case (Handoff): one cell fills the .srow via flex:1,
+     stretching the gold highlight full-bleed. When the row has ONLY this cell,
+     center it at its NATURAL width with comfortable padding so the highlight
+     frames just the score block (number + "N pts" + hole), not the whole
+     glass panel. Multi-cell rows (nemesis) are untouched. */
+  .srow:has(> .sr-c:only-child){justify-content:center;}
+  .sr-c:only-child{flex:0 0 auto;padding:12px 22px;}
+  /* Skins label row: name + hole left, skin value right-aligned on one line
+     (the standalone sr-avg is dropped for skins in the JSX). */
+  .sr-lbl-skins{display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
+  .sr-lbl-skins .sr-lbl-v{color:var(--gold-300);font-weight:800;font-size:15px;letter-spacing:0;text-transform:none;white-space:nowrap;flex:0 0 auto;}
   .sr-c .pt{font-size:11.5px;font-weight:800;color:rgba(255,255,255,.55);}
   .sr-c.hi .pt{color:var(--gold-300);font-size:13px;}
   .sr-c .wk{font-size:10.5px;font-weight:600;color:rgba(255,255,255,.5);white-space:nowrap;}
@@ -1673,22 +1685,24 @@ const CSS = `
   .sr-avg .v{font-size:16px;color:#fff;font-weight:800;white-space:nowrap;}
   /* streak strip with gold focus window */
   .hl-overlay .streak{display:flex;gap:5px;align-items:flex-end;}
-  .st-c{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;opacity:.34;filter:blur(.4px);min-width:0;padding:6px 3px;border:1.5px solid transparent;border-radius:12px;}
+  /* Every cell shares width via flex-grow:1 so runs of any length fit at 380px
+     without overflow. The .st-win enclosure grows in proportion to its cell
+     count (inline flex-grow = focusCount) so its columns match the flanking
+     dimmed columns exactly -- no fat dimmed cells beside a squished run. */
+  .st-c{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:4px;opacity:.34;filter:blur(.4px);min-width:0;padding:6px 3px;}
   .st-c.on{opacity:1;filter:none;}
   .st-c .h{font-size:10px;color:rgba(255,255,255,.62);font-weight:700;}
   .st-c .sc-score{font-size:15px;width:21px;height:21px;}
   .st-c.on .sc-score{font-size:17px;width:25px;height:25px;}
   .st-c .pt{font-size:11px;font-weight:800;color:rgba(255,255,255,.6);}
   .st-c.on .pt{color:var(--gold-300);font-size:13px;}
-  /* Highlight box wraps ONLY the focused score+pts cells. Previously an
-     absolutely-positioned ::before sized off the whole container (var(--s)/
-     var(--n) * 97%/103%) which drifted and over-spanned toward the full card;
-     now the border/fill sit directly on the .on cells, so the box hugs exactly
-     the highlighted holes regardless of cell count. The contiguous run of .on
-     cells reads as one bordered group: inner edges square, outer edges round. */
-  .st-c.on{border-color:var(--gold-400);background:rgba(245,176,0,.1);animation:hlWinIn .5s cubic-bezier(.2,1,.3,1) .25s both;}
-  .st-c.on + .st-c.on{border-left-color:transparent;border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-5px;}
-  .st-c.on:has(+ .st-c.on){border-top-right-radius:0;border-bottom-right-radius:0;}
+  /* SINGLE enclosure around the focused run (Handoff): one gold frame + fill
+     spanning the highlighted holes, NO per-cell borders and NO internal
+     dividers -- the focused cells sit inside .st-win separated by the flex gap
+     only. .st-win is itself a flex item in .streak, so the dimmed out-of-window
+     cells flank it. Translucent gold via color-mix on a token (no hex/rgba). */
+  .st-win{display:flex;gap:5px;align-items:flex-end;flex:1 1 0;min-width:0;padding:5px 6px;border:1.5px solid var(--gold-400);border-radius:var(--radius-md);background:color-mix(in srgb,var(--gold-400) 12%,transparent);animation:hlWinIn .5s cubic-bezier(.2,1,.3,1) .25s both;}
+  .st-win .st-c{flex:1 1 0;padding:6px 2px;}
   @keyframes hlWinIn{from{opacity:0;transform:scale(.85);}to{opacity:1;transform:none;}}
   /* Fade position trace (Handoff #14): inverted-axis rank line, slow climb ->
      fast collapse, two labels timed to the drawing line. Durations/delays are
@@ -1927,7 +1941,7 @@ const CSS = `
     .vb-bar{animation:none;transform:none;}
     .hb-f{animation:none;transform:none;}
     .sccard .sc-cell,.sr-c{animation:none;opacity:1;}
-    .st-win::before{animation:none;opacity:1;transform:none;}
+    .st-win{animation:none;opacity:1;transform:none;}
     .finalboard .lb-row{animation:none;opacity:1;transform:none;}
     .finalboard .lb-row.leader::after{animation:none;background-position:0 0;}
     .hl-menu{animation:none;}

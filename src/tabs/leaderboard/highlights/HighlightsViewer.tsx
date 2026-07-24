@@ -40,7 +40,7 @@ const DUR_VIDEO = 7000;
 const TRACE_CLIMB_DELAY = 0.25;
 const TRACE_CLIMB_DUR = 2.45;
 const TRACE_FALL_DELAY = TRACE_CLIMB_DELAY + TRACE_CLIMB_DUR; // fall starts as climb ends
-const TRACE_FALL_DUR = 0.95;
+const TRACE_FALL_DUR = 1.95;
 
 // Gross score word for the HUMAN-highlight eyebrow ("Danny Reyes . Birdie (3)").
 // Auto-beat copy stays points-valence (that rule lives in the engine); a photo
@@ -317,17 +317,40 @@ function GlassPanel({ beat }: { beat: DataBeat }) {
   const fn = beat.protagonistName ? beat.protagonistName.split(" ")[0] : "";
   if (beat.streak) {
     const s = beat.streak;
+    const focusEnd = s.focusStart + s.focusCount; // exclusive
+    // The focused run is wrapped in a SINGLE enclosure (.st-win) so it reads as
+    // one gold frame, not a grid of per-cell borders. Cells before/after the
+    // window render outside the wrapper (dimmed); focused cells render inside it
+    // separated by spacing only.
     return (
       <div className="glass">
         <div className="glass-lbl">{beat.subtext ? `${beat.subtext}` : "Gross and points"}</div>
-        <div className="streak st-win" style={{ "--s": s.focusStart / s.cells.length, "--n": s.focusCount / s.cells.length } as any}>
+        <div className="streak">
           {s.cells.map((c, i) => {
-            const on = i >= s.focusStart && i < s.focusStart + s.focusCount;
+            if (i < s.focusStart || i >= focusEnd) {
+              return (
+                <div key={c.hole} className="st-c">
+                  <span className="h">{c.hole}</span>
+                  <ScoreSymbol gross={c.gross} par={c.par} />
+                  <span className="pt">{c.points}</span>
+                </div>
+              );
+            }
+            // First focused cell opens the wrapper; render the whole focused run
+            // inside it, then skip the rest of the window on later iterations.
+            if (i !== s.focusStart) return null;
+            // flex-grow proportional to the cell count so the enclosure shares
+            // width with the flanking dimmed cells (each grow:1) and the whole
+            // strip fits any run length without overflow at 380px.
             return (
-              <div key={c.hole} className={"st-c" + (on ? " on" : "")}>
-                <span className="h">{c.hole}</span>
-                <ScoreSymbol gross={c.gross} par={c.par} />
-                <span className="pt">{c.points}</span>
+              <div key="st-win" className="st-win" style={{ flexGrow: s.focusCount } as any}>
+                {s.cells.slice(s.focusStart, focusEnd).map((fc) => (
+                  <div key={fc.hole} className="st-c on">
+                    <span className="h">{fc.hole}</span>
+                    <ScoreSymbol gross={fc.gross} par={fc.par} />
+                    <span className="pt">{fc.points}</span>
+                  </div>
+                ))}
               </div>
             );
           })}
@@ -337,19 +360,34 @@ function GlassPanel({ beat }: { beat: DataBeat }) {
   }
   if (beat.scoreRow) {
     const r = beat.scoreRow;
+    // The skins card is a SINGLE-score panel: its glass label is just the
+    // player + hole (no "recent scores", which is the nemesis history framing),
+    // and the one cell drops its per-cell hole label since the panel label
+    // already carries it. Nemesis (multi-cell history strip) keeps both.
+    const isSkins = beat.angle === "skins";
     return (
       <div className="glass">
-        <div className="glass-lbl">{fn ? `${fn} · hole ${beat.hole}, recent scores` : "Recent Scores"}</div>
+        {isSkins ? (
+          // Skins: label carries the name + hole on the left and the skin value
+          // on the right, on one line -- so the standalone sr-avg (with its top
+          // border + "1 of N skins" label) is dropped entirely for this card.
+          <div className="glass-lbl sr-lbl-skins">
+            <span>{fn ? `${fn} · Hole ${beat.hole}` : "Skin"}</span>
+            <span className="sr-lbl-v">{r.avgValue}</span>
+          </div>
+        ) : (
+          <div className="glass-lbl">{fn ? `${fn} · hole ${beat.hole}, recent scores` : "Recent Scores"}</div>
+        )}
         <div className="srow">
           {r.cells.map((c, i) => (
             <div key={i} className={"sr-c" + (c.highlight ? " hi" : "")} style={{ animationDelay: `${i * 90}ms` }}>
               <ScoreSymbol gross={c.gross} par={c.par} />
               <span className="pt">{c.points != null ? `${c.points} pt${c.points === 1 ? "" : "s"}` : "--"}</span>
-              <span className="wk">{c.label}</span>
+              {!isSkins && <span className="wk">{c.label}</span>}
             </div>
           ))}
         </div>
-        <div className="sr-avg"><span className="l">{r.avgLabel}</span><span className="v">{r.avgValue}</span></div>
+        {!isSkins && <div className="sr-avg"><span className="l">{r.avgLabel}</span><span className="v">{r.avgValue}</span></div>}
       </div>
     );
   }
