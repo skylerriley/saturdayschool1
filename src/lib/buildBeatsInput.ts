@@ -26,7 +26,34 @@ export const ANTI_REPEAT_WINDOW = 6;
 // the engine's output could change (detector/threshold/composer edits, or a
 // history rebuild), or viewers keep seeing beats from the previous engine.
 // v10: duplicate-first-name disambiguation in ptsPanel/h2h labels ("Trevor C")
-export const BEATS_CACHE_VERSION = "v10";
+// v11: Handoff #12 -- skins beat, duel tape+differential two-card unit,
+//      bounce_back detector. Output changed => history REBUILD required.
+// v12: Handoff #12 follow-ups -- skins math single-sourced to lib/skins (no
+//      behavior change), duel threshold lowered so it fires on real data
+//      (cushion>=1 / len>=5, strength raised, exempt from the winner-beat cap),
+//      bounce_back caption variety. duel output changed => REBUILD required.
+// v13: bounce_back caption wording -- "blank" replaced with "zero pointer" /
+//      "blowout" (2 of 4 shapes). Caption text changed => REBUILD required.
+// v14: skins caption drops the word "gross" ("birdie" not "gross birdie"); duel
+//      tale-of-the-tape stat rows are now HISTORICAL per-course averages
+//      (Front9/Back9/Par3/Par4/Par5 avg pts + consistency) instead of this-
+//      event front/back totals. Beat output changed => REBUILD required.
+// v15: Handoff #14 -- fade replaces its two-column ptsPanel with a positionTrace
+//      payload; duel+rivalry share the differential momentum chart (diff gains
+//      crossIndices); legacy h2h payload retired. PAYLOAD SHAPES only -- beat
+//      SELECTION is unchanged (angle/protagonist/hole/strength identical), so
+//      NO history rebuild is required, just this cache bump.
+// v16: Handoff #16 -- COPY PASS ONLY (captions/eyebrows/heroLabels + shared copy
+//      helpers). Fixes false claims (fireworks "first here" not "first ever";
+//      wire_to_wire softened), self-contradictions (three_way count, fade spots
+//      from the trace series, scoreName never emits "+d"), grammar (ordinals via
+//      ordSuffix, verb/article agreement, possessives, nemesis dangling subject),
+//      present tense throughout, terminology (blowup/zero points/zero pointer
+//      only), numWord on prose counts, dName in prose, final name register, and
+//      expands thin captions. Beat SELECTION is byte-identical (backtest asserts
+//      angle/protagonist/hole/strength vs a stored baseline), so NO history
+//      rebuild is required -- only this cache bump so viewers drop stale copy.
+export const BEATS_CACHE_VERSION = "v16";
 export const beatsCacheKey = (eventId: number) => `hl_beats_${BEATS_CACHE_VERSION}_${eventId}`;
 
 export interface BeatsInputTables {
@@ -44,6 +71,9 @@ export interface BeatsInputTables {
   historyRows: any[];
   // Rows for THIS event carrying admin `hidden` flags.
   hiddenRows?: any[];
+  // event_odds rows (any events); the frozen pre-round snapshot (snapshot_hole
+  // = 0) for this event feeds the duel tape card. Optional.
+  eventOdds?: any[];
   golferName: (golfers: any[], golferId: number) => string;
 }
 
@@ -173,6 +203,24 @@ export function buildBeatsInput(t: BeatsInputTables): SelectBeatsInput {
       eventsAgo: eventsAgoOf[h.event_id] ?? 99,
     }));
 
+  // Skins pot basis: count of entries paying into skins (skins card uses
+  // skins_paid). Pot = count * $10 (LeaderboardTab). The engine recomputes the
+  // WINNER per hole itself from points, so it never diverges from the card.
+  const skinsPaidCount = t.eventEntries.filter((e: any) => e.skins_paid).length;
+
+  // Frozen pre-round odds (event_odds snapshot_hole = 0) per golfer, for the
+  // duel tape card only. Quoted, never estimated -- so if the row is absent the
+  // tape simply drops the projection line.
+  const preRoundOdds: Record<number, { projectedFinal: number | null; winPct: number | null }> = {};
+  (t.eventOdds || [])
+    .filter((o: any) => o.event_id === eventId && o.snapshot_hole === 0)
+    .forEach((o: any) => {
+      preRoundOdds[o.golfer_id] = {
+        projectedFinal: o.projected_final_mean ?? null,
+        winPct: o.win_probability ?? null,
+      };
+    });
+
   return {
     eventId,
     players: players.map((p: any) => ({ golferId: p.golferId, name: p.name })),
@@ -189,5 +237,7 @@ export function buildBeatsInput(t: BeatsInputTables): SelectBeatsInput {
     holeYardsByGolfer,
     fieldHoleYards,
     hiddenBeats: (t.hiddenRows || []).filter((h: any) => h.event_id === eventId && h.hidden === true),
+    skinsPaidCount,
+    preRoundOdds,
   };
 }

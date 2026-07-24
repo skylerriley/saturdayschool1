@@ -14,9 +14,33 @@ import { composeBeatShareImage, loadShareImage } from "./shareBeatImage";
 
 const AUTO_ICON = <svg viewBox="0 0 24 24"><path d="M4 20V6l7 4 9-6v14l-9 5-7-4z" /></svg>;
 
+// A view is only recorded once a card has been continuously on screen this
+// long -- scrubbing quickly through the reel must not inflate counts.
+const VIEW_DWELL_MS = 1500;
+
+// Stable dedupe key for a card, matching the highlight_views.beat_key contract
+// (see 20260723_highlight_views.sql). Human -> 'h:'+id; auto -> 'a:'+event+':'
+// +angle. Returns null for a card we can't key (should not happen).
+function beatKeyOf(card: RecapCard, eventId: number): string | null {
+  if (card.kind === "human") return card.row?.id != null ? `h:${card.row.id}` : null;
+  const angle = card.beat?.angle;
+  return angle ? `a:${eventId}:${angle}` : null;
+}
+
 const DUR_DATA = 8000;
 const DUR_PHOTO = 6500;
 const DUR_VIDEO = 7000;
+
+// Fade position-trace animation timing (Handoff #14 §2c), in SECONDS. SINGLE
+// SOURCE OF TRUTH: the CSS animation durations/delays AND the label reveal
+// delays both read these, so the labels can never drift out of sync with the
+// line when a duration is tweaked. Slow climb (near-linear), fast collapse
+// (accelerating). The peak label pops at the fraction of the climb where the
+// line actually reaches the peak; the finish label pops as the fall lands.
+const TRACE_CLIMB_DELAY = 0.25;
+const TRACE_CLIMB_DUR = 2.45;
+const TRACE_FALL_DELAY = TRACE_CLIMB_DELAY + TRACE_CLIMB_DUR; // fall starts as climb ends
+const TRACE_FALL_DUR = 0.95;
 
 // Gross score word for the HUMAN-highlight eyebrow ("Danny Reyes . Birdie (3)").
 // Auto-beat copy stays points-valence (that rule lives in the engine); a photo
@@ -250,6 +274,23 @@ function footerDate(iso: string): string {
   return `${mon} ${Number(m[3])}, ${m[1]}`;
 }
 
+// Relative "seen" timestamp for the names sheet: "just now", "5m", "3h", "2d",
+// then falls back to the calendar date. Coarse on purpose -- this is ambient
+// "who watched" context, not a precise log.
+function viewedAgo(iso: string): string {
+  const then = Date.parse(iso || "");
+  if (!Number.isFinite(then)) return "";
+  const s = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (s < 45) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.round(h / 24);
+  if (d < 7) return `${d}d`;
+  return footerDate(iso);
+}
+
 function CaptionText({ parts }: { parts: { t: string; b?: boolean }[] }) {
   // Engine copy uses ASCII " -- "; render it as an em dash.
   const pretty = (t: string) => t.replace(/ -- /g, " — ");
@@ -355,23 +396,145 @@ function GlassPanel({ beat }: { beat: DataBeat }) {
       </div>
     );
   }
-  if (beat.h2h) {
-    const maxV = Math.max(1, ...beat.h2h.flatMap((s) => s.points));
-    const len = Math.max(2, beat.h2h[0].points.length);
-    const pts = (arr: number[]) => arr.map((v, i) => `${(i / (len - 1)) * 300},${86 - (v / maxV) * 76}`).join(" ");
+  if (beat.tape) {
+    // Tale of the tape: a broadcast final-pairing compare. Two name columns,
+    // three-four stat rows, the leader's cell highlighted per row.
+    const t = beat.tape;
     return (
       <div className="glass">
-        <div className="glass-lbl">Momentum · points through the round</div>
-        <svg className="hl-h2h" viewBox="0 0 300 90" preserveAspectRatio="none">
-          {beat.h2h.map((s) => (
-            <polyline key={s.name} points={pts(s.points)} fill="none" stroke={s.color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-          ))}
-        </svg>
-        <div className="hl-h2h-legend">
-          {beat.h2h.map((s) => (
-            <span key={s.name}><i style={{ background: s.color }} />{s.name} · {s.points[s.points.length - 1]} pts</span>
+        <div className="glass-lbl">Tale of the tape</div>
+        <div className="hl-tape">
+          <div className="hl-tape-head"><span className="a">{t.aName}</span><span className="lbl" /><span className="b">{t.bName}</span></div>
+          {t.rows.map((r, i) => (
+            <div key={i} className="hl-tape-row">
+              <span className={"a" + (r.lead === "a" ? " win" : "")}>{r.a}</span>
+              <span className="lbl">{r.label}</span>
+              <span className={"b" + (r.lead === "b" ? " win" : "")}>{r.b}</span>
+            </div>
           ))}
         </div>
+      </div>
+    );
+  }
+  if (beat.diff) {
+    // Differential momentum chart (Handoff #12 §3d): cumulative (A - B) per
+    // hole against a zero centre line. Area fills toward the leader; zero
+    // crossings (lead changes) are dotted. Minimal labelling by hard rule:
+    // one name top, one bottom, the zero line, the crossing dots -- nothing
+    // else (no ticks, gridlines, per-hole labels, legend, or value callouts).
+    const d = beat.diff;
+    const W = 300, H = 120, MID = H / 2;
+    const vals = d.values.length ? d.values : [0];
+    const span = Math.max(2, ...vals.map((v) => Math.abs(v)));
+    const n = Math.max(2, vals.length);
+    const X = (i: number) => (i / (n - 1)) * W;
+    const Y = (v: number) => MID - (v / span) * (MID - 10);
+    // Points along the differential line (start at zero before hole 1).
+    const linePts = [{ x: 0, y: MID }, ...vals.map((v, i) => ({ x: X(i), y: Y(v) }))];
+    const linePath = linePts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+    // Area toward the leader: close the line back along the centre.
+    const areaPath = `${linePath} L${W} ${MID} L0 ${MID} Z`;
+    // Lead-change crossings come from the payload's crossIndices -- the SAME
+    // value the caption's flip count is derived from (leadCrossIndices in the
+    // engine), so the number of dots can never disagree with the text. We only
+    // interpolate the x position for a legible dot; we never re-decide WHICH
+    // holes are crossings here.
+    const crossings: { x: number }[] = (d.crossIndices || []).map((idx) => {
+      const a = idx > 0 ? vals[idx - 1] : 0;
+      const b = vals[idx] ?? 0;
+      const frac = Math.abs(a) / (Math.abs(a) + Math.abs(b) || 1);
+      const x0 = idx > 0 ? X(idx - 1) : 0;
+      return { x: x0 + (X(idx) - x0) * frac };
+    });
+    return (
+      <div className="glass">
+        <div className="hl-diff">
+          <div className="hl-diff-name top" style={{ color: d.colorTop }}>{d.nameTop}</div>
+          <svg className="hl-diff-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+            <defs>
+              <clipPath id="hl-diff-top"><rect x="0" y="0" width={W} height={MID} /></clipPath>
+              <clipPath id="hl-diff-bot"><rect x="0" y={MID} width={W} height={MID} /></clipPath>
+            </defs>
+            {/* area toward A (above centre) and toward B (below centre) */}
+            <path className="hl-diff-area" d={areaPath} fill={d.colorTop} clipPath="url(#hl-diff-top)" opacity="0.32" />
+            <path className="hl-diff-area" d={areaPath} fill={d.colorBottom} clipPath="url(#hl-diff-bot)" opacity="0.32" />
+            {/* zero centre line */}
+            <line className="hl-diff-zero" x1="0" y1={MID} x2={W} y2={MID} />
+            {/* the differential line, drawn left-to-right on entry */}
+            <path className="hl-diff-line" d={linePath} fill="none" />
+            {/* lead-change crossings -- the drama, the most legible marks */}
+            {crossings.map((c, i) => (
+              <circle key={i} className="hl-diff-x" cx={c.x} cy={MID} r="4.5" />
+            ))}
+          </svg>
+          <div className="hl-diff-name bottom" style={{ color: d.colorBottom }}>{d.nameBottom}</div>
+        </div>
+      </div>
+    );
+  }
+  if (beat.positionTrace) {
+    // Fade position trace (Handoff #14 §2): the shape of the collapse. Ported
+    // from fade-card-position-trace.html -- inverted Y (1st at the top so a
+    // fall reads as a fall), faint baseline with notches at holes 6/12/18, and
+    // EXACTLY two labels (peak + finish). The line is two segments split at
+    // splitIndex: a slow near-linear climb, then a fast accelerating collapse,
+    // each drawn by stroke-dashoffset. Labels reveal in sync with the line,
+    // timed from ACTUAL cumulative path length, using the shared TRACE_*
+    // constants so a duration tweak can never desync them.
+    const t = beat.positionTrace;
+    const W = 336, H = 190, PL = 12, PR = 12, PT = 32, PB = 40;
+    const plotB = H - PB;
+    const n = Math.max(2, t.ranks.length);
+    const maxR = Math.max(...t.ranks) + 0.5, minR = 0.55;
+    const xAt = (i: number) => PL + (i / (n - 1)) * (W - PL - PR);
+    const yAt = (r: number) => PT + ((r - minR) / (maxR - minR)) * (plotB - PT); // inverted: 1st near the top
+    const pts = t.ranks.map((r, i) => [xAt(i), yAt(r)] as [number, number]);
+    // Clamp the split so both segments always have >= 2 points.
+    const split = Math.min(Math.max(1, t.splitIndex), n - 1);
+    const climb = pts.slice(0, split + 1), fall = pts.slice(split);
+    const segLen = (p: [number, number][]) => { let s = 0; for (let i = 1; i < p.length; i++) s += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]); return s; };
+    const toD = (p: [number, number][]) => p.map((q, i) => (i ? "L" : "M") + q[0].toFixed(1) + " " + q[1].toFixed(1)).join(" ");
+    const cLen = segLen(climb) || 1, fLen = segLen(fall) || 1;
+    // Peak label reveals when the line ARRIVES at the peak: the fraction of the
+    // climb's path length up to peakIndex, scaled by the climb duration.
+    const peakClamped = Math.min(Math.max(0, t.peakIndex), split);
+    const cumToPeak = segLen(climb.slice(0, peakClamped + 1));
+    const peakDelay = (TRACE_CLIMB_DELAY + TRACE_CLIMB_DUR * (cumToPeak / cLen)).toFixed(2);
+    const endDelay = (TRACE_FALL_DELAY + TRACE_FALL_DUR * 0.92).toFixed(2);
+    const ticks = [5, 11, 17].filter((i) => i < n).map((i) => (
+      <g key={i}>
+        <line className="tr-tick" x1={xAt(i)} y1={plotB + 2} x2={xAt(i)} y2={plotB + 8} />
+        <text className="tr-tick-lbl" x={xAt(i)} y={plotB + 23} textAnchor="middle">{i + 1}</text>
+      </g>
+    ));
+    const pk = pts[peakClamped], en = pts[n - 1];
+    return (
+      <div className="glass">
+        <div className="glass-lbl">{fn ? `${fn} · position through the round` : "Position through the round"}</div>
+        <svg className="tr-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="tr-lg" gradientUnits="userSpaceOnUse" x1={PL} y1="0" x2={W - PR} y2="0">
+              <stop offset="0%" stopColor="var(--green-400)" />
+              <stop offset="40%" stopColor="var(--gold-300)" />
+              <stop offset="70%" stopColor="#ff9c8d" />
+              <stop offset="100%" stopColor="#ff7a68" />
+            </linearGradient>
+          </defs>
+          <line className="tr-axis" x1={PL} y1={plotB} x2={W - PR} y2={plotB} />
+          {ticks}
+          <path className="tr-seg tr-climb" d={toD(climb)} stroke="url(#tr-lg)"
+            style={{ strokeDasharray: cLen.toFixed(1), strokeDashoffset: cLen.toFixed(1), animationDuration: `${TRACE_CLIMB_DUR}s`, animationDelay: `${TRACE_CLIMB_DELAY}s` }} />
+          <path className="tr-seg tr-fall" d={toD(fall)} stroke="url(#tr-lg)"
+            style={{ strokeDasharray: fLen.toFixed(1), strokeDashoffset: fLen.toFixed(1), animationDuration: `${TRACE_FALL_DUR}s`, animationDelay: `${TRACE_FALL_DELAY}s` }} />
+          <g className="tr-cal" style={{ animationDelay: `${peakDelay}s` }}>
+            <circle className="tr-dot" cx={pk[0]} cy={pk[1]} r="5" />
+            <text className="tr-txt" x={pk[0]} y={pk[1] - 14} textAnchor="middle">{t.peakLabel}</text>
+          </g>
+          <g className="tr-cal" style={{ animationDelay: `${endDelay}s` }}>
+            <circle className="tr-dot red" cx={en[0]} cy={en[1]} r="5" />
+            <text className="tr-txt" x={en[0]} y={en[1] - 14} textAnchor="end">{t.finishLabel}</text>
+          </g>
+        </svg>
       </div>
     );
   }
@@ -499,13 +662,14 @@ function StandingsBoard({ standings, reduced, animKey }: {
 
 export function HighlightsViewer({
   cards, startIndex, event, course, courses, signups, golfers, eventEntries, holeScores, holeImages,
-  likes, comments, memberName, adminMode,
-  onClose, onToggleLike, onAddComment,
+  likes, comments, views, memberName, adminMode,
+  onClose, onToggleLike, onAddComment, onView,
   onHideBeat, onEditBeatCaption, onDeleteHighlight, onEditHighlightCaption, onEditHighlightDetails,
 }: any) {
   const [idx, setIdx] = useState<number>(Math.max(0, Math.min(startIndex, cards.length - 1)));
   const [commentsFor, setCommentsFor] = useState<number | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
+  const [seenSheetOpen, setSeenSheetOpen] = useState(false); // "Seen by" names sheet
   const [menuOpen, setMenuOpen] = useState(false);
   const [zoomActive, setZoomActive] = useState(false); // hole-image zoomed past fit
   // Video sound: ON by default (the file keeps its audio -- it was only ever
@@ -534,6 +698,10 @@ export function HighlightsViewer({
   const rafRef = useRef<number>(0);
   const startRef = useRef<number>(0);
   const elapsedRef = useRef<number>(0);
+  // Keys recorded THIS session, so repeat renders (re-open, back-and-forth)
+  // don't re-hit the endpoint. The DB unique index is the real dedupe; this is
+  // just to avoid hammering it. Persists across card changes, not remounts.
+  const recordedViewsRef = useRef<Set<string>>(new Set());
   const videoRef = useRef<HTMLVideoElement | null>(null);
   // The on-screen photo, loaded with crossOrigin so the share canvas can reuse
   // its already-decoded pixels without a second network fetch.
@@ -555,6 +723,29 @@ export function HighlightsViewer({
     setIdx(next);
   };
 
+  // Record a view of the CURRENT card once the dwell gate has passed. Idempotent
+  // per session via recordedViewsRef; the actual DB write is fire-and-forget in
+  // the module's onView (never awaited, silent on failure). Rules:
+  //   - no member identified => record nothing (nothing to attribute).
+  //   - self-view excluded on human highlights (viewer is the uploader); auto
+  //     beats have no owner so nothing to exclude.
+  const recordCurrentView = () => {
+    if (!onView || !memberName) return;
+    const c = cards[idx];
+    if (!c) return;
+    if (c.kind === "human" && c.row?.created_by_name === memberName) return; // skip self-view
+    const key = beatKeyOf(c, event?.event_id);
+    if (!key || recordedViewsRef.current.has(key)) return;
+    recordedViewsRef.current.add(key);
+    onView({
+      beatKey: key,
+      eventId: event?.event_id,
+      highlightId: c.kind === "human" ? c.row?.id ?? null : null,
+      angleType: c.kind === "data" ? c.beat?.angle ?? null : null,
+      viewerName: memberName,
+    });
+  };
+
   // Auto-advance via rAF driving the active pip's width directly (no
   // re-render per frame). Pause freezes elapsed time; resume re-seeds the
   // start so the pip continues from exactly where it froze. Fully disabled
@@ -562,18 +753,32 @@ export function HighlightsViewer({
   useEffect(() => {
     segRefs.current.forEach((el, i) => { if (el) el.style.width = i < idx ? "100%" : "0%"; });
     elapsedRef.current = 0;
+    // Reduced-motion: no rAF drives the pip, so record dwell on a plain timer
+    // instead. A held/paused card still counts here -- the viewer is looking.
     if (reduced) {
       const el = segRefs.current[idx];
       if (el) el.style.width = "100%";
-      return;
+      const t = setTimeout(() => recordCurrentView(), VIEW_DWELL_MS);
+      return () => clearTimeout(t);
     }
     const dur = durationFor(card);
     let cancelled = false;
     const tick = (t: number) => {
       if (cancelled) return;
-      if (pausedRef.current) { startRef.current = t - elapsedRef.current; rafRef.current = requestAnimationFrame(tick); return; }
+      if (pausedRef.current) {
+        startRef.current = t - elapsedRef.current;
+        // A held/paused card that already crossed the dwell threshold still
+        // counts -- the viewer is plainly looking at it.
+        if (elapsedRef.current >= VIEW_DWELL_MS) recordCurrentView();
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
       if (!startRef.current) startRef.current = t;
       elapsedRef.current = t - startRef.current;
+      // Dwell gate: only once the card has been continuously on screen for
+      // VIEW_DWELL_MS. Scrubbing quickly resets elapsedRef on the next [idx]
+      // run before this fires, so fast navigation records nothing.
+      if (elapsedRef.current >= VIEW_DWELL_MS) recordCurrentView();
       const p = Math.min(1, elapsedRef.current / dur);
       const el = segRefs.current[idx];
       if (el) el.style.width = (p * 100).toFixed(1) + "%";
@@ -589,8 +794,8 @@ export function HighlightsViewer({
   // Comments sheet, the dots menu, press-and-hold, an active image zoom, the
   // edit-details sheet and an in-flight share all stop the clock.
   useEffect(() => {
-    pausedRef.current = commentsFor != null || menuOpen || holdPaused || zoomActive || editDetailsFor != null || sharing || sharePrep != null;
-  }, [commentsFor, menuOpen, holdPaused, zoomActive, editDetailsFor, sharing, sharePrep]);
+    pausedRef.current = commentsFor != null || menuOpen || holdPaused || zoomActive || editDetailsFor != null || sharing || sharePrep != null || seenSheetOpen;
+  }, [commentsFor, menuOpen, holdPaused, zoomActive, editDetailsFor, sharing, sharePrep, seenSheetOpen]);
 
   // Release the share preview's object URL when the sheet closes / card changes.
   useEffect(() => () => { if (sharePrep) URL.revokeObjectURL(sharePrep.url); }, [sharePrep]);
@@ -936,6 +1141,27 @@ export function HighlightsViewer({
 
   // Context menu items for the current card.
   const isOwner = card.kind === "human" && memberName != null && card.row.created_by_name === memberName;
+
+  // "Seen by" chip. Visible to ADMIN on every card, and to the UPLOADER on
+  // their own human highlights (the Instagram pattern -- seeing who watched
+  // your post is a reward for posting, not surveillance). Everyone else sees
+  // nothing: no chip, no bare count. Auto beats have no owner, so only admins
+  // ever see their chip.
+  const seenChipVisible = adminMode || isOwner;
+  const cardKey = beatKeyOf(card, event?.event_id);
+  // Viewers of THIS card, most recent first. Deduped by name defensively (the
+  // DB unique index already guarantees one row per viewer/beat).
+  const cardViewers = useMemo(() => {
+    if (!cardKey) return [] as any[];
+    const seen = new Set<string>();
+    return (views || [])
+      .filter((v: any) => v.beat_key === cardKey)
+      .slice()
+      .sort((a: any, b: any) => String(b.viewed_at || "").localeCompare(String(a.viewed_at || "")))
+      .filter((v: any) => (seen.has(v.viewer_name) ? false : (seen.add(v.viewer_name), true)));
+  }, [views, cardKey]);
+  // Close the sheet whenever the card changes (the count belongs to one card).
+  useEffect(() => { setSeenSheetOpen(false); }, [idx]);
   const menuItems: { label: string; danger?: boolean; icon: any; run: () => void }[] = [];
   const ICO_EYE = <svg viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>;
   const ICO_EDIT = <svg viewBox="0 0 24 24"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>;
@@ -1063,10 +1289,27 @@ export function HighlightsViewer({
         <div className="beat-auto">
           <span style={{ width: 13, height: 13, display: "flex", fill: "rgba(255,255,255,.55)" }}>{AUTO_ICON}</span> Auto highlight
           {eventDateLabel && <span className="beat-date"> • {eventDateLabel}</span>}
+          {seenChip}
         </div>
       </div>
     );
   };
+
+  // Views chip -- eye icon + count, rendered into whichever footer the active
+  // card owns. Tapping is the ONLY reveal path (44px target, high contrast for
+  // the 60+ audience). Hidden entirely for non-admin non-owners -- no bare
+  // count for people who shouldn't see one. Suppressed at 0 viewers (nothing
+  // to reveal) so an unwatched card doesn't advertise an empty sheet.
+  const seenChip = seenChipVisible && cardViewers.length > 0 ? (
+    <button
+      className="hl-seen-chip"
+      onClick={(e) => { e.stopPropagation(); setSeenSheetOpen(true); }}
+      aria-label={`Seen by ${cardViewers.length}. Tap to see who.`}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
+      <span>{cardViewers.length}</span>
+    </button>
+  ) : null;
 
   const body = (
     <div className="hl-overlay" role="dialog" aria-label="Event highlights">
@@ -1175,6 +1418,7 @@ export function HighlightsViewer({
                 <div className="v-credit">
                   <svg viewBox="0 0 24 24"><path d="M4 20a8 8 0 0 1 16 0" /><circle cx="12" cy="8" r="4" /></svg>
                   Added by {r.created_by_name}{eventDateLabel ? ` • ${eventDateLabel}` : ""}
+                  {seenChip}
                 </div>
                 <div className="v-actions">
                   <button className="act" onClick={() => onToggleLike(r.id)} aria-label="Like">
@@ -1292,6 +1536,28 @@ export function HighlightsViewer({
                     setEditDetailsFor(null);
                   }}
                 >Save</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* "Seen by" names sheet -- reuses the comments/edit sheet pattern.
+            Opening pauses auto-advance (via seenSheetOpen in the pause effect);
+            closing resumes. Long lists scroll inside .hl-sheet-list with
+            overscroll containment. reduced flag drops the slide-in animation. */}
+        {seenSheetOpen && (
+          <div className="hl-sheet-scrim" onClick={() => setSeenSheetOpen(false)}>
+            <div className={"hl-sheet" + (reduced ? "" : " hl-seen-anim")} onClick={(e) => e.stopPropagation()}>
+              <div className="hl-sheet-handle" />
+              <div className="hl-sheet-title">Seen by {cardViewers.length}</div>
+              <div className="hl-sheet-list hl-seen-list">
+                {cardViewers.length === 0 && <div className="hl-sheet-empty">No views yet.</div>}
+                {cardViewers.map((v: any) => (
+                  <div key={v.id ?? v.viewer_name} className="hl-seen-row">
+                    <div className="hl-seen-name">{v.viewer_name}</div>
+                    <div className="hl-seen-time">{viewedAgo(v.viewed_at)}</div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

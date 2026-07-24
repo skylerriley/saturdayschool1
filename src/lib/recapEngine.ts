@@ -33,6 +33,7 @@
 // HARD GATE: callers must only invoke this for events where every leaderboard
 // entry has entry_type === "Hole-by-Hole" (same predicate the skins card
 // uses). No hole data => zero data beats.
+import { computeSkinWinners, computeSkinValue, type SkinHoleScore } from "./skins.ts";
 
 export interface RecapPlayer {
   golferId: number;
@@ -121,7 +122,35 @@ export interface DataBeat {
   scorecard?: { name: string; totalPoints: number; holes: { gross: number; par: number }[] };
   fieldBars?: { label: string; value: number; color: string }[];
   weekBars?: { label: string; value: number; text?: string; highlight?: boolean }[];
-  h2h?: { name: string; color: string; points: number[] }[];
+  // Fade position trace (Handoff #14 §2): tie-aware finish position per hole,
+  // plotted on an INVERTED axis (1st at the top) so the decline reads as a
+  // fall. Exactly two labels (peak + finish) reveal in sync with the drawing
+  // line; the slow-climb/fast-collapse split is at splitIndex. peakLabel is
+  // NEVER hardcoded -- a fade from 2nd is valid and must say "2nd".
+  positionTrace?: {
+    ranks: number[];      // tie-aware 0-based finish position per hole, index 0 = hole 1
+    peakIndex: number;    // hole index (0-based) where the peak position is first reached
+    splitIndex: number;   // LAST hole index (0-based) at the peak -- climb ends, decline begins
+    peakLabel: string;    // "1st" / "T2" ... from the detector's peak, not hardcoded
+    finishLabel: string;  // "6th" / "T4" ... tie-aware, from final standings
+  };
+  // Differential momentum chart (Handoff #12 §3d, Handoff #14 §3): cumulative
+  // points differential (A - B) per hole against a zero centre line. Shared by
+  // duel AND rivalry. Names carry the identity (top = A, bottom = B) -- the
+  // renderer must not rely on colour alone (60+ audience) and adds no other
+  // labelling. `values[h]` is A_cum - B_cum after hole h+1 (index 0 = hole 1).
+  // crossIndices are the lead-change hole indices from leadCrossIndices() --
+  // the SAME value any caption quotes, so dots and text can never disagree.
+  diff?: { nameTop: string; nameBottom: string; colorTop: string; colorBottom: string; values: number[]; crossIndices: number[]; firstHole: number };
+  // Duel tale-of-the-tape (Handoff #12 §3b): a broadcast final-pairing compare
+  // of the two duellists, three-to-four rows. Reuses existing stats; never a
+  // false head-to-head record (see the copy layer's shared-round rule).
+  tape?: { aName: string; bName: string; rows: { label: string; a: string; b: string; lead?: "a" | "b" | null }[] };
+  // Multi-card unit (Handoff #12 §3a): a beat may carry an inseparable lead-in
+  // card that renders IMMEDIATELY BEFORE it. The composer inserts it at the
+  // same resolution hole so the sort can never split the pair, and the unit
+  // counts as ONE beat against the budget. Used by duel (tape -> chart).
+  extraBefore?: DataBeat;
   caption: CaptionPart[];
   strength: number;
   mood: "warm" | "fall" | "expo" | "cool"; // background tint in the viewer
@@ -369,8 +398,26 @@ function numWord(n: number, cap = false): string {
   return cap ? out[0].toUpperCase() + out.slice(1) : out;
 }
 
+// Cardinal number as a word for small gross scores (used when a hole is so far
+// over par that there is no scorecard name for it -- "an eight", "a nine").
+const CARDINALS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+function grossNumberWord(gross: number): string {
+  return gross >= 0 && gross < CARDINALS.length ? CARDINALS[gross] : String(gross);
+}
+
+// Correct indefinite article for a following word: "an" before a vowel sound.
+// Scoped to the words this engine actually produces (score words + number
+// words); "eight"/"eleven" take "an", "one" takes "a". Not a general NLP rule.
+function articleFor(word: string): string {
+  return /^(a|e|i|o|u|8|11|18|80)/i.test(word.trim()) && !/^(one\b|eu)/i.test(word.trim()) ? "an" : "a";
+}
+
 // Gross scorecard word -- notation for what was physically carded. Never use
 // this to judge whether a hole was good; that is what points are for.
+// NO SIGNED STRINGS may leave this function (Handoff #16 3a/F2): a "+4" leaking
+// into prose reads as "A +4 nets Joe zero points". Quadruple bogey gets its
+// name; anything worse is spelled as the gross number ("Eight" -> prose "an
+// eight"). The article is the caller's job via articleFor().
 function scoreName(gross: number, par: number): string {
   const d = gross - par;
   if (d <= -2) return "Eagle";
@@ -379,7 +426,10 @@ function scoreName(gross: number, par: number): string {
   if (d === 1) return "Bogey";
   if (d === 2) return "Double";
   if (d === 3) return "Triple";
-  return "+" + d;
+  if (d === 4) return "Quadruple Bogey";
+  // >= 5 over: no common scorecard name -- say the gross as a noun.
+  const w = grossNumberWord(gross);
+  return w.charAt(0).toUpperCase() + w.slice(1);
 }
 
 // Net score word from Stableford points (the honest valence word).
@@ -433,6 +483,11 @@ export interface RoundContext {
   // The field's historical per-hole baseline on this course. Lets nemesis ask
   // "is this hole hard FOR THIS PLAYER" rather than "is this hole hard".
   fieldBaseline: FieldHoleBaseline;
+  // Number of entries paying into skins. The pot + per-skin value are derived
+  // from this via lib/skins (computeSkinValue) -- never inlined here.
+  skinsPaidCount: number;
+  // Pre-round frozen odds per golfer (duel tape only; quoted, never estimated).
+  preRoundOdds: Record<number, { projectedFinal: number | null; winPct: number | null }>;
 }
 
 export interface BeatCandidate {
@@ -603,16 +658,33 @@ function leadByPhrase(ctx: RoundContext, hole: number, playerIdx: number, fn: st
   return `${fn} leads by ${numWord(m)} ${plural(m, "point")}`;
 }
 
-// First name for DATA LABELS (panels / h2h legends), with a last initial
-// appended whenever another player in the field shares the first name
-// ("Trevor C" vs "Trevor S" -- a bare duplicate reads as the same person).
-// Prose captions/titles keep plain firstName; only labeled data needs this.
+// Shared-name-aware first name: a last initial is appended whenever another
+// player in the field shares the first name ("Trevor C" vs "Trevor S" -- a
+// bare duplicate reads as the same person). Used for BOTH data labels (panels)
+// and PROSE (Handoff #16 7c/F5): the disambiguation exists precisely because
+// first names collide, so prose that used bare firstName was ambiguous in
+// exactly those cases while the panel beside it was correct. `dName` is the
+// prose-facing alias; both resolve identically.
 function displayName(ctx: RoundContext, idx: number): string {
   const full = ctx.players[idx].name;
   const fn = firstName(full);
   if (!ctx.players.some((p, i) => i !== idx && firstName(p.name) === fn)) return fn;
   const parts = full.trim().split(" ").filter(Boolean);
   return parts.length > 1 ? `${fn} ${parts[parts.length - 1][0]}` : fn;
+}
+// Prose-facing shared-name-aware first name (see displayName). Look it up by
+// golferId so builders that hold a player object (not an index) can use it too.
+function dName(ctx: RoundContext, idx: number): string {
+  return displayName(ctx, idx);
+}
+function dNameOf(ctx: RoundContext, golferId: number): string {
+  const idx = ctx.players.findIndex((p) => p.golferId === golferId);
+  return idx >= 0 ? displayName(ctx, idx) : "";
+}
+// Possessive form of a name: "Joe" -> "Joe's", "Chris" -> "Chris's" (we keep
+// the 's on names ending in s -- the league says the extra syllable, "Chris's").
+function possess(name: string): string {
+  return name + "'s";
 }
 
 // Standings panel at a hole: top rows by cumulative points, with any featured
@@ -645,17 +717,18 @@ function ptsPanelAt(
 // "A birdie on 13 is worth 3 points."
 function scoreSentence(fn: string, hole: number, sc: { gross: number; par: number; points: number }): CaptionPart[] {
   const grossWord = scoreName(sc.gross, sc.par).toLowerCase();
+  const art = articleFor(grossWord); // "a"/"an" -- correct before "eight" etc.
   const netDiff = sc.points >= 4 ? -2 : sc.points === 3 ? -1 : sc.points === 2 ? 0 : sc.points === 1 ? 1 : 2;
   const gotStrokes = sc.gross - sc.par > netDiff;
   if (gotStrokes && sc.points >= 2) {
     return [
-      { t: `${fn} strokes on ${hole}, so a ${grossWord} nets ` },
+      { t: `${fn} strokes on ${hole}, so ${art} ${grossWord} nets ` },
       { t: `${netName(sc.points)} -- ${sc.points} points`, b: true },
       { t: ". " },
     ];
   }
   return [
-    { t: `A ${grossWord} on ${hole} is worth ` },
+    { t: `${art === "an" ? "An" : "A"} ${grossWord} on ${hole} is worth ` },
     { t: `${sc.points} ${plural(sc.points, "point")}`, b: true },
     { t: ". " },
   ];
@@ -666,7 +739,101 @@ function cumulativePoints(ctx: RoundContext, playerIdx: number, throughHole: num
   return ctx.totalsSeries[playerIdx].slice(1, throughHole + 1);
 }
 
-const H2H_COLORS = ["#eda100", "#1baf7a"];
+// Lead-change crossings between two players, on cumulative POINTS (never the
+// Monte Carlo series -- Handoff #6). SINGLE SOURCE OF TRUTH: the rivalry
+// caption's flip count and the momentum chart's crossing dots both derive from
+// this, so the card can never contradict itself (a caption saying "flips 3
+// times" over a chart showing 4 dots). Returns the 0-based hole INDICES where
+// the sign of (A - B) flips between hole h-1 and hole h -- both endpoints
+// non-zero (a differential that only touches zero and returns is not a flip).
+// Index i corresponds to hole i+1 in the per-hole differential series.
+function leadCrossIndices(ctx: RoundContext, aIdx: number, bIdx: number): number[] {
+  const out: number[] = [];
+  for (let h = 1; h <= ctx.maxHole; h++) {
+    const before = Math.sign(ctx.totalsSeries[aIdx][h - 1] - ctx.totalsSeries[bIdx][h - 1]);
+    const after = Math.sign(ctx.totalsSeries[aIdx][h] - ctx.totalsSeries[bIdx][h]);
+    if (before !== 0 && after !== 0 && before !== after) out.push(h - 1);
+  }
+  return out;
+}
+
+// Duel differential chart palette. These are CSS custom-property references
+// (design tokens), not raw hex -- the viewer resolves them. Top area = A,
+// bottom area = B.
+const DIFF_COLOR_TOP = "var(--gold-400)";
+const DIFF_COLOR_BOTTOM = "var(--green-400)";
+
+// HISTORICAL per-course scoring splits for the tale-of-the-tape (Handoff #13
+// follow-up): NOT this event. Mirrors Analytics > Odds > Head-to-Head, which
+// averages each player's stableford points per hole over PRIOR same-course
+// rounds (history.holePointsByEvent is already same-course-only, built from
+// holeStatsEventIds in buildBeatsInput). We aggregate those per-hole averages
+// into Front 9 / Back 9 / Par 3 / Par 4 / Par 5 mean points, so the card shows
+// how the two golfers stack up on THIS COURSE over their history, not a
+// one-round snapshot. Returns null groups when a player has no prior same-
+// course hole data (the caller drops rows both players cannot fill).
+interface CourseSplits {
+  front: number | null; // avg pts/hole, holes 1-9
+  back: number | null;  // avg pts/hole, holes 10-18
+  par3: number | null;
+  par4: number | null;
+  par5: number | null;
+}
+function historicalCourseSplits(ctx: RoundContext, golferId: number): CourseSplits {
+  const h = ctx.history[golferId];
+  const pars = ctx.holePars || [];
+  const avg = (xs: number[]): number | null => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+  // Per-hole historical mean points (same-course), for holes with samples.
+  const holeMean: Record<number, number> = {};
+  if (h) {
+    for (let hole = 1; hole <= 18; hole++) {
+      const pts = (h.holePointsByEvent[hole] || []).filter((p): p is number => p != null);
+      if (pts.length) holeMean[hole] = pts.reduce((a, b) => a + b, 0) / pts.length;
+    }
+  }
+  const meansFor = (pred: (hole: number) => boolean): number[] =>
+    Object.keys(holeMean).map(Number).filter(pred).map((hole) => holeMean[hole]);
+  const parIs = (want: number) => (hole: number) => pars[hole - 1] === want;
+  return {
+    front: avg(meansFor((hole) => hole <= 9)),
+    back: avg(meansFor((hole) => hole >= 10)),
+    par3: avg(meansFor(parIs(3))),
+    par4: avg(meansFor(parIs(4))),
+    par5: avg(meansFor(parIs(5))),
+  };
+}
+
+// Shared-round record between two golfers: of the prior events BOTH played,
+// how many did A finish ahead of B. HONESTY: everyone plays the same field,
+// so this is NOT a head-to-head record -- it is "finished ahead in N of M
+// shared rounds", which is the only true claim. Built by matching the two
+// players' parallel recentDates arrays in playerHistory (same source the
+// nemesis/redemption detectors read). Returns null when < 3 shared rounds.
+function sharedRoundRecord(ctx: RoundContext, aId: number, bId: number): { aAhead: number; total: number } | null {
+  const ha = ctx.history[aId], hb = ctx.history[bId];
+  if (!ha || !hb) return null;
+  const bByDate: Record<string, number> = {};
+  hb.recentDates.forEach((d, i) => { bByDate[d] = hb.recentPoints[i]; });
+  let aAhead = 0, total = 0;
+  ha.recentDates.forEach((d, i) => {
+    if (!(d in bByDate)) return;
+    total++;
+    if (ha.recentPoints[i] > bByDate[d]) aAhead++;
+  });
+  return total >= 3 ? { aAhead, total } : null;
+}
+
+// Population std dev of a player's prior round totals (season consistency).
+// Mirrors the analytics tables' raw sigma (points units); lower = steadier.
+// null when < 2 rounds. Kept local + tiny rather than importing monteCarlo's
+// floored stdDev (that clamp is for odds stability, wrong for a display stat).
+function seasonConsistency(ctx: RoundContext, golferId: number): number | null {
+  const pts = ctx.history[golferId]?.recentPoints;
+  if (!pts || pts.length < 2) return null;
+  const mean = pts.reduce((a, b) => a + b, 0) / pts.length;
+  const variance = pts.reduce((a, b) => a + (b - mean) * (b - mean), 0) / pts.length;
+  return Math.sqrt(variance);
+}
 
 // Shared identity fields for a beat (keeps kicker/title mapped for the legacy
 // viewer until it reads heroLabel/eyebrow directly).
@@ -718,12 +885,18 @@ const detectThreeWay: Detector = (ctx) => {
     evidence: { open, near, spread: bestSpread },
     build: (c, seed) => {
       const leaderIdx = orderAt(c, open)[0];
-      const leadFn = firstName(c.players[leaderIdx].name);
+      const leadFn = dName(c, leaderIdx);
       const nearPts = near - 1; // exclude the leader
       const sp = standingPhrase(c, open, leaderIdx, leadFn);
+      // F10 (Handoff #16 3a): the numeric "A {N}-way race" eyebrow may ONLY be
+      // used when N is the REAL count -- the caption below prints the true
+      // count ("seven golfers sit within two points"), so a capped "five-way"
+      // eyebrow over a "seven" caption contradicts itself. When near > 5, drop
+      // the numeric variant so a number never appears unless it is the real one.
+      const numericEyebrows = near <= 5 ? [`A ${numWord(near)}-way race takes shape`] : [];
       const eyebrow = bunched
         ? pick([
-            `A ${numWord(Math.min(near, 5))}-way race takes shape`,
+            ...numericEyebrows,
             "Everyone is still in this one",
             "The leaderboard is a logjam early",
             "Nobody blinks through the opening stretch",
@@ -731,10 +904,18 @@ const detectThreeWay: Detector = (ctx) => {
         : pick(["The race takes shape", "An early feel-out round", "The field settles in"], seed + 1);
       // Tie-aware: never assert "leads" when the top is shared.
       const caption: CaptionPart[] = sp.tied
-        ? [
-            { t: `${sp.clause} through ${open}`, b: true },
-            { t: ", with the field still finding its footing." },
-          ]
+        ? (sp.rank0 === 0 && (tieGroupSizeAt(c, open, leaderIdx) - 1) >= 1
+            // Awkward-fix (Handoff #16 6): "X and one other share the lead"
+            // instead of "X is tied for the lead with one other ... with the
+            // field ..." (double "with", stilted "with one other").
+            ? [
+                { t: `${leadFn} and ${numWord(tieGroupSizeAt(c, open, leaderIdx) - 1)} ${plural(tieGroupSizeAt(c, open, leaderIdx) - 1, "other")} share the lead through ${open}`, b: true },
+                { t: ", with the field still finding its footing." },
+              ]
+            : [
+                { t: `${sp.clause} through ${open}`, b: true },
+                { t: ", with the field still finding its footing." },
+              ])
         : nearPts >= 2
           ? [
               { t: `${leadFn} leads through ${open}, and ` },
@@ -748,7 +929,8 @@ const detectThreeWay: Detector = (ctx) => {
       return {
         ...beatHead("three_way", "The Opening", eyebrow),
         hole: open, throughHole: open,
-        preview: bunched ? `${numWord(Math.min(near, 5), true)}-Way Race` : "The Opening",
+        // Preview number is subject to the same cap -- never show a capped count.
+        preview: bunched && near <= 5 ? `${numWord(near, true)}-Way Race` : "The Opening",
         protagonistId: null,
         ptsPanel: ptsPanelAt(c, open, `Thru ${open}`),
         caption,
@@ -764,22 +946,24 @@ const detectDuel: Detector = (ctx) => {
   // the pack: tiny 1st-2nd gap, big 2nd-3rd gap (all in points).
   // Two leaders who have genuinely SEPARATED from the field.
   //
-  // Probed against the real fixture, and the numbers rewrote this detector:
-  //   - Over holes 3-9 the best gap-to-third (with a tight 1st-2nd gap) was
-  //     [1,0,1,2,1,1,2] across 7 events -- a 3+ point gap NEVER happens early,
-  //     so the old "opening duel" could only ever fire on noise.
-  //   - Over the WHOLE round, a pair holding the top two with a >=3 point
-  //     cushion never survives even 2 consecutive holes (max run [1,0,0,1,0,0,0]).
-  //     In this league a 3-point cushion two-horse race does not exist.
-  //   - At a 2-point cushion the longest runs are [2,1,0,6,1,0,2].
+  // Probed against the real fixture (7 events), and the numbers set the
+  // threshold. The pattern is: a stable top-two pair, tight to each other
+  // (g12 <= 2), holding a cushion over 3rd. The longest such run per event, by
+  // cushion:
+  //   cushion >= 2: [2,0,0,6,0,0,2] -- only ONE event (302, len 6) qualifies,
+  //     which is why cushion>=2 left the detector effectively dead.
+  //   cushion >= 1: [7,5,2,6,2,3,3] -- three genuine two-horse races surface
+  //     (34: Stuart/Joe len 7, 279: Joe/Mark len 5, 302: Stuart/Matt len 6),
+  //     while the noise runs stay at 2-3.
   //
-  // So: cushion >= 2 (one hole of separation), but it must be SUSTAINED for
-  // >= 4 consecutive holes. Duration is what proves the 2 points is real
-  // separation rather than a single-hole blip -- a pair clear of the field
-  // for six straight holes (event 302) is a duel a member would recognise;
-  // the same gap for one hole is noise. Rarity here is honest.
-  const DUEL_MIN_CUSHION = 2;
-  const DUEL_MIN_HOLES = 4;
+  // So: cushion >= 1 (the pair is clear of the field), SUSTAINED for >= 5
+  // consecutive holes. Duration is what separates a real duel from a one-hole
+  // blip; len 5 is the clean gap between the three real duels (5-7) and the
+  // noise (2-3). A cushion of exactly 1 held for a third of the round IS a
+  // two-horse race a member would recognise -- the previous >= 2 requirement
+  // was calibrated to a fixture artifact, not to what a duel looks like here.
+  const DUEL_MIN_CUSHION = 1;
+  const DUEL_MIN_HOLES = 5;
   let run: { s: number; aIdx: number; bIdx: number } | null = null;
   let best: { h: number; aIdx: number; bIdx: number; g23: number; len: number } | null = null;
   for (let h = OPEN_LO; h <= ctx.maxHole; h++) {
@@ -807,14 +991,105 @@ const detectDuel: Detector = (ctx) => {
     slot: "middle",
     protagonistId: ctx.players[b.aIdx].golferId,
     hole: null,
-    strength: clamp01(b.len / 10 + b.g23 / 12),
-    surprise: 0.5,
+    // A duel that survived 5+ holes is a genuine shape of the round -- two
+    // players clear of the field for a third of the round is a race a member
+    // re-tells. Strength scales off duration (the proof it was real) plus a
+    // cushion bonus, from a floor that lets a LONG duel compete for a middle
+    // slot on merit -- not one so high it displaces stronger beats in a week
+    // where the duel is marginal. It wins when it is genuinely the story.
+    strength: clamp01(0.6 + (b.len - DUEL_MIN_HOLES) * 0.05 + b.g23 / 14),
+    surprise: 0.55,
     evidence: { a: ctx.players[b.aIdx].name, b: ctx.players[b.bIdx].name, throughHole: b.h, holes: b.len, cushion: b.g23, fromHole: b.h - b.len + 1 },
     build: (c, seed) => {
-      const fa = firstName(c.players[b.aIdx].name);
-      const fb = firstName(c.players[b.bIdx].name);
+      const aId = c.players[b.aIdx].golferId;
+      const bId = c.players[b.bIdx].golferId;
+      const fa = displayName(c, b.aIdx);
+      const fb = displayName(c, b.bIdx);
+      const nameA = fa;
+      const nameB = fb;
       const aPts = c.totalsSeries[b.aIdx][b.h];
       const bPts = c.totalsSeries[b.bIdx][b.h];
+
+      // -- TALE OF THE TAPE (lead-in card): a broadcast final-pairing compare.
+      // The stat rows are HISTORICAL per-course averages (how these two stack
+      // up on THIS COURSE over their history), NOT this event -- mirrors
+      // Analytics > Odds > Head-to-Head. Front 9 / Back 9 / Par 3 / Par 4 /
+      // Par 5 are avg stableford points per hole; Consistency is season std
+      // dev. A row is shown only when BOTH players have data for it.
+      const spA = historicalCourseSplits(c, aId), spB = historicalCourseSplits(c, bId);
+      const leadOf = (av: number, bv: number, higherWins = true): "a" | "b" | null =>
+        av === bv ? null : (higherWins ? av > bv : av < bv) ? "a" : "b";
+      const tapeRows: NonNullable<DataBeat["tape"]>["rows"] = [];
+      // Higher avg points wins. One decimal (points-per-hole is a small range).
+      const addAvgRow = (label: string, a: number | null, b: number | null) => {
+        if (a == null || b == null) return;
+        tapeRows.push({ label, a: a.toFixed(1), b: b.toFixed(1), lead: leadOf(a, b) });
+      };
+      addAvgRow("Front 9", spA.front, spB.front);
+      addAvgRow("Back 9", spA.back, spB.back);
+      // Season consistency (std dev, lower = steadier). Only when both have it.
+      const consA = seasonConsistency(c, aId), consB = seasonConsistency(c, bId);
+      if (consA != null && consB != null) {
+        tapeRows.push({
+          label: "Consistency",
+          a: consA.toFixed(1),
+          b: consB.toFixed(1),
+          lead: leadOf(consA, consB, false), // lower sigma wins
+        });
+      }
+      addAvgRow("Par 3", spA.par3, spB.par3);
+      addAvgRow("Par 4", spA.par4, spB.par4);
+      addAvgRow("Par 5", spA.par5, spB.par5);
+      // HONESTY: shared-round phrasing, never a head-to-head record. Everyone
+      // plays the same field, so "leads the H2H 7-3" asserts a direct contest
+      // that never happened. "finished ahead in N of M shared rounds" is true.
+      const rec = sharedRoundRecord(c, aId, bId);
+      const nw = (n: number) => (n <= 12 ? numWord(n) : String(n));
+      const tapeCaptionParts: CaptionPart[] = rec
+        ? [
+            // "has finished ahead" is present-perfect -- a standing record, an
+            // allowed exception to the present-tense rule (Handoff #16 5).
+            { t: `${fa} has finished ahead of ${fb} in ` },
+            { t: `${nw(rec.aAhead)} of their last ${nw(rec.total)} shared rounds`, b: true },
+            { t: `.` },
+          ]
+        : [
+            { t: `${fa} and ${fb}, ` },
+            { t: `stride for stride`, b: true },
+            { t: ` at the top of the board.` },
+          ];
+      // duel_tape eyebrow variety (Handoff #16 8/F6): every duel week previously
+      // read "{fa} vs {fb}" at the top. 4 shapes now.
+      const tapeEyebrow = pick([
+        `${fa} vs ${fb}`,
+        `${fa} and ${fb}, side by side`,
+        `The final pairing: ${fa}, ${fb}`,
+        `Tale of the tape: ${fa}, ${fb}`,
+      ], seed + b.h);
+      const tape: DataBeat = {
+        ...beatHead("duel_tape", "Tale of the Tape", tapeEyebrow),
+        hole: null,
+        subtext: "Final pairing",
+        preview: `${fa} vs ${fb}`,
+        protagonistId: aId,
+        protagonistName: c.players[b.aIdx].name,
+        protagonistInitials: initials(c.players[b.aIdx].name),
+        tape: { aName: nameA, bName: nameB, rows: tapeRows },
+        caption: tapeCaptionParts,
+        strength: 0, mood: "expo",
+      };
+
+      // -- DIFFERENTIAL MOMENTUM CHART (payoff card): cumulative (A - B) per
+      // hole against a zero centre line. Zero crossings are lead changes.
+      // Minimal labelling by design -- names top/bottom, the crossings, nothing
+      // else.
+      const aCum = cumulativePoints(c, b.aIdx, c.maxHole);
+      const bCum = cumulativePoints(c, b.bIdx, c.maxHole);
+      const diffVals = aCum.map((v, i) => v - (bCum[i] ?? 0));
+      // Crossing dots from the shared source (same rule the rivalry flip count
+      // uses) so the chart never contradicts a caption's flip number.
+      const duelCross = leadCrossIndices(c, b.aIdx, b.bIdx);
+
       return {
         ...beatHead("duel", "The Duel", pick([
           `${fa} and ${fb} leave the field behind`,
@@ -825,18 +1100,34 @@ const detectDuel: Detector = (ctx) => {
         hole: null,
         subtext: "Head to head",
         preview: `${fa} vs ${fb}`,
-        protagonistId: c.players[b.aIdx].golferId,
+        protagonistId: aId,
         protagonistName: c.players[b.aIdx].name,
         protagonistInitials: initials(c.players[b.aIdx].name),
-        h2h: [
-          { name: displayName(c, b.aIdx), color: H2H_COLORS[0], points: cumulativePoints(c, b.aIdx, c.maxHole) },
-          { name: displayName(c, b.bIdx), color: H2H_COLORS[1], points: cumulativePoints(c, b.bIdx, c.maxHole) },
-        ],
-        caption: [
-          { t: `From hole ${b.h - b.len + 1} to ${b.h} it is a two-player fight -- ` },
-          { t: `${fa} on ${aPts} points, ${fb} on ${bPts}`, b: true },
-          { t: `, with the rest of the field ${numWord(b.g23)} ${plural(b.g23, "point")} back.` },
-        ],
+        diff: {
+          nameTop: nameA, nameBottom: nameB,
+          colorTop: DIFF_COLOR_TOP, colorBottom: DIFF_COLOR_BOTTOM,
+          values: diffVals, crossIndices: duelCross, firstHole: 1,
+        },
+        extraBefore: tape,
+        // 3 shapes (Handoff #16 8), awkward "From hole X to Y it is" removed
+        // (6), rhythm varied (8a). fromHole..h is the sustained-duel window.
+        caption: pick([
+          [
+            { t: `Holes ${b.h - b.len + 1} to ${b.h} are a two-player fight: ` },
+            { t: `${fa} on ${aPts}, ${fb} on ${bPts}`, b: true },
+            { t: `, the field ${numWord(b.g23)} ${plural(b.g23, "point")} back.` },
+          ],
+          [
+            { t: `${fa} and ${fb} pull clear for ${numWord(b.len)} holes -- ` },
+            { t: `${aPts} plays ${bPts}`, b: true },
+            { t: `, nobody else within ${numWord(b.g23)}.` },
+          ],
+          [
+            { t: `Two golfers break ${numWord(b.g23)} clear of the field: ` },
+            { t: `${fa} sits on ${aPts} points, ${fb} on ${bPts}`, b: true },
+            { t: `.` },
+          ],
+        ], seed),
         strength: 0, mood: "expo",
       };
     },
@@ -868,16 +1159,19 @@ const detectWireToWire: Detector = (ctx) => {
     surprise: 0.3,
     evidence: { winner: ctx.players[w].name, onset, finalM },
     build: (c, seed) => {
-      const fn = firstName(c.players[w].name);
+      const fn = dName(c, w);
+      // Softened (Handoff #16 2b): a one-point lead is not "control" and "never
+      // threatened" overreaches the margin. State what happened -- led early,
+      // never gave up the lead -- which is what the detector actually proves.
       const lead = leadByPhrase(c, open, w, fn);
       const caption: CaptionPart[] = lead
         ? [
             { t: `${lead}`, b: true },
-            { t: ` after ${open} holes, and the lead never gets threatened.` },
+            { t: ` after ${open} holes, and never gives up the lead.` },
           ]
         : [
             { t: `${fn} shares the top spot`, b: true },
-            { t: ` after ${open} holes, then pulls clear and never looks back.` },
+            { t: ` after ${open} holes, then pulls clear and stays there.` },
           ];
       return {
         ...beatHead("wire_to_wire", "Wire to Wire", pick([
@@ -924,14 +1218,27 @@ const detectPaceSetter: Detector = (ctx) => {
     surprise: li === ctx.winnerIdx ? 0.35 : 0.65, // a leader who does NOT win is a story
     evidence: { leader: ctx.players[li].name, margin: m0, open: oh },
     build: (c, seed) => {
-      const fn = firstName(c.players[li].name);
+      const fn = dName(c, li);
       // pace_setter only fires with margin >= 2, so this is always a solo
       // lead; leadByPhrase keeps that guaranteed rather than assumed.
       const lead = leadByPhrase(c, oh, li, fn) || `${fn} leads the field`;
-      const caption: CaptionPart[] = [
-        { t: `${lead}` },
-        { t: ` through ${oh} -- now the field has to respond.` },
-      ];
+      const marginW = numWord(m0); // m0 >= 2, always <= field size
+      // 3 shapes (Handoff #16 8), rhythm varied off the em-dash (8a).
+      const caption: CaptionPart[] = pick<CaptionPart[]>([
+        [
+          { t: `${lead}` },
+          { t: ` through ${oh}. Now the field has to respond.` },
+        ],
+        [
+          { t: `Through ${oh}, ${fn} is out front by ` },
+          { t: `${marginW} ${plural(m0, "point")}`, b: true },
+          { t: `, and everyone else is playing catch-up.` },
+        ],
+        [
+          { t: `A ${marginW}-point cushion for ${fn} through ${oh}`, b: true },
+          { t: ` -- the early marker is set.` },
+        ],
+      ], seed + oh);
       return {
         ...beatHead("pace_setter", "The Pace Setter", pick([
           `${fn} sets the early pace`,
@@ -987,10 +1294,13 @@ const detectCharge: Detector = (ctx) => {
       surprise: clamp01(0.25 + rankBefore * 0.12),
       evidence: { startHole: bst.s, endHole: bst.e, meritHole, stretchLen, merit: bst.m },
       build: (c, seed) => {
-        const fn = firstName(p.name);
+        const fn = dName(c, i);
         const sc = scoreAt(c, p.golferId, meritHole);
         const fromRank = ranksAt(c, bst.s - 1)[i];
         const toRank = ranksAt(c, bst.e)[i];
+        // Handoff #16 8b: a 10+ hole "run" is most of a round, not a run --
+        // frame it as sustained control rather than a burst.
+        const bigStretch = stretchLen >= 10;
         const movement: CaptionPart[] = bst.s > 1 && toRank < fromRank
           ? [
               { t: `${fn} climbs from ${posLabel(fromRank)} to ` },
@@ -1019,26 +1329,45 @@ const detectCharge: Detector = (ctx) => {
           if (cells.length > 0) {
             let stretchPts = 0;
             for (let h = bst.s; h <= bst.e; h++) stretchPts += c.pointsAt[p.golferId + "|" + h] ?? 0;
+            // Big stretch: control language + a period instead of the em-dash
+            // (Handoff #16 8a/8b). Normal run: keeps the run framing.
+            const runHero = bigStretch ? "In Control" : "The Run";
+            const runEyebrows = bigStretch
+              ? [
+                  `${fn} is in control for most of the round`,
+                  `${fn} controls the middle of the round`,
+                  `${fn} takes over and stays there`,
+                  `${fn} runs the show for a long stretch`,
+                ]
+              : [
+                  `${possess(fn)} best stretch of the day`,
+                  `${fn} strings the good holes together`,
+                  `${fn} finds a gear nobody else has`,
+                  `${fn} rattles off the run of the day`,
+                ];
+            const runCaption: CaptionPart[] = bigStretch
+              ? [
+                  { t: `${fn} plays ${numWord(stretchLen)} straight holes at net par or better for ` },
+                  { t: `${stretchPts} points`, b: true },
+                  { t: `. ` },
+                  ...movement,
+                ]
+              : [
+                  { t: `${numWord(stretchLen, true)} holes, ` },
+                  { t: `${stretchPts} points`, b: true },
+                  { t: ` -- every one a net par or better. ` },
+                  ...movement,
+                ];
             return {
-              ...beatHead("charge", "The Run", pick([
-                `${fn}'s best stretch of the day`,
-                `${fn} strings the good holes together`,
-                `${fn} finds a gear nobody else has`,
-                `${fn} rattles off the run of the day`,
-              ], seed + bst.s)),
+              ...beatHead("charge", runHero, pick(runEyebrows, seed + bst.s)),
               hole: meritHole,
               subtext: `Holes ${bst.s}-${bst.e}`,
-              preview: `${fn}'s Run`,
+              preview: bigStretch ? `${fn} In Control` : `${fn}'s Run`,
               protagonistId: p.golferId, protagonistName: p.name, protagonistInitials: initials(p.name),
               holeMeta: holeMetaFor(c, meritHole, p.golferId),
               score: sc,
               streak: { cells, focusStart: bst.s - from, focusCount: stretchLen },
-              caption: [
-                { t: `${numWord(stretchLen, true)} holes, ` },
-                { t: `${stretchPts} points`, b: true },
-                { t: ` -- every one a net par or better. ` },
-                ...movement,
-              ],
+              caption: runCaption,
               strength: 0, mood: "warm",
             };
           }
@@ -1048,7 +1377,7 @@ const detectCharge: Detector = (ctx) => {
           ...beatHead("charge", "The Charge", pick([
             `${fn} makes a move`,
             `${fn} catches fire`,
-            `The ${fn} charge is on`,
+            `${possess(fn)} charge is on`,
             `${fn} climbs into the fight`,
           ], seed + meritHole)),
           hole: meritHole,
@@ -1094,18 +1423,21 @@ const detectCollapse: Detector = (ctx) => {
     surprise: 0.55,
     evidence: { hole: b.h },
     build: (c, seed) => {
-      const fn = firstName(p.name);
+      const fn = dName(c, b.i);
       const sc = scoreAt(c, p.golferId, b.h);
       const grossWord = sc ? scoreName(sc.gross, sc.par).toLowerCase() : "big number";
+      const grossArt = articleFor(grossWord); // "a" / "an" -- never a bare "+d"
       const ptsWord = sc ? (sc.points === 1 ? "one point" : "zero points") : "nothing";
       const gainer = biggestGainer(c.players, c.series, b.h, b.i);
+      const gainerFn = gainer ? dNameOf(c, gainer.golferId) : "";
       const rb = ranksAt(c, b.h - 1)[b.i];
       const ra = ranksAt(c, b.h)[b.i];
+      // Movement clause (leading space; joins onto the chosen caption shape).
       const movement: CaptionPart[] = ra > rb
         ? [
             { t: ` ${fn} drops from ${posLabel(rb)} to ` },
             { t: posLabel(ra), b: true },
-            { t: gainer ? `, and ${firstName(gainer.name)} takes advantage.` : "." },
+            { t: gainer ? `, and ${gainerFn} takes advantage.` : "." },
           ]
         : rb === 0
           ? (() => {
@@ -1114,13 +1446,33 @@ const detectCollapse: Detector = (ctx) => {
                 ? [{ t: ` The lead shrinks to ` }, { t: `${numWord(ma)} ${plural(ma, "point")}`, b: true }, { t: "." }]
                 : [{ t: ` The lead is ` }, { t: "gone", b: true }, { t: "." }];
             })()
-          : [{ t: ` ${fn} hangs on to ${posLabel(ra)}, but the door is open` }, { t: gainer ? ` for ${firstName(gainer.name)}.` : "." }];
+          : [{ t: ` ${fn} hangs on to ${posLabel(ra)}, but the door is open` }, { t: gainer ? ` for ${gainerFn}.` : "." }];
+      // Structural variety (Handoff #16 8): distinct sentence shapes, not
+      // synonym swaps. Shape 1 leads with the score (em-dash), 2 leads with the
+      // consequence (colon), 3 is a short two-sentence declarative (period).
+      const openers: CaptionPart[][] = [
+        [
+          { t: `${articleFor(grossWord) === "an" ? "An" : "A"} ${grossWord} nets ${fn} ` },
+          { t: ptsWord, b: true },
+          { t: ` -- the biggest swing of the day.` },
+        ],
+        [
+          { t: `The biggest swing of the day: ${fn} cards ${grossArt} ` },
+          { t: `${grossWord} on ${b.h}`, b: true },
+          { t: ` for ${ptsWord}.` },
+        ],
+        [
+          { t: `${fn} runs into ${grossArt} ` },
+          { t: `${grossWord} on ${b.h}`, b: true },
+          { t: `. ${ptsWord === "one point" ? "One point" : "Nothing"} on the hole, and the day's biggest swing.` },
+        ],
+      ];
       return {
         ...beatHead("collapse", "The Turning Point", pick([
           `Hole ${b.h} bites ${fn}`,
-          `A ${grossWord} stalls the ${fn} run`,
+          `${articleFor(grossWord) === "an" ? "An" : "A"} ${grossWord} stalls ${possess(fn)} run`,
           `${fn} finds trouble on ${b.h}`,
-          `The round turns on ${fn}'s ${grossWord}`,
+          `The round turns on ${possess(fn)} ${grossWord}`,
         ], seed + b.h)),
         hole: b.h,
         preview: `${fn}'s ${sc ? scoreName(sc.gross, sc.par) : "Slip"}`,
@@ -1132,9 +1484,7 @@ const detectCollapse: Detector = (ctx) => {
           ...(gainer ? [{ idx: c.players.indexOf(gainer), dir: "up" as const }] : []),
         ]),
         caption: [
-          { t: `A ${grossWord} nets ${fn} ` },
-          { t: ptsWord, b: true },
-          { t: ` -- the biggest swing of the day.` },
+          ...pick(openers, seed + b.h),
           ...movement,
         ],
         strength: 0, mood: "fall",
@@ -1176,13 +1526,14 @@ const detectHold: Detector = (ctx) => {
     surprise: 0.35,
     evidence: { crossHole, minMargin, minAt },
     build: (c, seed) => {
-      const fn = firstName(p.name);
+      const fn = dName(c, w);
       const sc = scoreAt(c, p.golferId, crossHole);
       const crossM = marginAt(c, crossHole, w);
       const left = c.maxHole - crossHole;
+      // Present tense (Handoff #16 5): "falls"/"vanishes", not "fell"/"vanished".
       const opener: CaptionPart[] = minMargin < 0
-        ? [{ t: `${fn} fell ${numWord(-minMargin)} ${plural(-minMargin, "point")} behind mid-round, but answers on ${crossHole}` }]
-        : [{ t: `The lead vanished mid-round, but ${fn} answers on ${crossHole}` }];
+        ? [{ t: `${fn} falls ${numWord(-minMargin)} ${plural(-minMargin, "point")} behind mid-round, but answers on ${crossHole}` }]
+        : [{ t: `The lead vanishes mid-round, but ${fn} answers on ${crossHole}` }];
       const closer: CaptionPart[] = crossM > 0
         ? [
             { t: " -- " },
@@ -1242,21 +1593,30 @@ const detectFastStart: Detector = (ctx) => {
       // composer sorts on it, not on the mid-burst anchor).
       evidence: { merit: m, anchor, endHole: st.e, check, rankAtCheck },
       build: (c, seed) => {
-        const fn = firstName(p.name);
+        const fn = dName(c, i);
         const sc = scoreAt(c, p.golferId, anchor);
         let n3 = 0;
         for (let h = 1; h <= check; h++) { if ((c.pointsAt[p.golferId + "|" + h] ?? 0) >= 3) n3++; }
         const totalPts = c.totalsSeries[i][check];
         const mAtCheck = marginAt(c, check, i);
-        const opener = n3 >= 2
+        const openerText = n3 >= 2
           ? `${numWord(n3, true)} net ${plural(n3, "birdie")} in the first ${numWord(check)} holes`
           : `${totalPts} points through the first ${numWord(check)} holes`;
         const spCheck = standingPhrase(c, check, i, fn);
-        const status = rankAtCheck === 0 && mAtCheck >= 1
-          ? [{ t: ` -- through ${check}, ` }, { t: `nobody is close to ${fn}`, b: true }, { t: "." }]
+        // Standing clause as plain text (no leading separator) so the shapes
+        // below can join it with a period, a comma, or an em-dash (Handoff #16
+        // 8/8a) rather than always the same " -- " pivot.
+        const statusText = rankAtCheck === 0 && mAtCheck >= 1
+          ? `nobody is close to ${fn} through ${check}`
           : rankAtCheck === 0
-            ? [{ t: ` -- ${fn} sits ` }, { t: "level at the top", b: true }, { t: ` through ${check}.` }]
-            : [{ t: ` -- ${fn} sits ` }, { t: spCheck.noun, b: true }, { t: ` through ${check}.` }];
+            ? `${fn} sits level at the top through ${check}`
+            : `${fn} sits ${spCheck.noun} through ${check}`;
+        const statusCap = statusText.charAt(0).toUpperCase() + statusText.slice(1);
+        const captions: CaptionPart[][] = [
+          [{ t: `${openerText} -- ` }, { t: statusText, b: true }, { t: `.` }],
+          [{ t: `${openerText}. ` }, { t: statusCap, b: true }, { t: `.` }],
+          [{ t: `${statusCap}: ` }, { t: openerText, b: true }, { t: `.` }],
+        ];
         // streak strip over holes 1..6 with the burst focused (needs gross;
         // falls back to the points panel when the card is incomplete).
         const to = Math.min(6, c.maxHole);
@@ -1281,7 +1641,7 @@ const detectFastStart: Detector = (ctx) => {
           ...(cells.length > 0
             ? { streak: { cells, focusStart: st.s - 1, focusCount: st.e - st.s + 1 } }
             : { ptsPanel: ptsPanelAt(c, check, `Thru ${check}`, [{ idx: i, dir: "up" }]) }),
-          caption: [{ t: opener }, ...status],
+          caption: pick(captions, seed + anchor),
           strength: 0, mood: "warm",
         };
       },
@@ -1315,32 +1675,52 @@ const detectFade: Detector = (ctx) => {
       surprise: 0.7,
       evidence: { checkHole, bestRank, finalRank, lost },
       build: (c, seed) => {
-        const fn = firstName(p.name);
-        // Tie-aware: at the early checkpoint the leader may be tied. "was the
-        // man to beat" would be false in a shared lead.
+        const fn = dName(c, i);
+        // Position trace (Handoff #14 §2): the SHAPE of the fade. Tie-aware
+        // finish position per hole via ranksAt (the same primitive
+        // standingPhrase uses -- one ranking implementation). peakIndex is the
+        // detector's checkHole; splitIndex is the LAST hole still at that peak.
+        // BUILT FIRST so the caption's "spots dropped" reads from THIS series
+        // (Handoff #16 3b/F8): one computation, two consumers -- the number in
+        // the caption can never disagree with what the chart plots.
+        const ranks: number[] = [];
+        for (let h = 1; h <= c.maxHole; h++) ranks.push(ranksAt(c, h)[i]);
+        const peakIndex = checkHole - 1; // 0-based hole index
+        let splitIndex = peakIndex;
+        for (let h = checkHole; h <= c.maxHole; h++) {
+          if (ranksAt(c, h)[i] === bestRank) splitIndex = h - 1; else break;
+        }
+        const traceLost = ranks[ranks.length - 1] - ranks[peakIndex]; // spots dropped, from the trace
+        // Tie-aware: at the early checkpoint the leader may be tied. "the man
+        // to beat" would be false in a shared lead. Present tense (Handoff #16
+        // 5): "sits"/"slides", not "was"/"slid".
         const spEarly = standingPhrase(c, checkHole, i, fn);
         const spFinal = standingPhrase(c, null, i, fn);
         const phrase = bestRank === 0
-          ? (spEarly.tied ? "shared the lead" : "was the man to beat")
-          : (spEarly.tied ? `was tied for ${posLabel(bestRank)}` : `sat ${posLabel(bestRank)}`);
+          ? (spEarly.tied ? "shares the lead" : "is the man to beat")
+          : (spEarly.tied ? `is tied for ${posLabel(bestRank)}` : `sits ${posLabel(bestRank)}`);
         const finalNoun = spFinal.tied ? `a share of ${posLabel(finalRank)}` : posLabel(finalRank);
-        const closer = checkHole <= 9 && c.maxHole >= 16 ? "The back nine had other ideas." : "The closing stretch had other ideas.";
+        const closer = checkHole <= 9 && c.maxHole >= 16 ? "The back nine has other ideas." : "The closing stretch has other ideas.";
         const caption: CaptionPart[] = pick([
           [
             { t: `${fn} ${phrase} through ${checkHole}. ` },
             { t: closer, b: true },
           ],
           [
-            { t: `${fn} ${phrase} through ${checkHole}, then slid to ` },
+            { t: `${fn} ${phrase} through ${checkHole}, then slides to ` },
             { t: finalNoun, b: true },
             { t: " by the end." },
           ],
           [
-            { t: `A strong start fades -- ${fn} drops ` },
-            { t: `${numWord(lost)} spots`, b: true },
+            { t: `A strong start fades: ${fn} drops ` },
+            { t: `${numWord(traceLost)} spots`, b: true },
             { t: ` after hole ${checkHole} and finishes ${finalNoun}.` },
           ],
         ], seed + checkHole);
+        // Labels reuse the tie-aware phrasing already computed above -- never
+        // hardcoded to "1st" (a fade from 2nd is valid), tie prefix "T".
+        const peakLabel = `${spEarly.tied ? "T" : ""}${posLabel(bestRank)}`;
+        const finishLabel = `${spFinal.tied ? "T" : ""}${posLabel(finalRank)}`;
         return {
           ...beatHead("fade", "The Fade", pick([
             `The round gets away from ${fn}`,
@@ -1352,13 +1732,7 @@ const detectFade: Detector = (ctx) => {
           subtext: "The full round",
           preview: `${fn}'s Fade`,
           protagonistId: p.golferId, protagonistName: p.name, protagonistInitials: initials(p.name),
-          ptsPanel: {
-            label: `${fn} -- start to finish`,
-            cols: [
-              { name: `Thru ${checkHole}`, value: `${spEarly.tied ? "T" : ""}${posLabel(bestRank)} - ${c.totalsSeries[i][checkHole]} pts` },
-              { name: "Final", value: `${spFinal.tied ? "T" : ""}${posLabel(finalRank)} - ${c.totals[i]} pts`, dir: "dn" },
-            ],
-          },
+          positionTrace: { ranks, peakIndex, splitIndex, peakLabel, finishLabel },
           caption,
           strength: 0, mood: "fall",
         };
@@ -1384,8 +1758,8 @@ const detectTheTurn: Detector = (ctx) => {
     surprise: 0.3,
     evidence: { leader: ctx.players[leadIdx].name, margin: m },
     build: (c, seed) => {
-      const fa = firstName(c.players[leadIdx].name);
-      const fb = firstName(c.players[ord[1]].name);
+      const fa = dName(c, leadIdx);
+      const fb = dName(c, ord[1]);
       const caption: CaptionPart[] = m >= 1
         ? [
             { t: `${fa} makes the turn in front by ` },
@@ -1474,12 +1848,16 @@ const detectGrinder: Detector = (ctx) => {
       surprise: i === ctx.winnerIdx ? 0.45 : 0.65,
       evidence: { netPars: nPar, netBogeys: ptsList.filter((d) => d === 1).length, blanks: nBlank, sd, medianSd, rank: ctx.ranks[i] },
       build: (c, seed) => {
-        const fn = firstName(p.name);
+        const fn = dName(c, i);
         const nBogs = ptsList.filter((d) => d === 1).length;
-        const place = ["first", "second", "third"][ctx.ranks[i]] || "near the top";
+        // Position as a NUMERAL (Handoff #16 7e), matching the leaderboard's POS
+        // column -- "2nd", not "second". Beyond 3rd, "near the top".
+        const place = ctx.ranks[i] <= 2 ? posLabel(ctx.ranks[i]) : "near the top";
         const blowupPhrase = nBlank === 0 ? "zero blowups" : "just one blowup";
         const steadiest = nBlank === 0 ? "the steadiest card in the field" : "one of the steadiest cards out there";
-        const cardStat = `${nPar} net ${plural(nPar, "par")}, ${nBogs} net ${plural(nBogs, "bogey")}, ${blowupPhrase}`;
+        // Counts <= 12 as words (Handoff #16 7b); larger stays a digit.
+        const nw = (n: number) => (n <= 12 ? numWord(n) : String(n));
+        const cardStat = `${nw(nPar)} net ${plural(nPar, "par")}, ${nw(nBogs)} net ${plural(nBogs, "bogey")}, ${blowupPhrase}`;
         return {
           ...beatHead("grinder", "The Grinder", pick([
             `${fn} grinds out a clean card`,
@@ -1495,10 +1873,11 @@ const detectGrinder: Detector = (ctx) => {
           caption: pick([
             [
               { t: `${cardStat}`, b: true },
+              // "with" not "on" (Handoff #16 6): a card is scored WITH, not ON.
               { t: ` -- ${steadiest}, and it lands ${fn} ${place}.` },
             ],
             [
-              { t: `${fn} grinds to ${place} on ${steadiest}`, b: true },
+              { t: `${fn} grinds to ${place} with ${steadiest}`, b: true },
               { t: `: ${cardStat}.` },
             ],
             [
@@ -1537,7 +1916,7 @@ const detectWildcard: Detector = (ctx) => {
       surprise: 0.55,
       evidence: { nBird, nBlank },
       build: (c, seed) => {
-        const fn = firstName(p.name);
+        const fn = dName(c, i);
         return {
           ...beatHead("wildcard", "The Wildcard", pick([
             `${fn} rides the rollercoaster`,
@@ -1614,25 +1993,47 @@ const detectToughHole: Detector = (ctx) => {
     strength: clamp01((1.6 - w.avg) / 1.3),
     surprise: 0.45,
     evidence: { hole: w.hole, avgPts: w.avg },
-    build: (c, seed) => ({
-      ...beatHead("tough_hole", "The Hardest Hole", pick([
-        `Hole ${w.hole} eats the field alive`,
-        `Nobody solves hole ${w.hole}`,
-        `Hole ${w.hole} plays like a bear trap`,
-        `The field runs into a wall on ${w.hole}`,
-      ], seed + w.hole)),
-      hole: w.hole,
-      preview: `Hole ${w.hole} Bites`,
-      protagonistId: null,
-      holeMeta: holeMetaFor(c, w.hole, null),
-      fieldBars: barRows,
-      caption: [
-        { t: `The field averaged just ` },
-        { t: `${w.avg.toFixed(1)} points`, b: true },
-        { t: ` here, and ${w.buckets[3]} of ${w.n} cards came up empty.` },
-      ],
-      strength: 0, mood: "cool",
-    }),
+    build: (c, seed) => {
+      const empties = w.buckets[3]; // cards scoring zero points (blowups)
+      const avgStr = w.avg.toFixed(1);
+      // numWord only for counts <= 12 (Handoff #16 7b); larger stays a digit.
+      const nw = (n: number) => (n <= 12 ? numWord(n) : String(n));
+      // Present tense (Handoff #16 5); "blowup" replaces "came up empty"
+      // (Handoff #16 7a); 3 distinct sentence shapes (Handoff #16 8), rhythm
+      // varied off the em-dash (Handoff #16 8a).
+      const captions: CaptionPart[][] = [
+        [
+          { t: `The field averages just ` },
+          { t: `${avgStr} points`, b: true },
+          { t: ` here, and ${nw(empties)} of ${nw(w.n)} cards are a blowup.` },
+        ],
+        [
+          { t: `${nw(empties)} of ${nw(w.n)} cards come away with a blowup: hole ${w.hole} averages ` },
+          { t: `${avgStr} points`, b: true },
+          { t: `.` },
+        ],
+        [
+          { t: `Hole ${w.hole} yields ` },
+          { t: `${avgStr} points`, b: true },
+          { t: ` a card. ${nw(empties).charAt(0).toUpperCase() + nw(empties).slice(1)} of ${nw(w.n)} golfers walk off with zero.` },
+        ],
+      ];
+      return {
+        ...beatHead("tough_hole", "The Hardest Hole", pick([
+          `Hole ${w.hole} eats the field alive`,
+          `Nobody solves hole ${w.hole}`,
+          `Hole ${w.hole} plays like a bear trap`,
+          `The field runs into a wall on ${w.hole}`,
+        ], seed + w.hole)),
+        hole: w.hole,
+        preview: `Hole ${w.hole} Bites`,
+        protagonistId: null,
+        holeMeta: holeMetaFor(c, w.hole, null),
+        fieldBars: barRows,
+        caption: pick(captions, seed + w.hole),
+        strength: 0, mood: "cool",
+      };
+    },
   }];
 };
 
@@ -1700,7 +2101,7 @@ const detectNemesis: Detector = (ctx) => {
       surprise: 0.85,
       evidence: { hole: worstHole, deficit, ownMeanPts, fieldMeanPts: fb.meanPointsAt[worstHole], thisPoints: sc.points },
       build: (c, seed) => {
-        const fn = firstName(p.name);
+        const fn = dNameOf(c, p.golferId);
         const par = c.holePars[worstHole - 1];
         const pastDates = hist.holeDatesByEvent[worstHole] || [];
         const lastFive = pastGross.slice(-5);
@@ -1735,13 +2136,17 @@ const detectNemesis: Detector = (ctx) => {
           },
           caption: pick([
             // Structural variety, all self-contained and under budget: lead
-            // with the deficit / with the name / with today's result.
+            // with the deficit / with the name / with today's result. Present
+            // tense; dramatic "owns"/"demon" language KEPT (Handoff #16 1). G4
+            // (Handoff #16 4d): every clause has an explicit subject -- "{fn}
+            // plays it {deficit} below the field", never a dangling "hole N ...
+            // 0.7 below the field" that reads as the hole being below the field.
             [
               { t: `${fn} usually loses ${Math.abs(deficit).toFixed(1)} points a round to hole ${worstHole}`, b: true },
-              { t: ` -- more than anywhere on the course. Today: a net ${netName(sc.points)} for ${sc.points}.` },
+              { t: `, more than anywhere on the course. Today: a net ${netName(sc.points)} for ${numWord(sc.points)}.` },
             ],
             [
-              { t: `Hole ${worstHole} owns ${fn} more than any other -- ${Math.abs(deficit).toFixed(1)} points below the field here.`, b: true },
+              { t: `Hole ${worstHole} owns ${fn} more than any other -- ${fn} plays it ${Math.abs(deficit).toFixed(1)} points below the field.`, b: true },
               { t: ` Not today: a net ${netName(sc.points)}, ${sc.points} points.` },
             ],
             [
@@ -1777,7 +2182,7 @@ const detectRedemption: Detector = (ctx) => {
       surprise: 0.8,
       evidence: { thisTotal, bestRecent, weeksAbsent: hist.weeksAbsent, backFromAbsence },
       build: (c, seed) => {
-        const fn = firstName(p.name);
+        const fn = dName(c, i);
         const dates = hist.recentDates.slice(-8);
         const win5 = window.slice(-5);
         const date5 = dates.slice(-5);
@@ -1806,13 +2211,14 @@ const detectRedemption: Detector = (ctx) => {
           weekBars: bars,
           caption: backFromAbsence
             ? [
-                { t: `First round after ${hist.weeksAbsent} weeks away, and ${fn} posts ` },
+                // counts <= 12 through numWord (Handoff #16 7b).
+                { t: `First round after ${hist.weeksAbsent <= 12 ? numWord(hist.weeksAbsent) : hist.weeksAbsent} weeks away, and ${fn} posts ` },
                 { t: `${thisTotal} points`, b: true },
                 { t: ` to land near the top of the board.` },
               ]
             : [
                 { t: `${thisTotal} points`, b: true },
-                { t: ` beats everything ${fn} has posted in the last ${window.length} starts.` },
+                { t: ` beats everything ${fn} has posted in the last ${window.length <= 12 ? numWord(window.length) : window.length} starts.` },
               ],
           strength: 0, mood: "expo",
         };
@@ -1840,13 +2246,56 @@ const detectOutOfCharacter: Detector = (ctx) => {
       surprise: clamp01(Math.abs(z) / 3),
       evidence: { thisTotal, mean: hist.mean, z },
       build: (c, seed) => {
-        const fn = firstName(p.name);
+        const fn = dName(c, i);
         const window = hist.recentPoints.slice(-5);
         const dates = hist.recentDates.slice(-5);
         const bars = window.map((v, idx) => ({
           label: shortDate(dates[idx]) || `Rd ${idx + 1}`, value: v, text: String(v), highlight: false,
         }));
         bars.push({ label: "Today", value: thisTotal, text: String(thisTotal), highlight: true });
+        const avg = hist.mean.toFixed(1);
+        // Structural variety (Handoff #16 8/F11): the down-branch previously
+        // closed every bad round with the identical "everyone gets one of
+        // these." Both branches now have 3 distinct shapes. G2 (Handoff #16 4b):
+        // "{n} points SIT" (plural verb) and "{fn}'s season average" (not the
+        // orphan "a season average"). Rhythm varied (period / colon / comma),
+        // not all em-dash.
+        const upCaptions: CaptionPart[][] = [
+          [
+            { t: `${possess(fn)} ${thisTotal} points`, b: true },
+            { t: ` sit well above ${possess(fn)} season average of ` },
+            { t: avg, b: true },
+            { t: `. This is the outlier round of ${possess(fn)} year so far.` },
+          ],
+          [
+            { t: `${fn} averages ${avg} a round, then posts ` },
+            { t: `${thisTotal}`, b: true },
+            { t: `: a career day.` },
+          ],
+          [
+            { t: `Where does that come from? ${possess(fn)} ` },
+            { t: `${thisTotal} points`, b: true },
+            { t: ` tower over a ${avg} average.` },
+          ],
+        ];
+        const downCaptions: CaptionPart[][] = [
+          [
+            { t: `${fn} posts just ${thisTotal} points`, b: true },
+            { t: `, well below ${possess(fn)} season average of ` },
+            { t: avg, b: true },
+            { t: `. Everyone gets one of these.` },
+          ],
+          [
+            { t: `${possess(fn)} season average is ${avg}. Today: ` },
+            { t: `${thisTotal}`, b: true },
+            { t: `, and a day to forget.` },
+          ],
+          [
+            { t: `A rare off day for ${fn} -- ` },
+            { t: `${thisTotal} points`, b: true },
+            { t: ` against a ${avg} average.` },
+          ],
+        ];
         return {
           ...beatHead("out_of_character", "Out of Character", up
             ? pick([
@@ -1868,19 +2317,7 @@ const detectOutOfCharacter: Detector = (ctx) => {
           weekBars: bars,
           // SELF-CONTAINED (Handoff #10 5): always NAME the golfer; the caption
           // must stand without the eyebrow. Both branches lead with the name.
-          caption: up
-            ? [
-                { t: `${fn}'s ${thisTotal} points`, b: true },
-                { t: ` sits miles above a season average of ` },
-                { t: hist.mean.toFixed(1), b: true },
-                { t: ` -- ${fn}'s outlier round of the year so far.` },
-              ]
-            : [
-                { t: `${fn} posts just ${thisTotal} points`, b: true },
-                { t: `, well below a season average of ` },
-                { t: hist.mean.toFixed(1), b: true },
-                { t: ` -- everyone gets one of these.` },
-              ],
+          caption: pick(up ? upCaptions : downCaptions, seed + 2),
           strength: 0, mood: up ? "expo" : "fall",
         };
       },
@@ -1901,13 +2338,11 @@ const detectRivalry: Detector = (ctx) => {
       if (Math.abs(hi.mean - hj.mean) > 2.5) continue;
       if (Math.abs(ctx.ranks[i] - ctx.ranks[j]) !== 1) continue;
       // "The lead between them flips" must be true of POINTS, so count
-      // crossings on cumulative totals, not on the Monte Carlo series.
-      let crossings = 0;
-      for (let h = 1; h <= ctx.maxHole; h++) {
-        const before = Math.sign(ctx.totalsSeries[i][h - 1] - ctx.totalsSeries[j][h - 1]);
-        const after = Math.sign(ctx.totalsSeries[i][h] - ctx.totalsSeries[j][h]);
-        if (before !== 0 && after !== 0 && before !== after) crossings++;
-      }
+      // crossings on cumulative totals, not on the Monte Carlo series (Handoff
+      // #6). SINGLE SOURCE: leadCrossIndices feeds both the caption count here
+      // and the chart's dots below, so they can never disagree (Handoff #14).
+      const crossIdx = leadCrossIndices(ctx, i, j);
+      const crossings = crossIdx.length;
       if (crossings < 2) continue;
       const aIdx = ctx.ranks[i] < ctx.ranks[j] ? i : j;
       const bIdx = aIdx === i ? j : i;
@@ -1920,8 +2355,28 @@ const detectRivalry: Detector = (ctx) => {
         surprise: 0.5,
         evidence: { a: ctx.players[aIdx].name, b: ctx.players[bIdx].name, crossings },
         build: (c, seed) => {
-          const fa = firstName(c.players[aIdx].name);
-          const fb = firstName(c.players[bIdx].name);
+          const fa = displayName(c, aIdx);
+          const fb = displayName(c, bIdx);
+          const nFlips = crossings <= 12 ? numWord(crossings) : String(crossings);
+          // 3 distinct shapes (Handoff #16 8), counts through numWord (7b),
+          // rhythm varied off the em-dash (8a): declarative / colon-lead /
+          // consequence-first.
+          const captions: CaptionPart[][] = [
+            [
+              { t: `The points lead between them flips ` },
+              { t: `${nFlips} times`, b: true },
+              { t: ` before ${fa} lands the last punch.` },
+            ],
+            [
+              { t: `${fa} and ${fb} swap the lead ` },
+              { t: `${nFlips} times`, b: true },
+              { t: `. ${fa} has it when it counts.` },
+            ],
+            [
+              { t: `${nFlips} lead changes between ${fa} and ${fb}`, b: true },
+              { t: `, and ${fa} settles it at the last.` },
+            ],
+          ];
           return {
             ...beatHead("rivalry", "The Rivalry", pick([
               `${fa} and ${fb} trade punches all day`,
@@ -1935,15 +2390,19 @@ const detectRivalry: Detector = (ctx) => {
             protagonistId: c.players[aIdx].golferId,
             protagonistName: c.players[aIdx].name,
             protagonistInitials: initials(c.players[aIdx].name),
-            h2h: [
-              { name: displayName(c, aIdx), color: H2H_COLORS[0], points: cumulativePoints(c, aIdx, c.maxHole) },
-              { name: displayName(c, bIdx), color: H2H_COLORS[1], points: cumulativePoints(c, bIdx, c.maxHole) },
-            ],
-            caption: [
-              { t: `The points lead between them flips ` },
-              { t: `${crossings} times`, b: true },
-              { t: ` before ${fa} finally lands the last punch.` },
-            ],
+            // Same differential momentum chart as the duel (Handoff #14 §3):
+            // one renderer, two consumers. A rivalry IS the lead changing
+            // hands, so zero crossings are the whole story. crossIndices come
+            // from the SAME leadCrossIndices() the caption count uses -- the
+            // crossIdx above is order-invariant (sign flips of i-j equal those
+            // of aIdx-bIdx), so the dots and "flips N times" always match.
+            diff: {
+              nameTop: displayName(c, aIdx), nameBottom: displayName(c, bIdx),
+              colorTop: DIFF_COLOR_TOP, colorBottom: DIFF_COLOR_BOTTOM,
+              values: cumulativePoints(c, aIdx, c.maxHole).map((v, k) => v - (cumulativePoints(c, bIdx, c.maxHole)[k] ?? 0)),
+              crossIndices: crossIdx, firstHole: 1,
+            },
+            caption: pick(captions, seed + 1),
             strength: 0, mood: "warm",
           };
         },
@@ -1953,9 +2412,112 @@ const detectRivalry: Detector = (ctx) => {
   return out;
 };
 
+// -- bounce_back: a blow-up immediately answered on the very next hole --------
+// A hole scoring 0 points (net double or worse) followed DIRECTLY by a hole
+// scoring 3+ points (net birdie or better) by the same golfer. The recovery,
+// not the blow-up, is the story -- so it resolves at the GOOD hole. Points-
+// based throughout (this is a net-league merit beat, not a gross achievement).
+// Competes normally: subject to all cooldowns, diversity, spread. Strength
+// reflects the swing size and the merit of the answer.
+const detectBounceBack: Detector = (ctx) => {
+  const out: BeatCandidate[] = [];
+  ctx.players.forEach((p) => {
+    // Take the single best bounce-back per player (biggest combined swing), so
+    // one golfer cannot flood the pool with several.
+    let best: { blankHole: number; goodHole: number; goodPts: number } | null = null;
+    for (let h = 1; h < ctx.maxHole; h++) {
+      const p0 = ctx.pointsAt[p.golferId + "|" + h];
+      const p1 = ctx.pointsAt[p.golferId + "|" + (h + 1)];
+      if (p0 !== 0 || p1 == null || p1 < 3) continue;
+      if (!best || p1 > best.goodPts) best = { blankHole: h, goodHole: h + 1, goodPts: p1 };
+    }
+    if (!best) return;
+    const b = best;
+    // Swing = the good hole's points (3..4) plus the 2-point hole it recovered
+    // from the blank; normalized to a 0..1 strength.
+    const strength = clamp01(0.4 + (b.goodPts - 3) * 0.15 + 0.15);
+    out.push({
+      angle: "bounce_back",
+      slot: "middle",
+      protagonistId: p.golferId,
+      hole: b.goodHole,
+      strength,
+      surprise: 0.6,
+      evidence: { blankHole: b.blankHole, goodHole: b.goodHole, goodPts: b.goodPts },
+      build: (c, seed) => {
+        const fn = dNameOf(c, p.golferId);
+        const goodSc = scoreAt(c, p.golferId, b.goodHole);
+        // Streak strip: the two focused holes (blank -> answer) with a hole of
+        // context on each side where it exists, surrounding holes dimmed.
+        const from = Math.max(1, b.blankHole - 1);
+        const to = Math.min(c.maxHole, b.goodHole + 1);
+        const cells: NonNullable<DataBeat["streak"]>["cells"] = [];
+        for (let h = from; h <= to; h++) {
+          const cellSc = scoreAt(c, p.golferId, h);
+          if (!cellSc) { cells.length = 0; break; }
+          cells.push({ hole: h, ...cellSc });
+        }
+        const netWord = b.goodPts >= 4 ? "net eagle" : "net birdie";
+        const sp = standingPhrase(c, b.goodHole, c.players.findIndex((x) => x.golferId === p.golferId), fn);
+        // Standing tag: only when it says something true (a lead grab). Kept
+        // as a separate fragment so the caption shapes can slot it or not.
+        const leadTag = sp.rank0 === 0 ? (sp.tied ? " and grabs a share of the lead" : " and takes the lead") : "";
+        // Structural caption variety (Handoff #9): distinct SENTENCE SHAPES,
+        // not one template with swapped nouns. Each is self-contained (names
+        // the golfer) and points-based. Seeded so it is stable per event.
+        const caption: CaptionPart[] = pick<CaptionPart[]>([
+          // 1) zero-pointer-then-answer, standing tag inline
+          [
+            { t: `A zero pointer on ${b.blankHole}, then a ` },
+            { t: `${netWord} on ${b.goodHole}`, b: true },
+            { t: ` -- ${fn} answers immediately${leadTag}.` },
+          ],
+          // 2) lead with the recovery, the blowup as the setup clause
+          [
+            { t: `${fn} follows a blowup on ${b.blankHole} with a ` },
+            { t: `${netWord} on ${b.goodHole}`, b: true },
+            { t: `${leadTag}.` },
+          ],
+          // 3) zero-to-good framing, points spread named
+          [
+            { t: `Zero points on ${b.blankHole}, ${b.goodPts} on ${b.goodHole}` },
+            { t: ` -- ${fn} turns it around on the very next hole`, b: true },
+            { t: `${leadTag}.` },
+          ],
+          // 4) resilience framing, no "straight back" echo of the eyebrow
+          [
+            { t: `${fn} shakes off the blowout on ${b.blankHole} with a ` },
+            { t: `${netWord} on ${b.goodHole}`, b: true },
+            { t: `, no damage done${leadTag}.` },
+          ],
+        ], seed + b.goodHole);
+        return {
+          ...beatHead("bounce_back", "The Answer", pick([
+            `${fn} answers right back`,
+            `${fn} refuses to let it linger`,
+            `${fn} bounces back on ${b.goodHole}`,
+            `${fn} rights the ship on ${b.goodHole}`,
+          ], seed + b.goodHole + 1)),
+          hole: b.goodHole,
+          subtext: `Holes ${b.blankHole}-${b.goodHole}`,
+          preview: `${fn} Bounces Back`,
+          protagonistId: p.golferId, protagonistName: p.name, protagonistInitials: initials(p.name),
+          holeMeta: holeMetaFor(c, b.goodHole, p.golferId),
+          score: goodSc,
+          ...(cells.length > 0 ? { streak: { cells, focusStart: b.blankHole - from, focusCount: 2 } } : {}),
+          caption,
+          strength: 0, mood: "warm",
+        };
+      },
+    });
+  });
+  return out;
+};
+
 const DETECTORS: Detector[] = [
   detectThreeWay, detectDuel, detectWireToWire, detectPaceSetter,
   detectCharge, detectCollapse, detectHold, detectFastStart, detectFade, detectTheTurn,
+  detectBounceBack,
   detectGrinder, detectWildcard, detectToughHole,
   detectNemesis, detectRedemption, detectOutOfCharacter, detectRivalry,
 ];
@@ -2029,9 +2591,14 @@ function detectFireworks(ctx: RoundContext): FireworksBeat[] {
 // Was a gross eagle-or-better ever carded on THIS hole by THIS player before?
 // The only rarity claim we can PROVE from the data on hand: holeGrossByEvent
 // is this player's same-course prior gross on this hole. If they have never
-// gone this low here, "first ever on N" is honest; otherwise assert nothing.
-// (A season-wide "first eagle this season" would need all-hole gross history
-// we do not carry, so we do not estimate it -- data honesty, per the spec.)
+// gone this low here, "{fn}'s first here" is honest; otherwise assert nothing.
+//
+// CLAIM SCOPE (Handoff #16 2a) -- DO NOT "upgrade" this to an all-time or
+// league-wide claim. Only ~8 weeks of hole-by-hole data exist, which cannot
+// support "ever" or "first in league history". The copy therefore says
+// "{fn}'s first here" (this golfer, this hole, this course) with NO "ever" --
+// that is exactly what this query proves. A season-wide "first eagle this
+// season" would need all-hole gross history we do not carry.
 function isFirstFireworksHere(ctx: RoundContext, golferId: number, hole: number): boolean {
   const par = ctx.holePars[hole - 1];
   const past = ctx.history[golferId]?.holeGrossByEvent[hole];
@@ -2040,7 +2607,7 @@ function isFirstFireworksHere(ctx: RoundContext, golferId: number, hole: number)
 }
 
 function buildFireworksBeat(ctx: RoundContext, p: RecapPlayer, hole: number, angle: FireworksBeat["angle"], seed: number): DataBeat {
-  const fn = firstName(p.name);
+  const fn = dNameOf(ctx, p.golferId);
   const par = ctx.holePars[hole - 1];
   const sc = scoreAt(ctx, p.golferId, hole);
   const pts = sc ? sc.points : ctx.pointsAt[p.golferId + "|" + hole] ?? 0;
@@ -2058,7 +2625,7 @@ function buildFireworksBeat(ctx: RoundContext, p: RecapPlayer, hole: number, ang
   let eyebrow: string;
   if (angle === "ace") {
     const eyebrows = [
-      `${fn} aces the ${hole}th`,
+      `${fn} aces the ${hole}${ordSuffix(hole)}`,
       `A hole-in-one for ${fn}`,
       `${fn} makes one disappear on ${hole}`,
       `Ace. ${fn}. Hole ${hole}.`,
@@ -2067,13 +2634,11 @@ function buildFireworksBeat(ctx: RoundContext, p: RecapPlayer, hole: number, ang
     ];
     eyebrow = pick(eyebrows, seed + hole);
     caption = [
-      { t: `A `, b: false },
+      { t: `${pts} ${plural(pts, "point")}, but nobody is talking about the points: ${fn} makes a ` },
       { t: `hole-in-one`, b: true },
       { t: ` on the ${hole}${ordSuffix(hole)}` },
-      ...(firstHere ? [{ t: ` -- ${fn}'s first ever here` }] : []),
-      { t: `. Worth ` },
-      { t: `${pts} ${plural(pts, "point")}`, b: true },
-      { t: `, but nobody is talking about the points.` },
+      ...(firstHere ? [{ t: `, ${fn}'s first here` }] : []),
+      { t: `.` },
     ];
   } else if (angle === "albatross") {
     const eyebrows = [
@@ -2086,17 +2651,15 @@ function buildFireworksBeat(ctx: RoundContext, p: RecapPlayer, hole: number, ang
     ];
     eyebrow = pick(eyebrows, seed + hole);
     caption = [
-      { t: `${fn} makes an ` },
+      { t: `${pts} ${plural(pts, "point")} on the card${firstHere ? `, ${fn}'s first here` : ""}, but the number that matters is ` },
+      { t: `gross ${gross} on a par ${par}`, b: true },
+      { t: `: ${fn} makes an ` },
       { t: `albatross`, b: true },
-      { t: ` on ${hole} -- gross ${gross} on a par ${par}` },
-      ...(firstHere ? [{ t: `, a first ever here` }] : []),
-      { t: `, worth ` },
-      { t: `${pts} ${plural(pts, "point")}`, b: true },
-      { t: `.` },
+      { t: ` on ${hole}.` },
     ];
   } else {
     const eyebrows = [
-      `${fn} eagles the ${hole}th`,
+      `${fn} eagles the ${hole}${ordSuffix(hole)}`,
       `An eagle for ${fn} on ${hole}`,
       `${fn} goes two-under on one hole`,
       `${fn} lights up hole ${hole}`,
@@ -2104,14 +2667,15 @@ function buildFireworksBeat(ctx: RoundContext, p: RecapPlayer, hole: number, ang
       `${fn} takes a big bite out of ${hole}`,
     ];
     eyebrow = pick(eyebrows, seed + hole);
+    // Restructured (Handoff #16 6): the achievement CLOSES the sentence, not
+    // the points. gross scope claim is "{fn}'s first here" -- see
+    // isFirstFireworksHere for why "ever"/league-wide is not supported.
     caption = [
-      { t: `${fn} makes an ` },
+      { t: `${pts} ${plural(pts, "point")}${firstHere ? `, and ${fn}'s first here` : ""}: ${fn} goes ` },
+      { t: `gross ${gross} on a par ${par}`, b: true },
+      { t: ` and makes an ` },
       { t: `eagle`, b: true },
-      { t: ` on ${hole} -- gross ${gross} on a par ${par}` },
-      ...(firstHere ? [{ t: `, a first ever here` }] : []),
-      { t: `, worth ` },
-      { t: `${pts} ${plural(pts, "point")}`, b: true },
-      { t: `.` },
+      { t: ` on ${hole}.` },
     ];
   }
 
@@ -2137,6 +2701,165 @@ function buildFireworksBeat(ctx: RoundContext, p: RecapPlayer, hole: number, ang
 function ordSuffix(n: number): string {
   const r10 = n % 10, r100 = n % 100;
   return r10 === 1 && r100 !== 11 ? "st" : r10 === 2 && r100 !== 12 ? "nd" : r10 === 3 && r100 !== 13 ? "rd" : "th";
+}
+
+// -- skins beat: a skin won with a GROSS birdie or better ----------------------
+//
+// DELIBERATE GROSS EXCEPTION -- the SECOND after fireworks. DO NOT convert to
+// net. Everywhere else in this engine points are the valence unit, because a
+// gross bogey on a stroke hole is a NET par worth 2 points, and net birdies
+// are ROUTINE in this handicap league (so a net birdie skin is not a story).
+// But a GROSS birdie-or-better is a real golf achievement independent of
+// strokes, and a skin won that way is exactly what the group talks about.
+// Converting this to net would silently delete the feature -- leave it gross.
+//
+// SKINS SOURCE OF TRUTH: the winner per hole is the SINGLE player with the max
+// Stableford POINTS among the skins-paying field (ties => no skin), identical
+// to the skins card's calcSkinHoleWinnersForEvent. We recompute the WINNER
+// with that exact rule (never an independent skins algorithm) so the recap can
+// never disagree with the leaderboard's skins card. Payout per skin = the
+// skins pot / total skins won -- NO carryover (this league divides the pot,
+// there is no accumulated value).
+//
+// It is a CERTAINTY like fireworks: additive, exempt from anti-repeat, and
+// capped at exactly ONE per event. Fireworks trumps it (see composeBeats).
+export interface SkinsBeat {
+  hole: number;
+  protagonistId: number;
+  build: (ctx: RoundContext, seed: number) => DataBeat;
+}
+
+// All skins won this event, decorated with the winner's gross/par/points on
+// that hole (the recap needs the gross to classify birdie-or-better).
+//
+// The WINNER RULE (sole Stableford-points leader per hole, ties => no skin) is
+// NOT reimplemented here -- it calls the shared computeSkinWinners in lib/skins,
+// the same function the skins card uses. This function only maps the winners to
+// the recap's richer shape; if the rule ever changes, it changes in one place.
+function computeSkins(ctx: RoundContext): { hole: number; golferId: number; gross: number; par: number; points: number }[] {
+  const scores: SkinHoleScore[] = [];
+  ctx.players.forEach((p) => {
+    for (let h = 1; h <= ctx.maxHole; h++) {
+      const pts = ctx.pointsAt[p.golferId + "|" + h];
+      if (pts != null) scores.push({ golferId: p.golferId, hole: h, points: pts });
+    }
+  });
+  const winners = computeSkinWinners(scores);
+  const out: { hole: number; golferId: number; gross: number; par: number; points: number }[] = [];
+  for (const [holeStr, golferId] of Object.entries(winners)) {
+    const h = Number(holeStr);
+    const par = ctx.holePars[h - 1];
+    const gross = ctx.grossAt[golferId + "|" + h];
+    const points = ctx.pointsAt[golferId + "|" + h];
+    if (par == null || gross == null || points == null) continue;
+    out.push({ hole: h, golferId, gross, par, points });
+  }
+  out.sort((a, b) => a.hole - b.hole);
+  return out;
+}
+
+// The single skins beat for this event (or none). Gross birdie-or-better only,
+// seeded LRU pick among qualifiers. `historyKeyUsed` is the set of recently
+// used "skins|protagonist|hole" keys for the soft freshness preference.
+function detectSkins(ctx: RoundContext, seed: number, recentSkinKeys: { protagonistId: number | null; hole: number | null }[]): SkinsBeat | null {
+  if (ctx.skinsPaidCount <= 0) return null;
+  const skins = computeSkins(ctx);
+  const totalSkins = skins.length;
+  if (totalSkins === 0) return null;
+  // Per-skin value from the shared calc (pot / total skins won) -- the same
+  // formula the skins card uses, so the recap's $ figure can never diverge.
+  const perSkin = computeSkinValue(ctx.skinsPaidCount, totalSkins);
+  // Gross birdie or better only. A net-birdie / net-par skin does not qualify.
+  const qualifying = skins.filter((s) => s.gross - s.par <= -1);
+  if (qualifying.length === 0) return null;
+
+  // Seeded shuffle (mulberry32 on event_id -- NEVER Math.random), then a SOFT
+  // preference for the least-recently-used (protagonist, hole): stable-sort by
+  // recency so ties keep the shuffled order. Recency is a preference, not a
+  // block -- one qualifier always surfaces.
+  const rng = mulberry32(seed ^ 0x5c1c5); // distinct stream from the series
+  const shuffled = qualifying
+    .map((s) => ({ s, r: rng() }))
+    .sort((a, b) => a.r - b.r)
+    .map((x) => x.s);
+  const recencyOf = (s: { golferId: number; hole: number }): number => {
+    // 0 = never seen (freshest); otherwise (window - eventsAgo)-ish rank is not
+    // available here, so treat "appears in recent keys" as used (rank 1) and
+    // absent as 0. Absent is preferred.
+    return recentSkinKeys.some((k) => k.protagonistId === s.golferId && k.hole === s.hole) ? 1 : 0;
+  };
+  shuffled.sort((a, b) => recencyOf(a) - recencyOf(b)); // stable: LRU first
+  const chosen = shuffled[0];
+
+  return {
+    hole: chosen.hole,
+    protagonistId: chosen.golferId,
+    build: (c, s2) => buildSkinsBeat(c, chosen, perSkin, totalSkins, s2),
+  };
+}
+
+function buildSkinsBeat(
+  ctx: RoundContext,
+  skin: { hole: number; golferId: number; gross: number; par: number; points: number },
+  perSkin: number,
+  totalSkins: number,
+  seed: number,
+): DataBeat {
+  const p = ctx.players.find((x) => x.golferId === skin.golferId)!;
+  const fn = dNameOf(ctx, skin.golferId);
+  const sc = scoreAt(ctx, skin.golferId, skin.hole);
+  const grossWord = scoreName(skin.gross, skin.par); // "Birdie" / "Eagle" ...
+  const payoutStr = `$${Math.round(perSkin)}`;
+  // Is this the only gross-birdie-or-better skin? (True "the only one" claim.)
+  const grossBirdieSkins = computeSkins(ctx).filter((s) => s.gross - s.par <= -1).length;
+  const onlyOne = grossBirdieSkins === 1;
+
+  // No carryover language anywhere -- the pot is divided, never accumulated.
+  const gw = grossWord.toLowerCase();
+  const art = articleFor(gw); // "an eagle" reads right; "a birdie" too.
+  const eyebrow = pick([
+    `${fn} takes a skin on ${skin.hole}`,
+    `${art === "an" ? "An" : "A"} ${gw} banks ${fn} a skin`,
+    `${fn} cashes in on ${skin.hole}`,
+    `Skin money for ${fn} on ${skin.hole}`,
+  ], seed + skin.hole);
+
+  // Lead with the achievement and NAME the golfer (self-contained). Two shapes
+  // for variety across weeks; NO carryover language (pot is divided).
+  const onlyClause = onlyOne ? " -- the only one in the field" : "";
+  const caption: CaptionPart[] = pick([
+    [
+      { t: `${possess(fn)} ${gw} on ${skin.hole}${onlyClause} banks a skin worth ` },
+      { t: payoutStr, b: true },
+      { t: `.` },
+    ],
+    [
+      { t: `${art === "an" ? "An" : "A"} ${gw} on ${skin.hole}${onlyClause}, and ${fn} takes a skin worth ` },
+      { t: payoutStr, b: true },
+      { t: `.` },
+    ],
+  ], seed + skin.hole);
+
+  return {
+    ...beatHead("skins", "The Skin", eyebrow),
+    hole: skin.hole,
+    preview: `${fn}'s Skin`,
+    protagonistId: skin.golferId,
+    protagonistName: p.name,
+    protagonistInitials: initials(p.name),
+    holeMeta: holeMetaFor(ctx, skin.hole, skin.golferId),
+    score: sc,
+    // Glass panel: gross score in .sc-* notation + the skin value. scoreRow
+    // carries one cell (the winning hole) and the payout as its avg line.
+    scoreRow: {
+      cells: [{ gross: skin.gross, par: skin.par, points: skin.points, label: `Hole ${skin.hole}`, highlight: true }],
+      avgLabel: totalSkins === 1 ? "Skin value" : `1 of ${totalSkins} skins`,
+      avgValue: payoutStr,
+    },
+    caption,
+    strength: 0.9,
+    mood: "warm",
+  };
 }
 
 // ===== COMPOSER ================================================================
@@ -2168,6 +2891,14 @@ export interface SelectBeatsInput {
   // are filtered BEFORE composition so the next-best candidate fills the
   // slot and the story stays whole.
   hiddenBeats?: { angle_type: string; protagonist_id?: number | null }[];
+  // Number of entries paying into the skins pot (event_leaderboard.skins_paid
+  // count). The skins pot is this * $10 (LeaderboardTab). Omitted => the skins
+  // detector cannot state a payout and its detector no-ops.
+  skinsPaidCount?: number;
+  // Pre-round frozen odds per golfer (event_odds snapshot_hole=0, static once
+  // written). Used ONLY by the duel tape card, and only quoted when present --
+  // never estimated. Omitted => the tape drops the projection row.
+  preRoundOdds?: Record<number, { projectedFinal: number | null; winPct: number | null }>;
 }
 
 export function buildRoundContext(input: SelectBeatsInput, series: number[][], totalsSeries: number[][]): RoundContext {
@@ -2206,6 +2937,8 @@ export function buildRoundContext(input: SelectBeatsInput, series: number[][], t
     winnerIdx, totals, ranks, grossAt, pointsAt, fieldMeanAt, yardsFor,
     history: input.playerHistory || {},
     fieldBaseline: input.fieldBaseline || { meanPointsAt: {}, overallMeanPoints: 0, samplesAt: {} },
+    skinsPaidCount: input.skinsPaidCount ?? 0,
+    preRoundOdds: input.preRoundOdds || {},
   };
 }
 
@@ -2258,9 +2991,27 @@ function relabelRaceState(b: DataBeat, isFirst: boolean, seed: number): void {
         { t: `, with nobody able to break clear.` },
       ];
     }
+  } else if (b.angle === "pace_setter" || b.angle === "wire_to_wire") {
+    // pace_setter / wire_to_wire keep their meaningful hero LABELS (their
+    // earliness lives in the angle's meaning), but their eyebrow/caption copy
+    // can still say "early" / "through N" / "chases X early" -- which reads
+    // false once an earlier-resolving beat (e.g. a bounce_back on hole 4)
+    // sorts ahead of them. When off-front, neutralize that copy so the card
+    // states the LEAD, not the opening. `through` is the beat's own checkpoint.
+    const through = b.throughHole ?? b.hole ?? null;
+    const fn = (b.protagonistName || "").split(" ")[0];
+    b.eyebrow = fn
+      ? pick([`${fn} sets the pace`, `${fn} out in front`, `${fn} leads the way`], seed + 4)
+      : b.eyebrow;
+    if (through != null && fn) {
+      b.caption = [
+        { t: `Through ${through}, ` },
+        { t: `${fn} is out in front`, b: true },
+        { t: `, with the field giving chase.` },
+      ];
+    }
   } else {
-    // duel is already neutral; pace_setter / wire_to_wire keep their meaningful
-    // labels. Nothing to rewrite -- their claims remain true off the front.
+    // duel is already neutral.
     b.heroLabel = b.heroLabel === "The Opening" ? "Where It Stands" : b.heroLabel;
   }
   b.kicker = b.heroLabel.toUpperCase();
@@ -2381,11 +3132,18 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
     }
     return m;
   };
+  // The duel is a TWO-PLAYER shape (like three_way/rivalry), not the winner's
+  // individual story -- so although its protagonistId names the pair's leader
+  // (often the winner), it does NOT consume the "one winner-protagonist beat"
+  // slot. Without this a duel between the winner and the runner-up can never
+  // be told whenever any winner-flavored beat (out_of_character, a charge) also
+  // fires, which is most weeks -- the exact reason it went dead.
+  const countsAsWinnerBeat = (c: BeatCandidate) => c.protagonistId === winnerGid && c.angle !== "duel";
   const eligible = (c: BeatCandidate, requireFreshProtagonist: boolean) => {
     if (taken.has(c)) return false;
     if (usedAngles.has(c.angle)) return false;
     if (c.hole != null && usedHoles.has(c.hole)) return false;
-    if (c.protagonistId === winnerGid && winnerBeats >= 1) return false;
+    if (countsAsWinnerBeat(c) && winnerBeats >= 1) return false;
     if (requireFreshProtagonist && c.protagonistId != null && usedProtagonists.has(c.protagonistId)) return false;
     return true;
   };
@@ -2395,7 +3153,7 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
     usedAngles.add(c.angle);
     if (c.hole != null) { usedHoles.add(c.hole); thirdCount[thirdOf(c.hole)]++; }
     if (c.protagonistId != null) usedProtagonists.add(c.protagonistId);
-    if (c.protagonistId === winnerGid) winnerBeats++;
+    if (countsAsWinnerBeat(c)) winnerBeats++;
   };
   // DIVERSITY FLOOR: past the first middle beat, only take a candidate whose
   // recency-decayed weight clears a floor. An angle seen last week is
@@ -2433,14 +3191,18 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
   const attachStandings = (b: DataBeat, res: number) => {
     if (STANDINGS_ANGLES.has(b.angle)) b.standings = buildStandingsBoard(ctx, res, false);
   };
-  const body: { beat: DataBeat; res: number; isOpening: boolean }[] = [];
+  // sub keeps a multi-card unit's cards adjacent through the sort: the lead-in
+  // (extraBefore) gets a sub of 0, its payoff 1, at the SAME resolution hole,
+  // so nothing can land between them. Standalone beats use sub 2 (>=, so a
+  // unit's two cards always sort as a block relative to same-hole neighbours).
+  const body: { beat: DataBeat; res: number; isOpening: boolean; sub: number }[] = [];
   if (opening) {
     const b = opening.build(ctx, seed);
     b.strength = opening.strength;
     const res = resolutionHoleFor(opening, ctx);
     b.resolutionHole = res;
     attachStandings(b, res);
-    body.push({ beat: b, res, isOpening: true });
+    body.push({ beat: b, res, isOpening: true, sub: 2 });
   }
   chosen.forEach((c) => {
     const b = c.build(ctx, seed);
@@ -2448,7 +3210,18 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
     const res = resolutionHoleFor(c, ctx);
     b.resolutionHole = res;
     attachStandings(b, res);
-    body.push({ beat: b, res, isOpening: false });
+    // MULTI-CARD UNIT: a lead-in card renders immediately before its payoff, at
+    // the same resolution hole. It is pulled off the beat here so both render
+    // as siblings; the pair counts as one beat (one candidate, one slot).
+    const lead = b.extraBefore;
+    if (lead) {
+      b.extraBefore = undefined;
+      lead.resolutionHole = res;
+      body.push({ beat: lead, res, isOpening: false, sub: 0 });
+      body.push({ beat: b, res, isOpening: false, sub: 1 });
+    } else {
+      body.push({ beat: b, res, isOpening: false, sub: 2 });
+    }
   });
 
   // RARE FIREWORKS (gross eagle or better): additive and exempt from EVERY
@@ -2461,28 +3234,55 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
   // middle (an event with an eagle simply emits one more beat). Admin hides
   // still apply, so a mis-scored "eagle" can be pulled. Fireworks are always
   // single-hole, so they resolve at that hole.
+  let anyFireworks = false;
   detectFireworks(ctx).forEach((f) => {
     if (isHidden(f.angle, f.protagonistId)) return;
     const b = f.build(ctx, seed);
     b.strength = f.strength;
     b.resolutionHole = f.hole;
-    body.push({ beat: b, res: f.hole, isOpening: false });
+    body.push({ beat: b, res: f.hole, isOpening: false, sub: 2 });
+    anyFireworks = true;
   });
+
+  // SKINS (gross birdie-or-better skin): the SECOND additive certainty. Same
+  // treatment as fireworks -- exempt from the angle-decay weight, the
+  // protagonist-rotation penalty, the spread/thirds constraint and the
+  // diversity floor; it takes a guaranteed slot ON TOP of the arc and does NOT
+  // displace a middle. Two extra rules:
+  //   FIREWORKS TRUMPS SKINS (hard): if any ace/albatross/eagle fired for this
+  //   event, emit NO skins beat -- the rare thing owns the week.
+  //   SEEDED LRU: the chosen skin is stable forever (event_id seed) and prefers
+  //   the least-recently-used (protagonist, hole) as a soft tiebreak.
+  // Admin hides still apply (a mis-scored skin can be pulled).
+  if (!anyFireworks) {
+    const recentSkinKeys = recent
+      .filter((h) => h.angle_type === "skins")
+      .map((h) => ({ protagonistId: h.protagonist_id ?? null, hole: h.hole ?? null }));
+    const sk = detectSkins(ctx, seed, recentSkinKeys);
+    if (sk && !isHidden("skins", sk.protagonistId)) {
+      const b = sk.build(ctx, seed);
+      b.resolutionHole = sk.hole;
+      body.push({ beat: b, res: sk.hole, isOpening: false, sub: 2 });
+    }
+  }
 
   // Chronological sort on the resolution hole. Ties keep a stable order:
   // data beats already have no created_at here, so the viewer's
   // watchOrderCompare handles data-before-human; within the composer we only
   // need hole order, with the opening breaking ties earlier (a race-state
   // "through N" reads before an event that happened ON N).
-  body.sort((a, b) => (a.res - b.res) || ((a.isOpening ? 0 : 1) - (b.isOpening ? 0 : 1)));
+  body.sort((a, b) => (a.res - b.res) || ((a.isOpening ? 0 : 1) - (b.isOpening ? 0 : 1)) || (a.sub - b.sub));
 
   // POSITION-AWARE OPENING LABEL: "The Opening" is only true if the race-state
-  // beat is chronologically first among the hole-bearing beats. Otherwise it
-  // gets a position-neutral, angle-specific label + copy. Routed through one
-  // helper so no template asserts earliness out of place.
+  // beat is chronologically first among the ARC beats. Additive certainties
+  // (fireworks, skins) are highlights layered on top of the arc, not arc
+  // position -- a skin on hole 1 or an eagle on hole 4 does NOT demote the
+  // opening. So they are ignored when deciding "is the opening first".
+  const ADDITIVE_ANGLES = new Set(["ace", "albatross", "eagle", "skins"]);
   const firstOpening = body.findIndex((x) => x.isOpening);
   if (firstOpening >= 0) {
-    relabelRaceState(body[firstOpening].beat, firstOpening === 0, seed);
+    const firstArc = body.findIndex((x) => !ADDITIVE_ANGLES.has(x.beat.angle));
+    relabelRaceState(body[firstOpening].beat, firstOpening === firstArc, seed);
   }
 
   const ordered: DataBeat[] = body.map((x) => x.beat);
@@ -2580,18 +3380,22 @@ function buildFinalBeat(ctx: RoundContext, input: SelectBeatsInput, middle: Beat
     ];
   } else if (standings[1]) {
     // Structural variety: rotate how the win is framed, but every variant is a
-    // complete statement of who won, by how much, over whom.
+    // complete statement of who won, by how much, over whom. NAME REGISTER
+    // (Handoff #16 7d/F7): the WINNER gets a full name; everyone else a first
+    // name -- the full leaderboard is on the card, so first names are
+    // unambiguous and it saves the char budget.
+    const secondFirst = firstName(standings[1].name);
     caption = pick([
       [
         { t: `${champName} takes it ${marginPhrase}`, b: true },
-        { t: `, ahead of ${standings[1].name} on ${secondPts}.` },
+        { t: `, ahead of ${secondFirst} on ${secondPts}.` },
       ],
       [
         { t: `${champPts} points and the win for ${champName}`, b: true },
-        { t: ` -- ${standings[1].name} runs second on ${secondPts}.` },
+        { t: ` -- ${secondFirst} runs second on ${secondPts}.` },
       ],
       [
-        { t: `${standings[1].name} pushes hard but comes up ${numWord(margin || 1)} ${plural(margin || 1, "point")} short` },
+        { t: `${secondFirst} pushes hard but comes up ${numWord(margin || 1)} ${plural(margin || 1, "point")} short` },
         { t: `; ${champName} wins on ${champPts}.`, b: true },
       ],
     ], seed + 11);
@@ -2600,10 +3404,11 @@ function buildFinalBeat(ctx: RoundContext, input: SelectBeatsInput, middle: Beat
   }
 
   if (blowout && !winnersTied) {
+    // Present tense (Handoff #16 5).
     caption.push({ t: pick([
-      " It was never really in doubt.",
-      ` ${winnerFirst} led this one from start to finish.`,
-      " The chase pack never landed a punch.",
+      " It is never really in doubt.",
+      ` ${winnerFirst} leads this one from start to finish.`,
+      " The chase pack never lands a punch.",
     ], seed + 3) });
   } else if (!winnersTied) {
     // Only a swing beat (charge/collapse/hold) can be "the hole that decided
@@ -2614,17 +3419,19 @@ function buildFinalBeat(ctx: RoundContext, input: SelectBeatsInput, middle: Beat
     if (decider && decider.protagonistId != null) {
       const p = ctx.players.find((x) => x.golferId === decider.protagonistId);
       const sc = p ? scoreAt(ctx, p.golferId, decider.hole!) : null;
-      const fn = p ? firstName(p.name) : "";
+      const fn = p ? dNameOf(ctx, p.golferId) : "";
       // Net word for a good decider hole ("net par" -- a gross bogey there
       // would mislabel a charge); gross notation for a bad one ("double").
       const scoreWord = sc
         ? (sc.points >= 2 ? `net ${netName(sc.points)}` : scoreName(sc.gross, sc.par).toLowerCase())
         : "swing";
+      // Present tense (Handoff #16 5): "is the turning point", "traces back",
+      // "turns for good" -- not the past-tense forms.
       caption.push({ t: pick([
-        ` The hole that decided it: ${fn}'s ${scoreWord} on ${decider.hole}.`,
-        ` ${fn}'s ${scoreWord} on ${decider.hole} proved to be the turning point.`,
-        ` It all traced back to ${fn}'s ${scoreWord} on ${decider.hole}.`,
-        ` The round turned for good on ${decider.hole}.`,
+        ` The hole that decides it: ${possess(fn)} ${scoreWord} on ${decider.hole}.`,
+        ` ${possess(fn)} ${scoreWord} on ${decider.hole} is the turning point.`,
+        ` It all traces back to ${possess(fn)} ${scoreWord} on ${decider.hole}.`,
+        ` The round turns for good on ${decider.hole}.`,
       ], seed + decider.hole!) });
     }
   }

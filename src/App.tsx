@@ -1673,21 +1673,71 @@ const CSS = `
   .sr-avg .v{font-size:16px;color:#fff;font-weight:800;white-space:nowrap;}
   /* streak strip with gold focus window */
   .hl-overlay .streak{display:flex;gap:5px;align-items:flex-end;}
-  .st-c{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;opacity:.34;filter:blur(.4px);min-width:0;}
+  .st-c{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;opacity:.34;filter:blur(.4px);min-width:0;padding:6px 3px;border:1.5px solid transparent;border-radius:12px;}
   .st-c.on{opacity:1;filter:none;}
   .st-c .h{font-size:10px;color:rgba(255,255,255,.62);font-weight:700;}
   .st-c .sc-score{font-size:15px;width:21px;height:21px;}
   .st-c.on .sc-score{font-size:17px;width:25px;height:25px;}
   .st-c .pt{font-size:11px;font-weight:800;color:rgba(255,255,255,.6);}
   .st-c.on .pt{color:var(--gold-300);font-size:13px;}
-  .st-win{position:relative;}
-  .st-win::before{content:"";position:absolute;left:calc(var(--s) * 97%);width:calc(var(--n) * 103%);top:-7px;bottom:-7px;border:1.5px solid var(--gold-400);border-radius:12px;background:rgba(245,176,0,.1);animation:hlWinIn .5s cubic-bezier(.2,1,.3,1) .25s both;}
-  @keyframes hlWinIn{from{opacity:0;transform:scaleX(.7);}to{opacity:1;transform:none;}}
-  /* h2h momentum polyline (duel/rivalry) */
-  .hl-h2h{width:100%;height:120px;display:block;}
-  .hl-h2h-legend{display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;}
-  .hl-h2h-legend span{display:flex;align-items:center;gap:6px;color:#fff;font-size:15px;font-weight:600;}
-  .hl-h2h-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;}
+  /* Highlight box wraps ONLY the focused score+pts cells. Previously an
+     absolutely-positioned ::before sized off the whole container (var(--s)/
+     var(--n) * 97%/103%) which drifted and over-spanned toward the full card;
+     now the border/fill sit directly on the .on cells, so the box hugs exactly
+     the highlighted holes regardless of cell count. The contiguous run of .on
+     cells reads as one bordered group: inner edges square, outer edges round. */
+  .st-c.on{border-color:var(--gold-400);background:rgba(245,176,0,.1);animation:hlWinIn .5s cubic-bezier(.2,1,.3,1) .25s both;}
+  .st-c.on + .st-c.on{border-left-color:transparent;border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-5px;}
+  .st-c.on:has(+ .st-c.on){border-top-right-radius:0;border-bottom-right-radius:0;}
+  @keyframes hlWinIn{from{opacity:0;transform:scale(.85);}to{opacity:1;transform:none;}}
+  /* Fade position trace (Handoff #14): inverted-axis rank line, slow climb ->
+     fast collapse, two labels timed to the drawing line. Durations/delays are
+     set INLINE from the shared TRACE_* constants in HighlightsViewer, so the
+     CSS only owns the easing curves + keyframes (the timing single-sources in
+     JS). Gradient runs green->gold->red across the plot width. */
+  .tr-svg{display:block;width:100%;height:auto;overflow:visible;}
+  .tr-seg{fill:none;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round;}
+  .tr-climb{animation:trDraw cubic-bezier(.42,.34,.58,.68) forwards;}
+  .tr-fall{animation:trDraw cubic-bezier(.55,0,.80,.34) forwards;}
+  @keyframes trDraw{to{stroke-dashoffset:0;}}
+  .tr-cal{opacity:0;animation:trPop .40s cubic-bezier(.2,1,.3,1) forwards;}
+  @keyframes trPop{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:none;}}
+  .tr-dot{fill:var(--gold-300);}
+  .tr-dot.red{fill:#ff7a68;}
+  .tr-txt{font-family:var(--font-sans);font-weight:800;font-size:16px;fill:#fff;}
+  .tr-axis{stroke:rgba(255,255,255,.18);stroke-width:1.5;}
+  .tr-tick{stroke:rgba(255,255,255,.30);stroke-width:1.5;}
+  .tr-tick-lbl{font-family:var(--font-sans);font-weight:700;font-size:11.5px;fill:rgba(255,255,255,.55);letter-spacing:.04em;}
+  /* reduced motion: fully drawn, both labels visible, no animation. */
+  @media (prefers-reduced-motion:reduce){
+    .tr-seg{stroke-dashoffset:0!important;animation:none!important;}
+    .tr-cal{opacity:1!important;animation:none!important;}
+  }
+  /* duel tale-of-the-tape: two name columns, stat rows, leader cell lit */
+  .hl-tape{display:flex;flex-direction:column;gap:2px;}
+  .hl-tape-head,.hl-tape-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:7px 0;}
+  .hl-tape-row{border-top:1px solid rgba(255,255,255,.12);}
+  .hl-tape-head .a,.hl-tape-head .b{font-size:16px;font-weight:800;color:#fff;}
+  /* Names hug the OUTER edges (A hard-left, B hard-right); each side's stat
+     values stack directly beneath its own name on that side, with the row
+     label centered between them. */
+  .hl-tape .a{text-align:left;}
+  .hl-tape .b{text-align:right;}
+  .hl-tape-row .a,.hl-tape-row .b{font-family:var(--font-serif);font-size:24px;color:rgba(255,255,255,.72);}
+  .hl-tape-row .a.win,.hl-tape-row .b.win{color:var(--gold-300);}
+  .hl-tape .lbl{text-align:center;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55);white-space:nowrap;}
+  /* duel differential momentum chart: zero-centred area, crossings dotted.
+     Minimal by design -- names carry identity, no ticks/gridlines/legend. */
+  .hl-diff{position:relative;}
+  .hl-diff-svg{width:100%;height:120px;display:block;overflow:visible;}
+  .hl-diff-zero{stroke:rgba(255,255,255,.45);stroke-width:1.5;stroke-dasharray:4 4;}
+  .hl-diff-line{stroke:#fff;stroke-width:3;stroke-linejoin:round;stroke-linecap:round;stroke-dasharray:900;stroke-dashoffset:900;animation:hlDiffDraw 1.1s ease-out forwards;}
+  .hl-diff-x{fill:#fff;stroke:var(--green-900);stroke-width:2;opacity:0;animation:hlDiffDot .3s ease-out .9s forwards;}
+  @keyframes hlDiffDraw{to{stroke-dashoffset:0;}}
+  @keyframes hlDiffDot{to{opacity:1;}}
+  .hl-diff-name{font-size:15px;font-weight:800;line-height:1;}
+  .hl-diff-name.top{margin-bottom:4px;}
+  .hl-diff-name.bottom{margin-top:4px;text-align:left;}
   /* FINAL: the real leaderboard floating over the photo. Rows reveal
      bottom-up (reversed stagger, leader lands last), then the leader row
      carries the gold wash + shine sweep. Scoped so the app's live .lb-row
@@ -1749,6 +1799,41 @@ const CSS = `
   .hl-sheet-composer button{border:0;border-radius:999px;padding:11px 18px;background:var(--green-700);color:#fff;font-weight:700;font-size:14px;cursor:pointer;}
   .hl-sheet-composer button:disabled{opacity:.45;}
 
+  /* Views chip -- eye icon + count, sits in the beat/human footer. The 44px
+     tap target is delivered by a ::after hit-area overlay, NOT by the chip's
+     own box height -- if the chip itself were 44px tall it would push the
+     footer content up the moment it appears (hidden->visible layout shift).
+     The visual pill stays the height of the surrounding text, and both footer
+     rows reserve that height whether or not the chip is present, so mounting
+     the chip never reflows the card. */
+  /* Reserve a stable row height >= the chip pill on BOTH footers so mounting
+     the chip (hidden->visible) never grows the row and shifts content up. The
+     pill is height-capped below to guarantee it fits inside this reservation. */
+  .beat-auto,.v-credit{min-height:32px;}
+  /* pointer-events:auto is REQUIRED: the auto-beat footer lives inside .beat
+     (pointer-events:none, so gestures fall through to .v-media underneath), so
+     without this the chip tap passes straight through to the tap-zone nav
+     instead of opening the sheet. touch-action:manipulation kills the 300ms
+     tap delay / double-tap zoom on the pill. */
+  .hl-seen-chip{position:relative;pointer-events:auto;touch-action:manipulation;margin-left:auto;height:24px;box-sizing:border-box;display:inline-flex;align-items:center;gap:5px;line-height:1;padding:0 10px;border:1px solid rgba(255,255,255,.28);border-radius:999px;background:rgba(255,255,255,.14);color:#fff;font-family:var(--font-sans);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+  /* Invisible 44x44 hit target centered on the pill -- meets the 60+ tap-size
+     rule without adding layout height. */
+  .hl-seen-chip::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);min-width:44px;width:100%;height:44px;}
+  .hl-seen-chip svg{width:15px;height:15px;stroke:#fff;stroke-width:1.8;fill:none;opacity:.9;}
+  .hl-seen-chip:active{background:rgba(255,255,255,.24);}
+  /* .beat-auto is a 12.5px muted row; keep the chip visually aligned there. */
+  .beat-auto .hl-seen-chip{font-size:12.5px;}
+  /* names sheet: reuse hl-sheet; slide-up reveal, disabled under reduced motion
+     and via .no-anim (the JS reduced flag). */
+  .hl-sheet.hl-seen-anim{animation:hlSeenSheetUp .22s cubic-bezier(.22,1,.36,1);}
+  @keyframes hlSeenSheetUp{from{transform:translateY(12px);opacity:.6;}to{transform:translateY(0);opacity:1;}}
+  .hl-seen-list{overscroll-behavior:contain;}
+  .hl-seen-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);}
+  .hl-seen-row:last-child{border-bottom:0;}
+  .hl-seen-name{font-size:15px;color:var(--text-primary);font-weight:600;}
+  .hl-seen-time{font-size:12.5px;color:var(--text-muted);flex:0 0 auto;}
+  @media (prefers-reduced-motion: reduce){.hl-sheet.hl-seen-anim{animation:none;}}
+
   /* add-highlight flow */
   .hl-add-overlay{position:fixed;inset:0;z-index:340;background:var(--bg);display:flex;flex-direction:column;}
   .hl-add-head{display:flex;align-items:center;justify-content:space-between;padding:calc(14px + var(--safe-area-top)) 16px 10px;border-bottom:1px solid var(--border);background:var(--surface);}
@@ -1776,6 +1861,64 @@ const CSS = `
   .hl-add-post{width:100%;border:0;border-radius:var(--radius-lg);padding:16px;background:var(--green-700);color:#fff;font-family:var(--font-sans);font-size:17px;font-weight:800;cursor:pointer;}
   .hl-add-post:disabled{opacity:.45;}
 
+  /* ---- Add-highlight PREVIEW EDITOR (step 2): full-screen WYSIWYG ---------- */
+  .hl-editor{position:fixed;inset:0;z-index:340;background:#000;overflow:hidden;}
+  .hl-editor-media{position:absolute;inset:0;}
+  /* COVER (fill the whole screen) so it reads like the final full-bleed card */
+  .hl-editor-media img,.hl-editor-media video{width:100%;height:100%;object-fit:cover;display:block;background:#000;}
+  /* top+bottom scrims so the overlay controls/text always read */
+  .hl-editor-scrim{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 55%,rgba(0,0,0,.72) 100%);}
+  /* live overlays mirror the viewer's human card exactly */
+  .hl-editor-eyebrow{position:absolute;top:calc(74px + var(--safe-area-top));left:16px;right:110px;color:#fff;font-size:15px;font-weight:700;line-height:1.25;text-shadow:0 1px 8px rgba(0,0,0,.7);z-index:6;pointer-events:none;}
+  .hl-editor-holemeta{position:absolute;top:calc(112px + var(--safe-area-top));left:16px;z-index:6;pointer-events:none;}
+  .hl-editor .hole-meta{color:#fff;text-shadow:0 2px 5px rgba(0,0,0,.75);line-height:1;}
+  .hl-editor .hole-meta b{display:block;font-weight:800;font-size:44px;letter-spacing:-.03em;line-height:.98;}
+  .hl-editor .hole-meta b i{display:block;font-style:normal;}
+  .hl-editor .hole-meta span{display:block;font-size:15px;font-weight:600;margin-top:6px;opacity:.96;}
+  /* top-right controls, STACKED (golfer above hole). Collapse to icon-only
+     once set (.icon) so the editor reads closer to the final result. */
+  .hl-editor-top{position:absolute;top:calc(20px + var(--safe-area-top));right:14px;display:flex;flex-direction:column;align-items:flex-end;gap:10px;z-index:8;}
+  .hl-editor-pick{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:rgba(0,0,0,.42);backdrop-filter:blur(8px);border:1.5px solid rgba(255,255,255,.5);color:#fff;font-family:var(--font-sans);font-size:14px;font-weight:700;padding:9px 15px;border-radius:999px;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;}
+  .hl-editor-pick .hl-pick-ico{flex:0 0 auto;width:19px;height:19px;stroke:#fff;}
+  .hl-editor-pick.set{background:var(--green-700);border-color:var(--green-700);}
+  /* icon-only circle: bigger button + bigger centered glyph */
+  .hl-editor-pick.icon{width:48px;height:48px;padding:0;border-radius:50%;}
+  .hl-editor-pick.icon .hl-pick-ico{width:26px;height:26px;}
+  /* video sound toggle (bottom-left, above the caption/credit) */
+  .hl-editor-sound{position:absolute;left:16px;bottom:calc(96px + var(--safe-area-bottom));z-index:9;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,.42);backdrop-filter:blur(8px);border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .hl-editor-sound svg{width:21px;height:21px;}
+  .hl-editor-close{position:absolute;top:calc(20px + var(--safe-area-top));left:14px;z-index:9;width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.42);backdrop-filter:blur(8px);border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .hl-editor-close svg{width:18px;height:18px;stroke:#fff;}
+  /* bottom: caption (SAME 24px as the real .v-cap) + credit + submit */
+  .hl-editor-foot{position:absolute;left:0;right:84px;bottom:0;padding:0 18px calc(24px + var(--safe-area-bottom));z-index:8;}
+  /* caption sits at the bottom by default; while editing it lifts to the
+     vertical center (Instagram-stories style) so the user types in the middle
+     of the screen, above the keyboard, instead of behind it. */
+  .hl-editor-caption{position:absolute;left:0;right:84px;bottom:calc(54px + var(--safe-area-bottom));z-index:8;padding:0 18px;box-sizing:border-box;width:auto;background:transparent;border:0;resize:none;color:#fff;font-family:var(--font-sans);font-size:24px;font-weight:700;line-height:1.24;letter-spacing:-.01em;text-shadow:0 2px 14px rgba(0,0,0,.65);caret-color:var(--green-300);transition:bottom .22s ease,right .22s ease;}
+  .hl-editor-caption::placeholder{color:rgba(255,255,255,.62);font-weight:700;}
+  .hl-editor-caption:focus{outline:none;}
+  /* editing: full width, above the keyboard. When the keyboard height is
+     known (.lifted, bottom set inline) it sits just above it; otherwise it
+     stays put near the bottom so it can't hide behind the keyboard. */
+  .hl-editor-caption.editing{right:0;z-index:21;text-align:center;text-shadow:0 2px 20px rgba(0,0,0,.8);}
+  /* dim the media while editing so the lifted caption is the focus */
+  .hl-editor-capscrim{position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.5);}
+  .hl-editor-done{position:absolute;top:calc(22px + var(--safe-area-top));right:16px;z-index:22;background:transparent;border:0;color:#fff;font-family:var(--font-sans);font-size:17px;font-weight:800;cursor:pointer;padding:6px 4px;}
+  .hl-editor-credit{display:block;background:transparent;border:0;padding:2px 0;text-align:left;font-family:var(--font-sans);color:rgba(255,255,255,.82);font-size:14px;font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.6);cursor:default;}
+  .hl-editor-credit.needs{color:var(--gold-300);text-decoration:underline;cursor:pointer;}
+  /* submit: circled check in app green with a white tick (no outer border) */
+  .hl-editor-submit{position:absolute;right:18px;bottom:calc(24px + var(--safe-area-bottom));z-index:9;width:58px;height:58px;border-radius:50%;background:var(--green-600);border:0;box-shadow:0 4px 16px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .12s,opacity .12s;color:#fff;}
+  .hl-editor-submit:not(:disabled):active{transform:scale(.92);}
+  .hl-editor-submit:disabled{background:rgba(0,0,0,.4);cursor:default;}
+  .hl-editor-submit svg{width:28px;height:28px;stroke:#fff;}
+  .hl-editor-spin{width:24px;height:24px;border-radius:50%;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;animation:hlSpin .8s linear infinite;}
+  @keyframes hlSpin{to{transform:rotate(360deg);}}
+  .hl-editor-error{position:absolute;left:18px;right:18px;bottom:calc(150px + var(--safe-area-bottom));z-index:9;background:var(--red-600);color:#fff;border-radius:var(--radius-md);padding:11px 14px;font-size:14px;font-weight:600;text-align:center;}
+  /* sheet option rows (golfer picker) reuse the comment-sheet chrome */
+  .hl-sheet-opt{display:block;width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--border);padding:15px 4px;font-family:var(--font-sans);font-size:17px;font-weight:600;color:var(--text-primary);cursor:pointer;}
+  .hl-sheet-opt.on{color:var(--green-700);font-weight:800;}
+  .hl-sheet-opt:last-child{border-bottom:0;}
+
   @media (prefers-reduced-motion:reduce){
     .trace{animation:none;stroke-dashoffset:0;}
     .endm{animation:none;opacity:1;}
@@ -1788,6 +1931,8 @@ const CSS = `
     .finalboard .lb-row{animation:none;opacity:1;transform:none;}
     .finalboard .lb-row.leader::after{animation:none;background-position:0 0;}
     .hl-menu{animation:none;}
+    .hl-diff-line{animation:none;stroke-dashoffset:0;}
+    .hl-diff-x{animation:none;opacity:1;}
   }
 `;
 

@@ -289,38 +289,12 @@ function drawViz(ctx: CanvasRenderingContext2D, beat: DataBeat, y: number): numb
     return h;
   }
 
-  if (beat.h2h) {
-    const h = 430;
-    glassPanel(ctx, x, y, w, h);
-    panelLabel(ctx, "Momentum · points through the round", ix, y + 58);
-    const area = { x: ix, y: y + 96, w: w - 72, h: 230 };
-    const maxV = Math.max(1, ...beat.h2h.flatMap((s) => s.points));
-    const len = Math.max(2, beat.h2h[0].points.length);
-    beat.h2h.forEach((s) => {
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth = 6;
-      ctx.lineJoin = "round";
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      s.points.forEach((v, i) => {
-        const px = area.x + (i / (len - 1)) * area.w;
-        const py = area.y + area.h - (v / maxV) * area.h;
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      });
-      ctx.stroke();
-    });
-    let lx = ix;
-    beat.h2h.forEach((s) => {
-      ctx.fillStyle = s.color;
-      ctx.beginPath(); ctx.arc(lx + 10, y + h - 52, 10, 0, Math.PI * 2); ctx.fill();
-      ctx.font = `600 32px ${SANS}`;
-      ctx.fillStyle = "#fff";
-      const txt = `${s.name} · ${s.points[s.points.length - 1]} pts`;
-      ctx.fillText(txt, lx + 32, y + h - 40);
-      lx += 32 + ctx.measureText(txt).width + 44;
-    });
-    return h;
-  }
+  // The `h2h` overlapping-polyline panel was retired in Handoff #14 (rivalry
+  // and duel both use the differential `diff` chart now). The share image never
+  // rendered `diff` -- both the fade `positionTrace` and the duel/rivalry `diff`
+  // fall through here, so the shared card shows hero + caption without a panel,
+  // exactly as the duel already did since Handoff #12. Kept out of scope on
+  // purpose; add a canvas port later if a chart in the share image is wanted.
 
   if (beat.scoreRow) {
     const cells = beat.scoreRow.cells.slice(0, 6);

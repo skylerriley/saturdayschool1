@@ -26,7 +26,7 @@ const AUTO_ICON = (
   </svg>
 );
 
-export function HighlightsModule({ event, course, courses, signups, golfers, eventEntries, holeScores, holeImages, memberGolferId, adminMode, eventNumber, recentEventIds, leaderboard, events }: any) {
+export function HighlightsModule({ event, course, courses, signups, golfers, eventEntries, holeScores, holeImages, memberGolferId, adminMode, eventNumber, recentEventIds, leaderboard, events, eventOdds }: any) {
   const eventId = event.event_id;
 
   // Hard gate for auto beats: same predicate the skins card uses -- every
@@ -36,6 +36,10 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
   const [rows, setRows] = useState<any[] | null>(null); // null = loading
   const [likes, setLikes] = useState<any[]>([]);
   const [comments, setComments] = useState<any[]>([]);
+  // highlight_views rows for this event -- powers the admin/uploader "Seen by"
+  // chip. Pure analytics: never feeds beat selection. Loaded behind the same
+  // admin gate as everything else in this module.
+  const [views, setViews] = useState<any[]>([]);
   const [beats, setBeats] = useState<DataBeat[]>([]);
   // This event's story_beats_history rows -- carries the admin `hidden` flag
   // and `caption_override` applied at display time.
@@ -79,6 +83,17 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
       } catch (_: any) {
         if (!cancelled) setRows([]);
       }
+      // Views are scoped by event_id (auto beats have no highlight_id, so they
+      // can't be joined through the highlights list) and loaded independently:
+      // an event with zero human highlights can still have viewed auto beats.
+      // Wrapped separately so a missing highlight_views table (pre-migration)
+      // never blanks the highlights themselves.
+      try {
+        const vw = await supabase.from("highlight_views").select("*", `&event_id=eq.${eventId}`);
+        if (!cancelled) setViews(vw);
+      } catch (_: any) {
+        if (!cancelled) setViews([]);
+      }
     })();
     return () => { cancelled = true; };
   }, [eventId]);
@@ -121,7 +136,7 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
       // Same builder the rebuild uses -- read and write CANNOT drift.
       const generated = selectDataBeats(buildBeatsInput({
         event, course, courses, signups, golfers, eventEntries, holeScores,
-        leaderboard, events,
+        leaderboard, events, eventOdds,
         eventLabel: `Week ${seasonWeek || ""}`.trim(),
         historyRows: history,
         hiddenRows: history,
@@ -341,9 +356,30 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
           holeImages={holeImages}
           likes={likes}
           comments={comments}
+          views={views}
           memberName={memberName}
           adminMode={adminMode}
           onClose={() => setViewerIndex(null)}
+          onView={(v: any) => {
+            // Fire-and-forget analytics write. NEVER awaited on the render path
+            // and silent on failure -- a failed insert (or a missing table
+            // pre-migration) must not affect what renders. The DB unique index
+            // on (beat_key, viewer_name) makes a duplicate insert a harmless
+            // no-op, so no read-before-write is needed. Optimistically reflect
+            // the view locally so the "Seen by" count updates without a refetch.
+            setViews((prev) => (prev.some((x: any) => x.beat_key === v.beatKey && x.viewer_name === v.viewerName)
+              ? prev
+              : [...prev, { id: Date.now(), beat_key: v.beatKey, event_id: v.eventId, highlight_id: v.highlightId, angle_type: v.angleType, viewer_name: v.viewerName, viewed_at: new Date().toISOString() }]));
+            try {
+              supabase.from("highlight_views").insert({
+                beat_key: v.beatKey,
+                event_id: v.eventId,
+                highlight_id: v.highlightId,
+                angle_type: v.angleType,
+                viewer_name: v.viewerName,
+              }).catch((_: any) => {});
+            } catch (_: any) {}
+          }}
           onHideBeat={adminMode ? hideBeat : undefined}
           onEditBeatCaption={adminMode ? editBeatCaption : undefined}
           onDeleteHighlight={deleteHighlight}
@@ -378,8 +414,12 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
       {addOpen && (
         <AddHighlightFlow
           event={event}
+          course={course}
+          courses={courses}
+          signups={signups}
           golfers={golfers}
           eventEntries={eventEntries}
+          holeScores={holeScores}
           memberName={memberName}
           onClose={() => setAddOpen(false)}
           onPosted={(row: any) => {

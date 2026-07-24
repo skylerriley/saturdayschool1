@@ -92,6 +92,47 @@ run that errors partway can just be re-applied (policies use
    deletes rows per event before replaying; without this grant RLS silently
    blocks the delete and the rebuild collides on the unique constraint. (Files
    3 and 4 share the 20260716 prefix but are independent — either order works.)
+5. `supabase/migrations/20260723_highlight_views.sql` — creates `highlight_views`
+   ("Seen by" tracking) with anon select/insert RLS. Depends on 20260713 (the
+   FK references `highlights(id)`), so it must run AFTER file 1. No beat output
+   changes, so **no history rebuild is required** after applying it.
+
+## 5c. Highlight views ("Seen by") — analytics only
+
+`highlight_views` records **who has seen each recap card** (one row per
+viewer/beat), powering the admin/uploader "Seen by" chip. It is a **pure
+analytics sink** and is deliberately isolated from beat selection:
+
+- It is **never read** by `recapEngine.ts`, `buildBeatsInput.ts`, the composer,
+  or the rebuild. (Unlike `story_beats_history`, which IS sequence state,
+  `highlight_views` never influences what beats render — so writing it on read
+  is safe and does not reintroduce the viewing-order nondeterminism 5b warns
+  about.)
+- The view write is **fire-and-forget**: never awaited on the render path,
+  silent on failure. If this table does not exist yet, the viewer still works
+  and simply records nothing — so applying the migration late is harmless.
+
+**`beat_key` design.** Dedupe is on a single text key (`'h:'||id` for human
+highlights, `'a:'||event_id||':'||angle_type` for auto beats), NOT a composite
+unique over the nullable `highlight_id`/`angle_type` columns — Postgres treats
+NULLs as *distinct* in a unique index, so a composite would fail to dedupe auto
+beats (their `highlight_id` is null) and insert a fresh row on every view. The
+`highlight_id`/`angle_type` columns are kept denormalized for readable queries.
+
+**SECURITY — UI-level, not row-level.** Every policy is on the `anon` role
+because auth is PIN-based with no Supabase session. The admin/uploader gating
+on the chip is therefore **UI-level only**: anyone holding the anon key could
+query `highlight_views` directly. For a ~25-person private league this is an
+accepted trade — but a known one, not an assumed protection.
+
+**Verification query** (per-event view counts by beat):
+
+```sql
+select beat_key, count(*) as views
+from highlight_views
+where event_id = <id>
+group by 1 order by 2 desc;
+```
 
 ## 5b. Beat history — WHEN TO REBUILD
 

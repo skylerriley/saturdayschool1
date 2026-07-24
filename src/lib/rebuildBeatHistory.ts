@@ -106,7 +106,11 @@ export async function rebuildBeatHistory(deps: RebuildDeps): Promise<RebuildResu
       golferName: deps.golferName,
     }));
 
-    const rows = beats.map((b) => {
+    // duel_tape is a COMPANION card, not a story angle -- it always rides with
+    // a duel beat and must not create its own history row (it would pollute the
+    // anti-repeat frequency table with a non-angle and double-count the duel
+    // against cooldowns). The duel row it accompanies carries the identity.
+    const rows = beats.filter((b) => b.angle !== "duel_tape").map((b) => {
       const base: any = {
         event_id: event.event_id,
         angle_type: b.angle,

@@ -6,6 +6,7 @@ import { golferName, formatDate } from "../../lib/formatters";
 import { calcPlayingHandicap } from "../../lib/golfMath";
 import { supabase, reportWriteError } from "../../lib/supabaseClient";
 import { buildSeasonRounds, golferStats, dedupeLeaderboard } from "../../lib/seasonStats";
+import { computeSkinWinners, computeSkinPayouts, type SkinHoleScore } from "../../lib/skins";
 import { useLiveWeather } from "../../hooks/useLiveWeather";
 import { WindParticles } from "../../components/weather/WindParticles";
 import { WeatherModal } from "../../components/weather/WeatherModal";
@@ -69,26 +70,16 @@ function EventFeedCard({event,eventNumber,golfers,leaderboard,holeScores,holeIma
     }
   }
 
-  // Skins: count distinct holes won
-  const entryIds=new Set(entries.map((r:any)=>r.summary_id));
+  // Skins: count distinct holes won (via the shared skins calc -- one rule).
   const skinsPaidIds=new Set(entries.filter((r:any)=>r.skins_paid).map((r:any)=>r.summary_id));
-  const playerHoleMap:Record<number,Record<number,number>>={};
-  holeScores.filter((h:any)=>skinsPaidIds.has(h.summary_id)&&h.stableford_points!=null).forEach((h:any)=>{
-    const gid=entries.find((r:any)=>r.summary_id===h.summary_id)?.golfer_id;
-    if(gid==null)return;
-    if(!playerHoleMap[gid])playerHoleMap[gid]={};
-    playerHoleMap[gid][h.hole_number]=h.stableford_points;
-  });
-  void entryIds;
-  const pids=Object.keys(playerHoleMap).map(Number);
-  let skinsCount=0;
-  for(let hN=1;hN<=18;hN++){
-    const scores=pids.map(id=>({id,pts:playerHoleMap[id]?.[hN]})).filter(x=>x.pts!=null);
-    if(!scores.length)continue;
-    const maxPts=Math.max(...scores.map(x=>x.pts));
-    const leaders=scores.filter(x=>x.pts===maxPts);
-    if(leaders.length===1)skinsCount++;
-  }
+  const skinScores:SkinHoleScore[]=holeScores
+    .filter((h:any)=>skinsPaidIds.has(h.summary_id)&&h.stableford_points!=null)
+    .map((h:any)=>{
+      const gid=entries.find((r:any)=>r.summary_id===h.summary_id)?.golfer_id;
+      return gid==null?null:{golferId:gid,hole:h.hole_number,points:h.stableford_points};
+    })
+    .filter(Boolean) as SkinHoleScore[];
+  const skinsCount=Object.keys(computeSkinWinners(skinScores)).length;
 
   // Date MM/DD
   const dt=new Date(event.date+"T00:00:00");
@@ -536,76 +527,25 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   // Check if skins are calculable for this event (all H-H)
   const skinsEligible=eventEntries.length>0&&eventEntries.every((e:any)=>e.entry_type==="Hole-by-Hole");
 
-  // Skin calculations for COMPLETED event weekly scorecard view.
-  // (Live skins are computed inside the live tab IIFE below, against liveEvent.)
-  const calcSkinHoleWinnersForEvent:(()=>Record<number,number>)=()=>{
-    if(!displayEvent)return{};
-    const skinsPaid=eventEntries.filter((e:any)=>e.skins_paid);
-    if(!skinsPaid.length)return{};
-    const playerHoleMap:Record<number,Record<number,number>>={};
-    skinsPaid.forEach((entry:any)=>{
-      const hs=holeScores.filter((h:any)=>h.summary_id===entry.summary_id);
-      hs.forEach((h:any)=>{
-        if(h.stableford_points==null)return;
-        if(!playerHoleMap[entry.golfer_id])playerHoleMap[entry.golfer_id]={};
-        playerHoleMap[entry.golfer_id][h.hole_number]=h.stableford_points;
-      });
-    });
-    const playerIds=Object.keys(playerHoleMap).map(Number);
-    if(playerIds.length<1)return{};
-    const holeWinners:Record<number,number>={};
-    for(let hNum=1;hNum<=18;hNum++){
-      const scores=playerIds
-        .map(id=>({id,pts:playerHoleMap[id]?.[hNum]}))
-        .filter(x=>x.pts!=null);
-      if(scores.length<1)continue;
-      const maxPts=Math.max(...scores.map(x=>x.pts));
-      const leaders=scores.filter(x=>x.pts===maxPts);
-      if(leaders.length===1) holeWinners[hNum]=leaders[0].id;
-    }
-    return holeWinners;
+  // Skin calculations for COMPLETED event weekly scorecard view. Both winners
+  // and payouts route through the shared lib/skins calc -- ONE rule, so the
+  // card and the recap can never disagree. (Live skins below build the same
+  // SkinHoleScore[] against liveEvent and call the same functions.)
+  const skinScoresFor=(entries:any[]):SkinHoleScore[]=>{
+    const paid=entries.filter((e:any)=>e.skins_paid);
+    const sumToGid:Record<number,number>={};
+    paid.forEach((e:any)=>{sumToGid[e.summary_id]=e.golfer_id;});
+    return holeScores
+      .filter((h:any)=>sumToGid[h.summary_id]!=null&&h.stableford_points!=null)
+      .map((h:any)=>({golferId:sumToGid[h.summary_id],hole:h.hole_number,points:h.stableford_points}));
   };
-  const skinHoleWinners=calcSkinHoleWinnersForEvent();
+  const skinHoleWinners=displayEvent?computeSkinWinners(skinScoresFor(eventEntries)):{};
 
-  // Skins payout for the COMPLETED event weekly view.
-  // NOTE: skins_payout_won is always stored as 0 in the DB (written at score-entry time
-  // before payouts are known), so we always derive it from hole scores.
-  const calcCompletedEventSkinPayouts:(()=>Record<number,number>)=()=>{
-    if(!displayEvent)return{};
-    const skinsPaid=eventEntries.filter((e:any)=>e.skins_paid);
-    if(!skinsPaid.length)return{};
-    const skinPot=skinsPaid.length*10;
-    const playerHoleMap:Record<number,Record<number,number>>={};
-    skinsPaid.forEach((entry:any)=>{
-      const hs=holeScores.filter((h:any)=>h.summary_id===entry.summary_id);
-      hs.forEach((h:any)=>{
-        if(h.stableford_points==null)return;
-        if(!playerHoleMap[entry.golfer_id])playerHoleMap[entry.golfer_id]={};
-        playerHoleMap[entry.golfer_id][h.hole_number]=h.stableford_points;
-      });
-    });
-    const playerIds=Object.keys(playerHoleMap).map(Number);
-    if(playerIds.length<1)return{};
-    const skinWins:Record<number,number>={};
-    for(let hNum=1;hNum<=18;hNum++){
-      const scores=playerIds
-        .map(id=>({id,pts:playerHoleMap[id]?.[hNum]}))
-        .filter(x=>x.pts!=null);
-      if(scores.length<1)continue;
-      const maxPts=Math.max(...scores.map(x=>x.pts));
-      const leaders=scores.filter(x=>x.pts===maxPts);
-      if(leaders.length===1){
-        skinWins[leaders[0].id]=(skinWins[leaders[0].id]||0)+1;
-      }
-    }
-    const totalSkins=Object.values(skinWins).reduce((s,n)=>s+n,0);
-    if(!totalSkins)return{};
-    const perSkin=skinPot/totalSkins;
-    const payouts:Record<number,number>={};
-    Object.entries(skinWins).forEach(([gid,wins])=>{payouts[parseInt(gid)]=wins*perSkin;});
-    return payouts;
-  };
-  const liveSkinPayouts=calcCompletedEventSkinPayouts();
+  // NOTE: skins_payout_won is always stored as 0 in the DB (written at
+  // score-entry time before payouts are known), so we always derive it.
+  const liveSkinPayouts=displayEvent
+    ?computeSkinPayouts(skinScoresFor(eventEntries),eventEntries.filter((e:any)=>e.skins_paid).length)
+    :{};
   const hasLiveSkins=Object.keys(liveSkinPayouts).length>0;
 
   // 1a) Show ALL golfers -- exclude In-Progress rounds, flag <15 as unqualified
@@ -1545,46 +1485,15 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
           .sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points);
         const liveCourse=courses.find((c:any)=>c.course_name===liveEvent.course_name);
 
-        // ── Live skins: highest stableford pts on a hole wins outright (no tie) ──
-        // Computed here so they use liveEvent/liveEntries, not displayEvent/eventEntries.
+        // ── Live skins: same shared calc as the completed view, against
+        // liveEvent/liveEntries. One rule, so live and final never diverge. ──
         const liveSkinsEligible=liveEntries.length>0&&liveEntries.every((e:any)=>e.entry_type==="Hole-by-Hole");
         const calcLiveSkinData=():{payouts:Record<number,number>,holeWinners:Record<number,number>}=>{
           if(!liveSkinsEligible)return{payouts:{},holeWinners:{}};
-          const skinsPaid=liveEntries.filter((e:any)=>e.skins_paid);
-          if(!skinsPaid.length)return{payouts:{},holeWinners:{}};
-          const skinPot=skinsPaid.length*10;
-          // Map: golfer_id -> hole_number -> stableford_points
-          const playerHoleMap:Record<number,Record<number,number>>={};
-          skinsPaid.forEach((entry:any)=>{
-            const hs=holeScores.filter((h:any)=>h.summary_id===entry.summary_id);
-            hs.forEach((h:any)=>{
-              if(h.stableford_points==null)return;
-              if(!playerHoleMap[entry.golfer_id])playerHoleMap[entry.golfer_id]={};
-              playerHoleMap[entry.golfer_id][h.hole_number]=h.stableford_points;
-            });
-          });
-          const playerIds=Object.keys(playerHoleMap).map(Number);
-          if(playerIds.length<1)return{payouts:{},holeWinners:{}};
-          const skinWins:Record<number,number>={};
-          const holeWinners:Record<number,number>={};
-          for(let hNum=1;hNum<=18;hNum++){
-            const scores=playerIds
-              .map(id=>({id,pts:playerHoleMap[id]?.[hNum]}))
-              .filter(x=>x.pts!=null);
-            if(scores.length<1)continue; // nobody has scored this hole yet
-            const maxPts=Math.max(...scores.map(x=>x.pts));
-            const leaders=scores.filter(x=>x.pts===maxPts);
-            if(leaders.length===1){
-              skinWins[leaders[0].id]=(skinWins[leaders[0].id]||0)+1;
-              holeWinners[hNum]=leaders[0].id;
-            }
-            // ties: no skin awarded for this hole
-          }
-          const totalSkins=Object.values(skinWins).reduce((s,n)=>s+n,0);
-          const perSkin=totalSkins?skinPot/totalSkins:0;
-          const payouts:Record<number,number>={};
-          Object.entries(skinWins).forEach(([gid,wins])=>{payouts[parseInt(gid)]=wins*perSkin;});
-          return{payouts,holeWinners};
+          const paidCount=liveEntries.filter((e:any)=>e.skins_paid).length;
+          if(!paidCount)return{payouts:{},holeWinners:{}};
+          const scores=skinScoresFor(liveEntries);
+          return{payouts:computeSkinPayouts(scores,paidCount),holeWinners:computeSkinWinners(scores)};
         };
         const{payouts:liveSkinPayoutsLocal,holeWinners:liveSkinHoleWinners}=calcLiveSkinData();
 
@@ -2613,6 +2522,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                       recentEventIds={completedEvents.filter((e:any)=>e.event_id!==displayEvent.event_id).slice(0,6).map((e:any)=>e.event_id)}
                       leaderboard={leaderboard}
                       events={events}
+                      eventOdds={eventOdds}
                     />
                   )}
 
