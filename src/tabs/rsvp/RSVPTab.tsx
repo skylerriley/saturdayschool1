@@ -596,8 +596,14 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:8,textAlign:"left"}}>Tee Times</div>
             <div ref={teeRowRef} style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:"6px 14px"}}>
               {selEvent.tee_times.map((t:string,i:number)=>(
-                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:dotHidden[i]?0:14}}>
-                  {i>0&&!dotHidden[i]&&<span style={{color:"var(--text-muted)",fontSize:20,fontWeight:900,lineHeight:1}}>·</span>}
+                // The dot is always rendered (constant layout footprint) and only
+                // VISUALLY hidden on a first-of-row time via visibility. Removing it
+                // from the DOM or collapsing the gap would change the row's width,
+                // which feeds back into the offsetTop measurement below and makes the
+                // ResizeObserver oscillate forever (endless flicker). visibility:hidden
+                // keeps the box, so wrap positions are stable regardless of dotHidden.
+                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:14}}>
+                  {i>0&&<span style={{color:"var(--text-muted)",fontSize:20,fontWeight:900,lineHeight:1,visibility:dotHidden[i]?"hidden":"visible"}}>·</span>}
                   <span data-tee-time style={{fontSize:20,fontWeight:800,color:"var(--green-700)",letterSpacing:"-0.01em"}}>{t}</span>
                 </span>
               ))}
