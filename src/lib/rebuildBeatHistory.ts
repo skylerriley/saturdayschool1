@@ -22,7 +22,7 @@
 // rows were authored by the engine as it was at the time, and they feed the
 // anti-repeat of every later event. See docs/highlights-r2-setup.md.
 import { selectDataBeats } from "./recapEngine";
-import { buildBeatsInput, hasHoleByHoleData } from "./buildBeatsInput";
+import { buildBeatsInput, hasHoleByHoleData, BEATS_CACHE_VERSION } from "./buildBeatsInput";
 
 export interface RebuildDeps {
   events: any[];
@@ -117,6 +117,9 @@ export async function rebuildBeatHistory(deps: RebuildDeps): Promise<RebuildResu
         protagonist_id: b.protagonistId,
         hole: b.hole,
         strength: b.strength,
+        // Stamp the authoring engine version so a later reader can detect that
+        // a window row is stale (written by an older engine) and rebuild.
+        engine_version: BEATS_CACHE_VERSION,
       };
       const edit = adminEdits[editKey(base)];
       if (edit) {

@@ -15,10 +15,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase, reportWriteError } from "../../../lib/supabaseClient";
 import { golferName } from "../../../lib/formatters";
 import { selectDataBeats, watchOrderCompare, type DataBeat } from "../../../lib/recapEngine";
-import { buildBeatsInput, hasHoleByHoleData, ANTI_REPEAT_WINDOW, beatsCacheKey } from "../../../lib/buildBeatsInput";
+import { buildBeatsInput, hasHoleByHoleData, ANTI_REPEAT_WINDOW, beatsCacheKey, BEATS_CACHE_VERSION } from "../../../lib/buildBeatsInput";
+import { runBeatHistoryRebuild } from "../../../lib/runBeatHistoryRebuild";
 import { holeAerialUrl, type RecapCard } from "./highlightsShared";
 import { HighlightsViewer } from "./HighlightsViewer";
 import { AddHighlightFlow } from "./AddHighlightFlow";
+
+// One auto-rebuild attempt per browser session, guarded across ALL mounted
+// HighlightsModule instances (event detail + season peeks can mount several).
+// The rebuild is the whole-season chronological replay, so it heals every
+// event's window at once -- there is never a reason to run it more than once
+// per session, and running it per-module would be a write storm.
+let autoRebuildTriedThisSession = false;
 
 const AUTO_ICON = (
   <svg viewBox="0 0 24 24" style={{ width: "100%", height: "100%", fill: "currentColor" }}>
@@ -128,12 +136,40 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
         .filter((e: any) => e.status === "Completed" && e.date < event.date)
         .sort((a: any, b: any) => b.date.localeCompare(a.date)); // most recent first
       const windowIds = priorByDate.slice(0, ANTI_REPEAT_WINDOW).map((e: any) => e.event_id);
+      const windowSet = new Set(windowIds);
       let history: any[] = [];
       const histIds = [...windowIds, eventId];
       try {
         history = await supabase.from("story_beats_history").select("*", `&event_id=in.(${histIds.join(",")})`);
       } catch (_: any) {}
       if (cancelled) return;
+
+      // Self-heal: the anti-repeat window must be composed by the CURRENT
+      // engine, else read-path beats disagree with the stored rows and a
+      // repeat slips through (e.g. a fade the rebuild never wrote, freeing the
+      // next event to repeat it). A window ROW whose engine_version != current
+      // (or null, pre-migration) was authored by an older engine. When that is
+      // detected, an admin session rebuilds the whole chain ONCE, then this
+      // effect re-runs (via beatsNonce) against fresh, current-version rows.
+      // Non-admins can't write, so they simply compose against what exists --
+      // the admin heal propagates to them on their next read.
+      const windowStale = history.some(
+        (h: any) => windowSet.has(h.event_id) && h.engine_version !== BEATS_CACHE_VERSION,
+      );
+      if (windowStale && adminMode && !autoRebuildTriedThisSession) {
+        autoRebuildTriedThisSession = true; // guard BEFORE awaiting: no concurrent module re-fires it
+        try {
+          await runBeatHistoryRebuild({ events, courses, signups, golfers, leaderboard, holeScores });
+          if (cancelled) return;
+          setBeatsNonce((n) => n + 1); // recompose against the rebuilt, current-version window
+          return;
+        } catch (_: any) {
+          // Rebuild failed (offline, permissions) -- fall through and compose
+          // against the stale window rather than showing nothing. The guard
+          // stays set so we don't retry-storm this session.
+        }
+      }
+
       setBeatHistory(history.filter((h: any) => h.event_id === eventId));
 
       try {

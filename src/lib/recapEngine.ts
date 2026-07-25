@@ -3039,11 +3039,21 @@ export function composeBeats(ctx: RoundContext, input: SelectBeatsInput): DataBe
   //     - (angle, protagonist) blocked for 3 events
   //   STEEP ANGLE DECAY: 0.45^n over a 5-6 event window rotates angle types.
   //   PREV-PROTAGONIST soft penalty: last week's stars are less likely.
-  // eventsAgo is 1-based-ish (0 = immediately-prior event). Rows without it
-  // are treated as "1 event ago".
+  // eventsAgo is 0-based (0 = immediately-prior event, 5 = six events back).
+  // Rows without it are treated as "1 event ago".
+  //
+  // MUST match the read path's fetch window EXACTLY. HighlightsModule fetches
+  // only ANTI_REPEAT_WINDOW (6) date-preceding events, i.e. eventsAgo 0..5. The
+  // rebuild instead passes EVERY prior row and relies on THIS filter to window
+  // them -- so if this admitted eventsAgo <= 6 (seven events, indices 0..6) it
+  // would keep an event the read path never fetched, and read-path beats would
+  // disagree with the stored rebuild (measured: event 305 composed a fade on
+  // read that the rebuild stored as a collapse, which then let the next event
+  // repeat the fade). Strictly `< RECENCY_WINDOW` keeps indices 0..5 -- exactly
+  // the six events the read path supplies.
   const RECENCY_WINDOW = 6;
   const ago = (h: BeatHistoryRow) => (h.eventsAgo != null ? h.eventsAgo : 1);
-  const recent = input.history.filter((h) => ago(h) <= RECENCY_WINDOW);
+  const recent = input.history.filter((h) => ago(h) < RECENCY_WINDOW);
 
   const angleCount: Record<string, number> = {};
   recent.forEach((h) => { angleCount[h.angle_type] = (angleCount[h.angle_type] || 0) + 1; });

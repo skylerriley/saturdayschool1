@@ -11,9 +11,8 @@
 // composer, because stored rows were authored by the engine as it was then and
 // they feed the anti-repeat of every later event.
 import { useState } from "react";
-import { supabase, reportWriteError } from "../../lib/supabaseClient";
-import { golferName } from "../../lib/formatters";
-import { rebuildBeatHistory } from "../../lib/rebuildBeatHistory";
+import { reportWriteError } from "../../lib/supabaseClient";
+import { runBeatHistoryRebuild } from "../../lib/runBeatHistoryRebuild";
 import { BEATS_CACHE_VERSION } from "../../lib/buildBeatsInput";
 
 export function BeatHistoryRebuild({ events, courses, signups, golfers, leaderboard, holeScores, showSuccess }: any) {
@@ -25,40 +24,12 @@ export function BeatHistoryRebuild({ events, courses, signups, golfers, leaderbo
     setRunning(true);
     setLog(["Reading existing rows..."]);
     try {
-      // Read admin edits BEFORE the wipe so hides / caption overrides survive.
-      let existingRows: any[] = [];
-      try {
-        existingRows = await supabase.from("story_beats_history").select("*", "");
-      } catch (_: any) {
-        setLog((p) => [...p, "Could not read existing rows (continuing -- admin edits may be lost)."]);
-      }
-
-      const result = await rebuildBeatHistory({
-        events, courses, signups, golfers, leaderboard, holeScores, golferName,
-        existingRows,
-        deleteAll: async () => {
-          setLog((p) => [...p, "Clearing story_beats_history..."]);
-          // The REST wrapper's delete() needs an equality match, so clear per
-          // event id rather than a blanket truncate.
-          const ids = [...new Set(existingRows.map((r: any) => r.event_id))];
-          for (const id of ids) {
-            await supabase.from("story_beats_history").delete({ event_id: id });
-          }
-        },
-        insertRows: async (rows: any[]) => { await supabase.from("story_beats_history").insert(rows); },
+      const result = await runBeatHistoryRebuild({
+        events, courses, signups, golfers, leaderboard, holeScores,
         onProgress: (done, total, label) => {
           setLog((p) => [...p, `(${done}/${total}) ${label}`]);
         },
       });
-
-      // Beats are cached per event in sessionStorage; the rebuild can change
-      // them, so drop this device's cache. Other devices pick up the new
-      // rows on their next read (or when BEATS_CACHE_VERSION is bumped).
-      try {
-        Object.keys(sessionStorage)
-          .filter((k) => k.startsWith("hl_beats_"))
-          .forEach((k) => sessionStorage.removeItem(k));
-      } catch (_: any) {}
 
       setLog((p) => [
         ...p,

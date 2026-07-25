@@ -550,6 +550,42 @@ test("no exact repeats: (angle,protagonist,hole) not twice in any 4-event window
   }
 });
 
+test("read/rebuild window parity: unwindowed history (real rebuild) selects the same as 6-event windowed history (read path)", () => {
+  // REGRESSION (the Trevor-Gnesin fade bug): the read path fetches only
+  // ANTI_REPEAT_WINDOW (6) date-preceding events, but rebuildBeatHistory passes
+  // EVERY prior row and relies on the engine's own recency filter to window
+  // them. If that filter is off by one (admits eventsAgo == 6, i.e. a 7th
+  // event), the two paths select different beats for the same event -- a fade
+  // shows on read that the rebuild never stored, freeing the next event to
+  // repeat it. inputFor() pre-windows to 6, so it can NEVER catch this; here we
+  // feed the FULL prior chain with true date-based eventsAgo and assert the
+  // engine filters it down to exactly the same selection as the windowed input.
+  const key = (b: DataBeat) => `${b.angle}|${b.protagonistId ?? "-"}|${b.hole ?? "-"}`;
+  const historyLog: BeatHistoryRow[] = [];
+  fx.events.forEach((ev: any, k: number) => {
+    // Windowed (read path / inputFor): only the 6 date-preceding events.
+    const windowed = selectDataBeats(inputFor(k, historyLog));
+
+    // Unwindowed (real rebuild): ALL prior rows, each carrying its true
+    // date-based eventsAgo (0 = immediately prior). The engine must filter.
+    const fullInput = inputFor(k, historyLog);
+    fullInput.history = historyLog.map((h) => {
+      const idx = fx.events.findIndex((e: any) => e.event_id === h.event_id);
+      return { ...h, eventsAgo: k - 1 - idx }; // 0 = immediately prior
+    });
+    const unwindowed = selectDataBeats(fullInput);
+
+    assert.deepEqual(
+      unwindowed.map(key),
+      windowed.map(key),
+      `event ${ev.event_id}: rebuild (unwindowed) and read-path (6-event) selections diverge`,
+    );
+
+    windowed.forEach((b) =>
+      historyLog.push({ event_id: ev.event_id, angle_type: b.angle, protagonist_id: b.protagonistId, hole: b.hole }));
+  });
+});
+
 test("angle rotation: no single angle type dominates more than ~60% of events", () => {
   const eventsWith: Record<string, number> = {};
   runs.forEach((r) => {

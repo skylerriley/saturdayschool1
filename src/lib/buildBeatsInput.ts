@@ -53,7 +53,7 @@ export const ANTI_REPEAT_WINDOW = 6;
 //      expands thin captions. Beat SELECTION is byte-identical (backtest asserts
 //      angle/protagonist/hole/strength vs a stored baseline), so NO history
 //      rebuild is required -- only this cache bump so viewers drop stale copy.
-export const BEATS_CACHE_VERSION = "v16";
+export const BEATS_CACHE_VERSION = "v17";
 export const beatsCacheKey = (eventId: number) => `hl_beats_${BEATS_CACHE_VERSION}_${eventId}`;
 
 export interface BeatsInputTables {
