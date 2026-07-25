@@ -343,8 +343,16 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
     // Only use eventOdds to surface extra golfers when no confirmed field exists.
     // When signups/leaderboard define the field, eventOdds may belong to a different
     // event (App.tsx loads odds for the soonest event only) and must not add players.
+    // HARD EXCLUSION: an explicit "No" RSVP always wins over a stale event_odds row
+    // (the backend live-odds function has been observed modelling opted-out golfers),
+    // so never let eventOdds resurrect someone who declined.
+    const optedOutIds = new Set<number>(
+      signups
+        .filter((s: any) => s.event_id === event?.event_id && s.attending === "No")
+        .map((s: any) => s.golfer_id as number),
+    );
     const lateAddGolferIds = allFieldIds.size === 0
-      ? (eventOdds ?? []).map((o: any) => o.golfer_id).filter((gid: number) => !playingIds.has(gid))
+      ? (eventOdds ?? []).map((o: any) => o.golfer_id).filter((gid: number) => !playingIds.has(gid) && !optedOutIds.has(gid))
       : [];
     const lateAddProfiles = lateAddGolferIds
       .map((gid: number) => golfers.find((g: any) => g.golfer_id === gid))

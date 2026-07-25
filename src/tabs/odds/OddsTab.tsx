@@ -100,10 +100,18 @@ export function OddsTab({ golfers, leaderboard, events, signups, courses, holeSc
     // (allFieldIds empty = event hasn't opened signups yet, so odds covers all members).
     // When a field IS confirmed, don't let eventOdds inject extra golfers — those rows
     // may belong to a different event (App.tsx loads odds for the soonest event only).
+    // HARD EXCLUSION: an explicit "No" RSVP always wins over a stale event_odds row.
+    // The backend live-odds function has been observed modelling opted-out golfers
+    // (whole-roster field), so never let eventOdds resurrect someone who declined.
+    const optedOutIds = new Set<number>(
+      signups
+        .filter((s: any) => s.event_id === parseInt(selEventId) && s.attending === "No")
+        .map((s: any) => s.golfer_id as number),
+    );
     const lateAddGolferIds = allFieldIds.size === 0
       ? (eventOdds ?? [])
           .map((o: any) => o.golfer_id)
-          .filter((gid: number) => !playingIds.has(gid))
+          .filter((gid: number) => !playingIds.has(gid) && !optedOutIds.has(gid))
       : [];
     const lateAddProfiles = lateAddGolferIds
       .map((gid: number) => golfers.find((g: any) => g.golfer_id === gid))
