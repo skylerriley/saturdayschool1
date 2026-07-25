@@ -26,7 +26,12 @@ const AUTO_ICON = (
   </svg>
 );
 
-export function HighlightsModule({ event, course, courses, signups, golfers, eventEntries, holeScores, holeImages, memberGolferId, adminMode, eventNumber, recentEventIds, leaderboard, events, eventOdds }: any) {
+// `compact` (Handoff #17): a condensed "peek" variant for the season-scoped
+// leaderboard surfaces (weekly/top15/season pages). Same rail + same viewer,
+// but NO Add tile (uploading belongs on the event detail, not a season page),
+// a condensed head that names the event, and a "See all" affordance that opens
+// the shared viewer. The full event-detail rail passes compact=false (default).
+export function HighlightsModule({ event, course, courses, signups, golfers, eventEntries, holeScores, holeImages, memberGolferId, adminMode, eventNumber, recentEventIds, leaderboard, events, eventOdds, compact = false }: any) {
   const eventId = event.event_id;
 
   // Hard gate for auto beats: same predicate the skins card uses -- every
@@ -324,22 +329,33 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
     );
   };
 
+  // Compact peek (Handoff #17 tweak): no header, no "See all", no Add tile, and
+  // NO truncation (show every applicable highlight tile). The Watch cover is
+  // kept but relabelled "Saturday Replay" in compact; full mode keeps "Watch".
+  const compactTiles = railCards;
+
   return (
     <div style={{ marginBottom: 14 }}>
-      <div className="hl-head"><div className="hl-title">Highlights</div></div>
-      
-      <div className="rail">
-        <div className="story add" onClick={() => setAddOpen(true)}>
-          <div className="ring"><div className="plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></div></div>
-          <div className="story-name">Add</div>
+      {!compact && (
+        <div className="hl-head">
+          <div className="hl-title">Highlights</div>
         </div>
+      )}
+
+      <div className="rail">
+        {!compact && (
+          <div className="story add" onClick={() => setAddOpen(true)}>
+            <div className="ring"><div className="plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></div></div>
+            <div className="story-name">Add</div>
+          </div>
+        )}
         {cards.length > 0 && (
           <div className="story cover" onClick={() => setViewerIndex(0)}>
             <div className="ring"><div className="ring-inner"><div className="cv"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div></div></div>
-            <div className="story-name">Watch</div>
+            <div className="story-name">{compact ? "Saturday Replay" : "Watch"}</div>
           </div>
         )}
-        {railCards.map(railTile)}
+        {compactTiles.map(railTile)}
       </div>
 
       {viewerIndex != null && (
@@ -362,14 +378,23 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
           onClose={() => setViewerIndex(null)}
           onView={(v: any) => {
             // Fire-and-forget analytics write. NEVER awaited on the render path
-            // and silent on failure -- a failed insert (or a missing table
-            // pre-migration) must not affect what renders. The DB unique index
-            // on (beat_key, viewer_name) makes a duplicate insert a harmless
-            // no-op, so no read-before-write is needed. Optimistically reflect
-            // the view locally so the "Seen by" count updates without a refetch.
+            // and silent on failure. A view captures the FIRST timestamp only:
+            // the DB unique index on (beat_key, viewer_name) rejects any repeat
+            // insert (no upsert, no on_conflict -> the stored viewed_at is
+            // never overwritten), and this client mirror NEVER replaces an
+            // existing row. So a second view by the same person is a no-op end
+            // to end -- the initial view time stands.
+            const already = views.some((x: any) => x.beat_key === v.beatKey && x.viewer_name === v.viewerName);
+            if (already) return; // seen this pair already -> nothing changes
+            // Optimistic placeholder so the "Seen by" count updates immediately.
+            // pending:true marks that viewed_at is a client guess; it is
+            // reconciled to the DB's own now() from the returned row below, so
+            // the displayed time is the true first-view instant, not a client
+            // clock that could later look like it "changed".
+            const tempId = -Date.now();
             setViews((prev) => (prev.some((x: any) => x.beat_key === v.beatKey && x.viewer_name === v.viewerName)
               ? prev
-              : [...prev, { id: Date.now(), beat_key: v.beatKey, event_id: v.eventId, highlight_id: v.highlightId, angle_type: v.angleType, viewer_name: v.viewerName, viewed_at: new Date().toISOString() }]));
+              : [...prev, { id: tempId, beat_key: v.beatKey, event_id: v.eventId, highlight_id: v.highlightId, angle_type: v.angleType, viewer_name: v.viewerName, viewed_at: new Date().toISOString(), pending: true }]));
             try {
               supabase.from("highlight_views").insert({
                 beat_key: v.beatKey,
@@ -377,6 +402,14 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
                 highlight_id: v.highlightId,
                 angle_type: v.angleType,
                 viewer_name: v.viewerName,
+              }).then((rows: any[]) => {
+                // Replace the placeholder with the real DB row (its server-side
+                // viewed_at is the authoritative first-view time). On a rejected
+                // duplicate the insert returns nothing/throws -> keep whatever
+                // is already there; a later full refetch corrects it anyway.
+                const saved = Array.isArray(rows) && rows[0] ? rows[0] : null;
+                if (!saved) return;
+                setViews((prev) => prev.map((x: any) => (x.id === tempId ? { ...saved, pending: false } : x)));
               }).catch((_: any) => {});
             } catch (_: any) {}
           }}

@@ -19,7 +19,8 @@ import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
 import { WinProbabilityChart } from "../../WinProbabilityChart";
 import { HighlightsModule } from "./highlights/HighlightsModule";
-import { highlightsEnabled, isArtisticView } from "./highlights/highlightsShared";
+import { highlightsEnabled, isArtisticView, hoursSinceEvent, withinPostRoundWindow, POST_ROUND_WINDOW_HOURS } from "./highlights/highlightsShared";
+import { hasHoleByHoleData } from "../../lib/buildBeatsInput";
 import { uploadCourseAsset } from "../../lib/r2Upload";
 
 ensureShimmer();
@@ -417,6 +418,23 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   const completedEvents=[...events].filter((e:any)=>e.status==="Completed").sort((a:any,b:any)=>new Date(b.date).getTime()-new Date(a.date).getTime());
   const seasonEvents=completedEvents.filter((e:any)=>e.season===selSeason);
   const displayEvent=selEventId?completedEvents.find((e:any)=>e.event_id===selEventId):seasonEvents[0];
+
+  // Most recent completed event that carries hole-by-hole data (=> has auto
+  // beats / can hold highlights). Drives the season-scoped "latest from this
+  // week" peek rail (Handoff #17). The module still self-suppresses (renders
+  // null) if it has neither beats nor uploads, so this only needs to find the
+  // best candidate; it does not need to prove uploads exist.
+  const latestHighlightEvent=useMemo(()=>{
+    for(const ev of completedEvents){
+      const entries=leaderboard.filter((r:any)=>r.event_id===ev.event_id);
+      if(hasHoleByHoleData(entries))return ev;
+    }
+    return null;
+  },[completedEvents,leaderboard]);
+  const latestHighlightEntries=useMemo(()=>latestHighlightEvent
+    ?dedupeLeaderboard(leaderboard.filter((e:any)=>e.event_id===latestHighlightEvent.event_id)).sort((a:any,b:any)=>b.total_stableford_points-a.total_stableford_points)
+    :[]
+  ,[latestHighlightEvent,leaderboard]);
 
   // Event number used for hero hole image (same formula as EventFeedCard)
   const overlayEventNumMap:Record<number,number>={};
@@ -951,9 +969,10 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     // happened" -> "this is now history" without any explicit label.
     let decayOpacity=0;
     if(mode==="weekly"&&row.pos===1&&displayEvent?.date){
-      const eventTime=new Date(displayEvent.date+"T00:00:00").getTime();
-      const hoursSince=(Date.now()-eventTime)/3600000;
-      if(hoursSince>=0&&hoursSince<36)decayOpacity=1-hoursSince/36;
+      // Same post-round time source as the highlights window (Handoff #17):
+      // hoursSinceEvent is the single shared calculation.
+      const hoursSince=hoursSinceEvent(displayEvent);
+      if(hoursSince!=null&&hoursSince>=0&&hoursSince<POST_ROUND_WINDOW_HOURS)decayOpacity=1-hoursSince/POST_ROUND_WINDOW_HOURS;
     }
 
     return(
@@ -1460,6 +1479,46 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
           options={allSeasons.map(y=>({value:y,label:`${y} Season`}))}
         />
       </div>
+
+      {/* Highlights peek (Handoff #17): the compact "latest from this week" rail
+          sits below the season picker and above the sub-tab pills, so it shows
+          on all three season-scoped views (weekly / top15 / season). Surfaces
+          the MOST RECENT completed event with hole data. Two conditions, admin
+          gate FIRST so it short-circuits: (a) HIGHLIGHTS_AUDIENCE allows, AND
+          (b) within the 36h post-round window. The module self-suppresses when
+          the event has no beats and no uploads. Uploading is NOT offered here
+          (compact) -- that belongs on the event detail. The event-detail rail
+          is a separate, permanent, un-windowed mount and is unaffected. */}
+      {/* Two conditions, ADMIN GATE FIRST so it short-circuits before the time
+          math: (a) HIGHLIGHTS_AUDIENCE allows, then (b) an event resolved and
+          within the 36h post-round window. Outside the window the rail is
+          simply not mounted here (a single visibility condition, not a
+          show-then-hide). The permanent event-detail rail is a separate mount
+          and ignores this window entirely.
+          TESTING (remove before go-live): admins bypass the 36h window so the
+          latest event's highlights always show on the leaderboard tabs. The
+          window still applies for the eventual HIGHLIGHTS_AUDIENCE='all' rollout
+          (non-admin viewers). */}
+      {highlightsEnabled(adminMode)&&latestHighlightEvent&&(adminMode||withinPostRoundWindow(latestHighlightEvent,POST_ROUND_WINDOW_HOURS))&&(
+        <HighlightsModule
+          compact
+          event={latestHighlightEvent}
+          course={courses.find((c:any)=>c.course_name===latestHighlightEvent.course_name)}
+          courses={courses}
+          signups={signups}
+          golfers={golfers}
+          eventEntries={latestHighlightEntries}
+          holeScores={holeScores}
+          holeImages={holeImages}
+          memberGolferId={memberGolferId}
+          adminMode={adminMode}
+          eventNumber={overlayEventNumMap[latestHighlightEvent.event_id]||1}
+          recentEventIds={completedEvents.filter((e:any)=>e.event_id!==latestHighlightEvent.event_id).slice(0,6).map((e:any)=>e.event_id)}
+          leaderboard={leaderboard}
+          events={events}
+          eventOdds={eventOdds}
+        />
+      )}
 
       <div ref={pillSentinelRef} style={{height:1,marginBottom:-1}}/>
       <div ref={pillRowRef} className="tab-sub">

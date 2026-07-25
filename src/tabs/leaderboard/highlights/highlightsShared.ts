@@ -10,6 +10,25 @@ export function highlightsEnabled(adminMode: boolean): boolean {
   return HIGHLIGHTS_AUDIENCE === "all" || (HIGHLIGHTS_AUDIENCE === "admin" && adminMode);
 }
 
+// Post-round freshness window (Handoff #17). Extracted from the leaderboard's
+// existing "post-round decay" shimmer (LeaderboardTab renderLbRow) so the two
+// share ONE time calculation rather than duplicating it -- same event.date
+// basis, same Date.now() client clock, same default 36h threshold. The league
+// has no `completed_at`, so completion is dated from event.date at local
+// midnight; this is a CLIENT-TIME window, not server-enforced (acceptable for a
+// private league, but stated). Returns false for a missing/absent date.
+export const POST_ROUND_WINDOW_HOURS = 36;
+export function hoursSinceEvent(event: { date?: string } | null | undefined): number | null {
+  if (!event?.date) return null;
+  const t = new Date(event.date + "T00:00:00").getTime();
+  if (!Number.isFinite(t)) return null;
+  return (Date.now() - t) / 3600000;
+}
+export function withinPostRoundWindow(event: { date?: string } | null | undefined, hours: number = POST_ROUND_WINDOW_HOURS): boolean {
+  const h = hoursSinceEvent(event);
+  return h != null && h >= 0 && h < hours;
+}
+
 // One card in the unified watch model (merged, sorted array the viewer plays).
 export interface RecapCard {
   kind: "data" | "human";

@@ -260,11 +260,11 @@ export function ProfileView({ golfer, golfers, events, leaderboard, holeScores, 
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>HCP</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1,color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{posLabel(seasonRow.pos, seasonRow.tied)}</div>
+          <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1,color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{seasonRow ? posLabel(seasonRow.pos, seasonRow.tied) : "--"}</div>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Season Avg</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1,color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{posLabel(top15Row.pos, top15Row.tied)}</div>
+          <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1,color: "var(--text-primary)", textShadow: STAT_BEZEL_SHADOW }}>{top15Row ? posLabel(top15Row.pos, top15Row.tied) : "--"}</div>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>Top 15</div>
         </div>
       </div>

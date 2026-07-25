@@ -1361,8 +1361,8 @@ const CSS = `
   .hl-head{display:flex;align-items:baseline;justify-content:space-between;padding:2px 2px 3px;}
   .hl-title{font-family:var(--font-serif);font-size:24px;color:var(--green-800);}
   .hl-sub{padding:0 2px 10px;font-size:14px;color:var(--text-muted);}
-  .rail{display:flex;gap:2px;overflow-x:auto;padding:2px 2px 10px;-webkit-overflow-scrolling:touch;}
-  .rail::-webkit-scrollbar{height:0;}
+  .rail{display:flex;gap:2px;overflow-x:auto;padding:2px 2px 2px;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;}
+  .rail::-webkit-scrollbar{height:0;width:0;display:none;}
   .story{flex:0 0 auto;width:88px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
   .ring{width:80px;height:80px;border-radius:50%;padding:3px;position:relative;background:conic-gradient(from 210deg,var(--green-600),var(--green-800),var(--gold-700),var(--gold-400),var(--green-600));}
   .ring-inner{width:100%;height:100%;border-radius:50%;background:var(--surface);padding:3px;display:flex;align-items:center;justify-content:center;}
