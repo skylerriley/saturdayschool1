@@ -94,7 +94,12 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
       // Wrapped separately so a missing highlight_views table (pre-migration)
       // never blanks the highlights themselves.
       try {
-        const vw = await supabase.from("highlight_views").select("*", `&event_id=eq.${eventId}`);
+        // MUST order by viewed_at (or another real column): the default
+        // select() orders by `created_at`, which highlight_views does NOT have,
+        // so it 400s and the whole fetch throws -> views stays empty and the
+        // "Seen by" sheet only ever shows the current session's own optimistic
+        // rows. selectFiltered lets us pass the real order column.
+        const vw = await supabase.from("highlight_views").selectFiltered("*", `&event_id=eq.${eventId}`, "viewed_at");
         if (!cancelled) setViews(vw);
       } catch (_: any) {
         if (!cancelled) setViews([]);
