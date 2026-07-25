@@ -2,9 +2,9 @@
 // component files so react-refresh stays happy).
 import type { DataBeat } from "../../../lib/recapEngine";
 
-// Feature flag: 'admin' => only admin-unlocked devices see the module.
-// Flip to 'all' to roll out to members.
-export const HIGHLIGHTS_AUDIENCE: "admin" | "all" = "admin";
+// Feature flag: 'admin' => only admin-unlocked devices see the module;
+// 'all' => visible to every member. Rolled out to all members 2026-07-25.
+export const HIGHLIGHTS_AUDIENCE: "admin" | "all" = "all";
 
 export function highlightsEnabled(adminMode: boolean): boolean {
   return HIGHLIGHTS_AUDIENCE === "all" || (HIGHLIGHTS_AUDIENCE === "admin" && adminMode);

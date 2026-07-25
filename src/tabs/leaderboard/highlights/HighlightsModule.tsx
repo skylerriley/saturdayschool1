@@ -65,9 +65,10 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
   };
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
-  // Fetch human highlights + their social rows. Only runs when the module is
-  // mounted, which only happens behind the admin gate -- members never hit
-  // these tables.
+  // Fetch human highlights + their social rows. Runs whenever the module is
+  // mounted (HIGHLIGHTS_AUDIENCE='all' since 2026-07-25, so every member --
+  // not just admins -- reads these tables via the anon key; all highlights
+  // tables grant anon select).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -334,10 +335,17 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
     );
   };
 
-  // Compact peek (Handoff #17 tweak): no header, no "See all", no Add tile, and
-  // NO truncation (show every applicable highlight tile). The Watch cover is
-  // kept but relabelled "Saturday Replay" in compact; full mode keeps "Watch".
+  // Compact peek (Handoff #17 tweak): no header, no "See all", and NO
+  // truncation (show every applicable highlight tile). The Watch cover is kept
+  // but relabelled "Saturday Replay" in compact; full mode keeps "Watch". The
+  // Add tile leads the FULL rail but TRAILS the compact rail (after the tiles).
   const compactTiles = railCards;
+  const addTile = (
+    <div className="story add" onClick={() => setAddOpen(true)}>
+      <div className="ring"><div className="plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></div></div>
+      <div className="story-name">Add</div>
+    </div>
+  );
 
   return (
     <div style={{ marginBottom: 14 }}>
@@ -348,12 +356,7 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
       )}
 
       <div className="rail">
-        {!compact && (
-          <div className="story add" onClick={() => setAddOpen(true)}>
-            <div className="ring"><div className="plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></div></div>
-            <div className="story-name">Add</div>
-          </div>
-        )}
+        {!compact && addTile}
         {cards.length > 0 && (
           <div className="story cover" onClick={() => setViewerIndex(0)}>
             <div className="ring"><div className="ring-inner"><div className="cv"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></div></div></div>
@@ -361,6 +364,7 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
           </div>
         )}
         {compactTiles.map(railTile)}
+        {compact && addTile}
       </div>
 
       {viewerIndex != null && (

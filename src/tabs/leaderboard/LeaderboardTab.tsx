@@ -1489,17 +1489,14 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
           the event has no beats and no uploads. Uploading is NOT offered here
           (compact) -- that belongs on the event detail. The event-detail rail
           is a separate, permanent, un-windowed mount and is unaffected. */}
-      {/* Two conditions, ADMIN GATE FIRST so it short-circuits before the time
-          math: (a) HIGHLIGHTS_AUDIENCE allows, then (b) an event resolved and
-          within the 36h post-round window. Outside the window the rail is
-          simply not mounted here (a single visibility condition, not a
-          show-then-hide). The permanent event-detail rail is a separate mount
-          and ignores this window entirely.
-          TESTING (remove before go-live): admins bypass the 36h window so the
-          latest event's highlights always show on the leaderboard tabs. The
-          window still applies for the eventual HIGHLIGHTS_AUDIENCE='all' rollout
-          (non-admin viewers). */}
-      {highlightsEnabled(adminMode)&&latestHighlightEvent&&(adminMode||withinPostRoundWindow(latestHighlightEvent,POST_ROUND_WINDOW_HOURS))&&(
+      {/* Two conditions, AUDIENCE GATE FIRST so it short-circuits before the
+          time math: (a) HIGHLIGHTS_AUDIENCE allows this viewer, then (b) an
+          event resolved and within the 36h post-round window. Outside the
+          window the rail is simply not mounted here (a single visibility
+          condition, not a show-then-hide). The permanent event-detail rail is a
+          separate mount and ignores this window entirely. Everyone -- admins
+          included -- follows the same 36h rule. */}
+      {highlightsEnabled(adminMode)&&latestHighlightEvent&&withinPostRoundWindow(latestHighlightEvent,POST_ROUND_WINDOW_HOURS)&&(
         <HighlightsModule
           compact
           event={latestHighlightEvent}
