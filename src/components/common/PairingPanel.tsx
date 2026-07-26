@@ -402,6 +402,14 @@ export function PairingPanel({
               }
               className="btn btn-outline"
               style={{ flex: 1, textDecoration: "none", border: "none", background: "var(--earth-50)", boxShadow: BEZEL_SUBTAB_RAISED }}
+              onClick={() => {
+                // Emailing pairings implicitly confirms them: admins reliably
+                // email every set/update but sometimes forget to hit Confirm,
+                // leaving the event stuck pre-"Pairings Set". Confirm on email
+                // so the two never drift. (No-op writes if already confirmed &
+                // unchanged; the mailto still opens — we don't preventDefault.)
+                if (!(pairingsConfirmed && !pairingsChanged)) confirmPairings();
+              }}
             >
               ✉ Email Pairings
             </a>
