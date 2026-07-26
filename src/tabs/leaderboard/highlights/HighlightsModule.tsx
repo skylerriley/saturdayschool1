@@ -80,22 +80,41 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      let hl: any[] = [];
       try {
-        const hl = await supabase.from("highlights").select("*", `&event_id=eq.${eventId}&hidden=eq.false`);
+        hl = await supabase.from("highlights").select("*", `&event_id=eq.${eventId}&hidden=eq.false`);
         if (cancelled) return;
         setRows(hl);
-        if (hl.length > 0) {
-          const ids = hl.map((r: any) => r.id).join(",");
-          const [lk, cm] = await Promise.all([
-            supabase.from("highlight_likes").select("*", `&highlight_id=in.(${ids})`),
-            supabase.from("highlight_comments").select("*", `&highlight_id=in.(${ids})`),
-          ]);
-          if (cancelled) return;
-          setLikes(lk);
-          setComments(cm);
-        }
       } catch (_: any) {
         if (!cancelled) setRows([]);
+      }
+      // Likes/comments cover BOTH kinds via the beat_key scheme (20260725):
+      //   human -> 'h:'+id, auto beat -> 'a:'+eventId+':'+angle.
+      // Auto beats are recomputed on read and aren't in the highlights list, so
+      // we can't scope by highlight_id anymore. Every social row for THIS event's
+      // auto beats has a beat_key starting 'a:{eventId}:', and every human row
+      // starts 'h:{one of these ids}'. A single like.(a:{eventId}:*) fetch grabs
+      // all auto rows; human rows come from the id list. We OR the two so one
+      // round-trip per table covers the whole event.
+      //
+      // SEPARATE try (mirrors the highlight_views fetch below): the beat_key
+      // column is added by 20260725. Against a pre-migration DB this query 400s;
+      // isolating it means a missing column blanks the counts, NOT the highlights
+      // themselves. Once applied, this is the normal path.
+      try {
+        const humanIds = hl.map((r: any) => `h:${r.id}`);
+        const orParts = [`beat_key.like.a:${eventId}:*`];
+        if (humanIds.length > 0) orParts.push(`beat_key.in.(${humanIds.join(",")})`);
+        const socialFilter = `&or=(${orParts.join(",")})`;
+        const [lk, cm] = await Promise.all([
+          supabase.from("highlight_likes").select("*", socialFilter),
+          supabase.from("highlight_comments").select("*", socialFilter),
+        ]);
+        if (cancelled) return;
+        setLikes(lk);
+        setComments(cm);
+      } catch (_: any) {
+        if (!cancelled) { setLikes([]); setComments([]); }
       }
       // Views are scoped by event_id (auto beats have no highlight_id, so they
       // can't be joined through the highlights list) and loaded independently:
@@ -463,23 +482,31 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
           onDeleteHighlight={deleteHighlight}
           onEditHighlightCaption={editHighlightCaption}
           onEditHighlightDetails={editHighlightDetails}
-          onToggleLike={(highlightId: number) => {
+          onToggleLike={(social: any) => {
+            // `social` = { beatKey, highlightId, angleType } from the viewer --
+            // one shape for both human highlights and auto beats. Dedupe + all
+            // writes key on beat_key (20260725); highlight_id / angle_type are
+            // denormalized columns for analytics, null on the kind that lacks them.
             if (!memberName) { showToast("Pick your profile in Settings to like highlights"); return; }
-            const mine = likes.find((l: any) => l.highlight_id === highlightId && l.liker_name === memberName);
+            const { beatKey, highlightId, angleType } = social;
+            if (!beatKey) return;
+            const mine = likes.find((l: any) => l.beat_key === beatKey && l.liker_name === memberName);
             if (mine) {
               setLikes((prev) => prev.filter((l: any) => l !== mine));
-              supabase.from("highlight_likes").delete({ highlight_id: highlightId, liker_name: mine.liker_name }).catch(reportWriteError("Unlike"));
+              supabase.from("highlight_likes").delete({ beat_key: beatKey, liker_name: mine.liker_name }).catch(reportWriteError("Unlike"));
             } else {
-              setLikes((prev) => [...prev, { id: Date.now(), highlight_id: highlightId, liker_name: memberName }]);
-              supabase.from("highlight_likes").insert({ highlight_id: highlightId, liker_name: memberName }).catch(reportWriteError("Like"));
+              setLikes((prev) => [...prev, { id: Date.now(), beat_key: beatKey, highlight_id: highlightId ?? null, angle_type: angleType ?? null, liker_name: memberName }]);
+              supabase.from("highlight_likes").insert({ beat_key: beatKey, highlight_id: highlightId ?? null, angle_type: angleType ?? null, liker_name: memberName }).catch(reportWriteError("Like"));
             }
           }}
-          onAddComment={async (highlightId: number, text: string) => {
+          onAddComment={async (social: any, text: string) => {
+            const { beatKey, highlightId, angleType } = social;
+            if (!beatKey) return;
             const name = memberName || "Anonymous";
-            const temp = { id: Date.now(), highlight_id: highlightId, commenter_name: name, text, created_at: new Date().toISOString() };
+            const temp = { id: Date.now(), beat_key: beatKey, highlight_id: highlightId ?? null, angle_type: angleType ?? null, commenter_name: name, text, created_at: new Date().toISOString() };
             setComments((prev) => [...prev, temp]);
             try {
-              const [inserted] = await supabase.from("highlight_comments").insert({ highlight_id: highlightId, commenter_name: name, text });
+              const [inserted] = await supabase.from("highlight_comments").insert({ beat_key: beatKey, highlight_id: highlightId ?? null, angle_type: angleType ?? null, commenter_name: name, text });
               if (inserted) setComments((prev) => prev.map((c: any) => (c === temp ? inserted : c)));
             } catch (e: any) {
               setComments((prev) => prev.filter((c: any) => c !== temp));

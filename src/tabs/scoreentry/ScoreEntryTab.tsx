@@ -8,7 +8,7 @@ import { rebuildBeatHistory } from "../../lib/rebuildBeatHistory";
 
 const emptyScorer=()=>({golferId:"",courseId:"",totalPts:"",grossScores:Array(18).fill(""),submitted:false,started:false,summaryId:null as number|null});
 
-export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,setLeaderboardLocal,holeScores,setHoleScores,setEvents,dbUpsertHoleScore,dbDeleteHoleScore,scoreMode,setScoreMode,scoreEventId,setScoreEventId,scorers,setScorers,showSuccess,showScoreMsg,scoreMsg}:any){
+export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderboard,setLeaderboard,setLeaderboardLocal,holeScores,setHoleScores,setEvents,dbUpsertHoleScore,dbDeleteHoleScore,scoreMode,setScoreMode,scoreEventId,setScoreEventId,scorers,setScorers,showSuccess,showScoreMsg,scoreMsg,memberGolferId}:any){
   // State is lifted to App so it survives tab navigation
   const mode=scoreMode;
   const setMode=setScoreMode;
@@ -833,7 +833,22 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
         }
         const netsByPlayer=view==="card"?[]:sideScorers.map(s=>s.sideCalcs.map((h:any)=>h.net));
         const ninesPts=view==="nines"?Array.from({length:18},(_,h)=>calcNinesHolePoints(netsByPlayer.map(p=>p[h]))):[];
-        const sixes=view==="sixes"?calcSixes(netsByPlayer,sixesPartners):null;
+        // Sixes anchor: if the identified member is one of the four scorers,
+        // read the pairings from their seat so the chips name *their* partners
+        // ("Me & B" vs "Me & C") — easier to recognise than an arbitrary ref.
+        // Otherwise fall back to seat 0 (the default reference).
+        const sixesRefIdx=view==="sixes"
+          ?Math.max(0,activeScorersFull.findIndex((s:any)=>memberGolferId!=null&&s.g?.golfer_id===memberGolferId))
+          :0;
+        // Seats that can be the anchor's partner (everyone but the anchor).
+        const sixesPartnerOpts=[0,1,2,3].filter(i=>i!==sixesRefIdx);
+        // Remap stored picks so they're always valid for the current anchor: a
+        // pick that lands on the anchor (or is otherwise stale for this anchor)
+        // falls back to that segment's slot in the standard distinct-partner
+        // rotation. A valid pick — including one the user just tapped — is kept.
+        const effectivePartners=sixesPartners.map((p,seg)=>
+          p!==sixesRefIdx&&sixesPartnerOpts.includes(p)?p:sixesPartnerOpts[seg]);
+        const sixes=view==="sixes"?calcSixes(netsByPlayer,effectivePartners,sixesRefIdx):null;
         const teamLabel=(t:number[])=>t.map(firstName).join(" & ");
         return(
           <div style={{marginTop:8,marginBottom:24}}>
@@ -933,18 +948,18 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                   {[0,1,2].map(seg=>(
                     <div key={seg} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
                       <span style={{fontSize:14,fontWeight:700,color:"var(--green-800)"}}>#{seg*6+1}–{seg*6+6}</span>
-                      {[1,2,3].map(p=>{
-                        const sel=sixesPartners[seg]===p;
+                      {sixesPartnerOpts.map(p=>{
+                        const sel=effectivePartners[seg]===p;
                         return(
                           <button key={p} onClick={()=>setSixesPartners(prev=>prev.map((v,i)=>i===seg?p:v))}
                             style={{cursor:"pointer",borderRadius:14,padding:"4px 10px",fontSize:12,fontWeight:700,border:`1.5px solid ${sel?"var(--green-600)":"var(--border)"}`,background:sel?"var(--green-50)":"var(--surface)",color:sel?"var(--green-800)":"var(--text-muted)"}}>
-                            {firstName(0)} & {firstName(p)}
+                            {firstName(sixesRefIdx)} & {firstName(p)}
                           </button>
                         );
                       })}
                     </div>
                   ))}
-                  <div style={{fontSize:11,color:"var(--text-muted)"}}>Pick {firstName(0)}'s partner for each stretch — the other two are the opposing team.</div>
+                  <div style={{fontSize:11,color:"var(--text-muted)"}}>Pick {firstName(sixesRefIdx)}'s partner for each stretch — the other two are the opposing team.</div>
                 </div>
                 <div className={`score-grid${sheetStuck?" stuck":""}`}>
                   <div ref={sheetSentinelRef} style={{height:1}}/>

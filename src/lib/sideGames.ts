@@ -31,15 +31,19 @@ export type SixesHoleResult = {
 };
 
 // Sixes: 2v2 best-ball skins, teams rotate every 6 holes.
-// partnerOfFirst[seg] = index (1–3) of player 0's partner for that segment;
+// `anchor` is the reference player the pairing chips read from (index 0 by
+// default, but the score sheet passes the identified member's seat so the
+// chips name the pairings from *their* perspective — easier to recognise
+// your own partner than whoever the default reference happens to be).
+// partnerOfAnchor[seg] = index of the anchor's partner for that segment;
 // the other two players are the opposing team. Skins carry across segment
 // boundaries (new teams inherit the pot); whatever still rides after 18 is
 // forfeited. Holes missing any score are "pending": no skin awarded and the
 // carry passes through — everything recomputes as scores fill in.
-export function calcSixes(netsByPlayer: (number | null)[][], partnerOfFirst: number[]) {
-  const teamsBySegment = partnerOfFirst.map(p => {
-    const a = [0, p];
-    const b = [1, 2, 3].filter(i => i !== p);
+export function calcSixes(netsByPlayer: (number | null)[][], partnerOfAnchor: number[], anchor = 0) {
+  const teamsBySegment = partnerOfAnchor.map(p => {
+    const a = [anchor, p];
+    const b = [0, 1, 2, 3].filter(i => i !== anchor && i !== p);
     return [a, b] as [number[], number[]];
   });
   let carry = 0;

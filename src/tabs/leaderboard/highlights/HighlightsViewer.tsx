@@ -705,7 +705,9 @@ export function HighlightsViewer({
   onHideBeat, onEditBeatCaption, onDeleteHighlight, onEditHighlightCaption, onEditHighlightDetails,
 }: any) {
   const [idx, setIdx] = useState<number>(Math.max(0, Math.min(startIndex, cards.length - 1)));
-  const [commentsFor, setCommentsFor] = useState<number | null>(null);
+  // Holds the beat_key of the card whose comments sheet is open (was a numeric
+  // highlight_id; now a beat_key string so auto beats can open it too).
+  const [commentsFor, setCommentsFor] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [seenSheetOpen, setSeenSheetOpen] = useState(false); // "Seen by" names sheet
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1239,10 +1241,19 @@ export function HighlightsViewer({
     });
   }
 
-  const cardLikes = card.kind === "human" ? likes.filter((l: any) => l.highlight_id === card.row.id) : [];
-  const cardComments = card.kind === "human" ? comments.filter((cm: any) => cm.highlight_id === card.row.id) : [];
-  const iLiked = card.kind === "human" && memberName != null && cardLikes.some((l: any) => l.liker_name === memberName);
-  const sheetComments = commentsFor != null ? comments.filter((cm: any) => cm.highlight_id === commentsFor) : [];
+  // Likes/comments key on beat_key for BOTH kinds now (auto beats have no row
+  // id -- 20260725). cardKey is 'h:'+id for human, 'a:'+event+':'+angle for auto.
+  const cardLikes = cardKey ? likes.filter((l: any) => l.beat_key === cardKey) : [];
+  const cardComments = cardKey ? comments.filter((cm: any) => cm.beat_key === cardKey) : [];
+  const iLiked = cardKey != null && memberName != null && cardLikes.some((l: any) => l.liker_name === memberName);
+  const sheetComments = commentsFor != null ? comments.filter((cm: any) => cm.beat_key === commentsFor) : [];
+  // The social identity passed to like/comment handlers: beat_key plus the
+  // denormalized id/angle columns (one populated per kind, the other null).
+  const socialFor = (c: RecapCard) => ({
+    beatKey: beatKeyOf(c, event?.event_id),
+    highlightId: c.kind === "human" ? c.row?.id ?? null : null,
+    angleType: c.kind === "data" ? c.beat?.angle ?? null : null,
+  });
 
   // The paused class freezes every CSS animation while held (no visible
   // indicator by design).
@@ -1329,6 +1340,9 @@ export function HighlightsViewer({
           {eventDateLabel && <span className="beat-date"> • {eventDateLabel}</span>}
           {seenChip}
         </div>
+        {/* Auto beats are now likeable/commentable too (beat_key-keyed social,
+            20260725). Same action bar the human footer renders. */}
+        <div className="v-actions beat-actions">{socialActions}</div>
       </div>
     );
   };
@@ -1347,6 +1361,22 @@ export function HighlightsViewer({
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
       <span>{cardViewers.length}</span>
     </button>
+  ) : null;
+
+  // Like + comment buttons -- shared by human highlights AND auto beats (both
+  // key on cardKey/beat_key now). Rendered into whichever footer the active card
+  // owns. No card kind gating: an auto beat is as likeable/commentable as a photo.
+  const socialActions = cardKey ? (
+    <>
+      <button className="act" onClick={() => onToggleLike(socialFor(card))} aria-label="Like">
+        <svg className={"heart" + (iLiked ? " on" : "")} viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.4 8.4 1.9 5 5.2 5 7.3 5 8.7 6.3 12 9c3.3-2.7 4.7-4 6.8-4 3.3 0 4.8 3.4 3.2 6.7C19.5 16.4 12 21 12 21z" /></svg>
+        <span className="n">{cardLikes.length}</span>
+      </button>
+      <button className="act" onClick={() => setCommentsFor(cardKey)} aria-label="Comments">
+        <svg className="bub" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20l1.1-5.4A8.5 8.5 0 1 1 21 11.5z" /></svg>
+        <span className="n">{cardComments.length}</span>
+      </button>
+    </>
   ) : null;
 
   const body = (
@@ -1459,14 +1489,7 @@ export function HighlightsViewer({
                   {seenChip}
                 </div>
                 <div className="v-actions">
-                  <button className="act" onClick={() => onToggleLike(r.id)} aria-label="Like">
-                    <svg className={"heart" + (iLiked ? " on" : "")} viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.4 8.4 1.9 5 5.2 5 7.3 5 8.7 6.3 12 9c3.3-2.7 4.7-4 6.8-4 3.3 0 4.8 3.4 3.2 6.7C19.5 16.4 12 21 12 21z" /></svg>
-                    <span className="n">{cardLikes.length}</span>
-                  </button>
-                  <button className="act" onClick={() => setCommentsFor(r.id)} aria-label="Comments">
-                    <svg className="bub" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20l1.1-5.4A8.5 8.5 0 1 1 21 11.5z" /></svg>
-                    <span className="n">{cardComments.length}</span>
-                  </button>
+                  {socialActions}
                   {r.media_type === "video" && (
                     <button className="act" onClick={() => setVideoMuted((m) => !m)} aria-label={videoMuted ? "Turn sound on" : "Turn sound off"}>
                       {videoMuted ? (
@@ -1623,7 +1646,9 @@ export function HighlightsViewer({
                   placeholder={memberName ? `Comment as ${memberName.split(" ")[0]}...` : "Add a comment..."}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && commentDraft.trim()) {
-                      onAddComment(commentsFor, commentDraft.trim());
+                      // The sheet always belongs to the current card (it closes on
+                      // idx change), so socialFor(card) is the right identity.
+                      onAddComment(socialFor(card), commentDraft.trim());
                       setCommentDraft("");
                     }
                   }}
@@ -1632,7 +1657,7 @@ export function HighlightsViewer({
                   disabled={!commentDraft.trim()}
                   onClick={() => {
                     if (!commentDraft.trim()) return;
-                    onAddComment(commentsFor, commentDraft.trim());
+                    onAddComment(socialFor(card), commentDraft.trim());
                     setCommentDraft("");
                   }}
                 >Post</button>
