@@ -10,19 +10,23 @@ export function highlightsEnabled(adminMode: boolean): boolean {
   return HIGHLIGHTS_AUDIENCE === "all" || (HIGHLIGHTS_AUDIENCE === "admin" && adminMode);
 }
 
-// Post-round freshness window (Handoff #17). Extracted from the leaderboard's
-// existing "post-round decay" shimmer (LeaderboardTab renderLbRow) so the two
-// share ONE time calculation rather than duplicating it -- same event.date
-// basis, same Date.now() client clock, same default 36h threshold. The league
-// has no `completed_at`, so completion is dated from event.date at local
-// midnight; this is a CLIENT-TIME window, not server-enforced (acceptable for a
-// private league, but stated). Returns false for a missing/absent date.
-export const POST_ROUND_WINDOW_HOURS = 36;
+// Post-round freshness windows (Handoff #17). The two post-round surfaces share
+// ONE time calculation (hoursSinceEvent) but now have SEPARATE thresholds:
+//   HIGHLIGHTS_WINDOW_HOURS   -- the compact highlights rail (leaderboard/season)
+//   WEEKLY_DETAIL_WINDOW_HOURS -- the weekly-detail default view (row decay shimmer)
+// Same event.date basis, same Date.now() client clock. The league has no
+// `completed_at`, so completion is dated from event.date at local midnight; this
+// is a CLIENT-TIME window, not server-enforced (acceptable for a private league,
+// but stated). Returns false for a missing/absent date.
+export const HIGHLIGHTS_WINDOW_HOURS = 48;
+export const WEEKLY_DETAIL_WINDOW_HOURS = 18;
+// Back-compat default for callers that don't pass an explicit threshold.
+export const POST_ROUND_WINDOW_HOURS = HIGHLIGHTS_WINDOW_HOURS;
 export function hoursSinceEvent(event: { date?: string } | null | undefined): number | null {
   if (!event?.date) return null;
   const t = new Date(event.date + "T00:00:00").getTime();
   if (!Number.isFinite(t)) return null;
-  return (Date.now() - t) / 3600000;
+  return (Date.now() - t) / 3600000; // ms per hour
 }
 export function withinPostRoundWindow(event: { date?: string } | null | undefined, hours: number = POST_ROUND_WINDOW_HOURS): boolean {
   const h = hoursSinceEvent(event);

@@ -19,7 +19,7 @@ import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
 import { PreEventOddsModule } from "../odds/PreEventOddsModule";
 import { WinProbabilityChart } from "../../WinProbabilityChart";
 import { HighlightsModule } from "./highlights/HighlightsModule";
-import { highlightsEnabled, isArtisticView, hoursSinceEvent, withinPostRoundWindow, POST_ROUND_WINDOW_HOURS } from "./highlights/highlightsShared";
+import { highlightsEnabled, isArtisticView, hoursSinceEvent, withinPostRoundWindow, HIGHLIGHTS_WINDOW_HOURS, WEEKLY_DETAIL_WINDOW_HOURS } from "./highlights/highlightsShared";
 import { hasHoleByHoleData } from "../../lib/buildBeatsInput";
 import { uploadCourseAsset } from "../../lib/r2Upload";
 
@@ -972,7 +972,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
       // Same post-round time source as the highlights window (Handoff #17):
       // hoursSinceEvent is the single shared calculation.
       const hoursSince=hoursSinceEvent(displayEvent);
-      if(hoursSince!=null&&hoursSince>=0&&hoursSince<POST_ROUND_WINDOW_HOURS)decayOpacity=1-hoursSince/POST_ROUND_WINDOW_HOURS;
+      if(hoursSince!=null&&hoursSince>=0&&hoursSince<WEEKLY_DETAIL_WINDOW_HOURS)decayOpacity=1-hoursSince/WEEKLY_DETAIL_WINDOW_HOURS;
     }
 
     return(
@@ -1496,7 +1496,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
           condition, not a show-then-hide). The permanent event-detail rail is a
           separate mount and ignores this window entirely. Everyone -- admins
           included -- follows the same 36h rule. */}
-      {highlightsEnabled(adminMode)&&latestHighlightEvent&&withinPostRoundWindow(latestHighlightEvent,POST_ROUND_WINDOW_HOURS)&&(
+      {highlightsEnabled(adminMode)&&latestHighlightEvent&&withinPostRoundWindow(latestHighlightEvent,HIGHLIGHTS_WINDOW_HOURS)&&(
         <HighlightsModule
           compact
           event={latestHighlightEvent}
