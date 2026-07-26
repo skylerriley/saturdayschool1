@@ -86,11 +86,20 @@ create index if not exists highlight_comments_beat_key_idx
 -- ---- grants / RLS ---------------------------------------------------------------
 -- The 20260713 policies already grant anon select/insert on both tables and
 -- delete on highlight_likes (the unlike toggle). Those policies use `check
--- (true)` / `using (true)`, so they cover beat_key rows unchanged -- nothing to
--- add here. Re-stating the grants is harmless and keeps this file self-contained
--- for a fresh apply that runs migrations out of the original order.
+-- (true)` / `using (true)`, so they cover beat_key rows unchanged.
+--
+-- NEW: delete on highlight_comments. 20260713 granted delete on likes only, so a
+-- comment could be posted but never removed. The delete is gated in the UI to the
+-- commenter (commenter_name == member) or an admin -- same owner/admin model as
+-- highlights themselves. Like every other policy here it is anon-role `using
+-- (true)`, so the gating is UI-LEVEL, not security-level (the same known trade
+-- stated in 20260723_highlight_views.sql: for a ~25-person private league,
+-- acceptable, but not an assumed protection).
 grant select, insert, delete on highlight_likes    to anon;
-grant select, insert         on highlight_comments to anon;
+grant select, insert, delete on highlight_comments to anon;
+
+drop policy if exists "anon delete comments" on highlight_comments;
+create policy "anon delete comments" on highlight_comments for delete to anon using (true);
 
 comment on column highlight_likes.beat_key is
   'Stable social key (matches highlight_views.beat_key): human=''h:''||highlight_id, auto beat=''a:''||event_id||'':''||angle_type. Dedupe is unique(beat_key, liker_name); highlight_id is now nullable (auto beats have none).';

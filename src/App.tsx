@@ -1806,10 +1806,17 @@ const CSS = `
   .hl-sheet-title{font-family:var(--font-serif);font-size:20px;color:var(--green-800);margin-bottom:8px;}
   .hl-sheet-list{flex:1;overflow-y:auto;min-height:60px;}
   .hl-sheet-empty{color:var(--text-muted);font-size:14px;padding:14px 0;}
-  .hl-comment{padding:9px 0;border-bottom:1px solid var(--border);}
+  .hl-comment{padding:9px 0;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px;}
   .hl-comment:last-child{border-bottom:0;}
+  .hl-comment-body{flex:1;min-width:0;}
   .hl-comment-name{font-size:12.5px;font-weight:700;color:var(--text-secondary);}
-  .hl-comment-text{font-size:15px;color:var(--text-primary);margin-top:2px;}
+  .hl-comment-text{font-size:15px;color:var(--text-primary);margin-top:2px;word-break:break-word;}
+  /* Delete affordance -- muted trash icon, only rendered for the commenter/admin.
+     44px hit target for the 60+ audience; reddens on press. */
+  .hl-comment-del{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:34px;height:34px;margin:-4px -6px 0 0;border:0;background:transparent;border-radius:999px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+  .hl-comment-del svg{width:17px;height:17px;fill:none;stroke:var(--text-muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+  .hl-comment-del:active{background:var(--red-100);}
+  .hl-comment-del:active svg{stroke:var(--red-600);}
   .hl-sheet-composer{display:flex;gap:8px;padding-top:10px;}
   /* 16px minimum: an input under 16px makes iOS Safari auto-zoom the page on
      focus, which zooms the whole story viewer and strands the user zoomed-in */

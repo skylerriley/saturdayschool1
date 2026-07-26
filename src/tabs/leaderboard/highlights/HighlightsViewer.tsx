@@ -701,7 +701,7 @@ function StandingsBoard({ standings, reduced, animKey }: {
 export function HighlightsViewer({
   cards, startIndex, event, course, courses, signups, golfers, eventEntries, holeScores, holeImages,
   likes, comments, views, memberName, adminMode,
-  onClose, onToggleLike, onAddComment, onView,
+  onClose, onToggleLike, onAddComment, onDeleteComment, onView,
   onHideBeat, onEditBeatCaption, onDeleteHighlight, onEditHighlightCaption, onEditHighlightDetails,
 }: any) {
   const [idx, setIdx] = useState<number>(Math.max(0, Math.min(startIndex, cards.length - 1)));
@@ -1632,12 +1632,29 @@ export function HighlightsViewer({
               <div className="hl-sheet-title">Comments</div>
               <div className="hl-sheet-list">
                 {sheetComments.length === 0 && <div className="hl-sheet-empty">No comments yet — say something nice.</div>}
-                {sheetComments.map((cm: any) => (
-                  <div key={cm.id} className="hl-comment">
-                    <div className="hl-comment-name">{cm.commenter_name}</div>
-                    <div className="hl-comment-text">{cm.text}</div>
-                  </div>
-                ))}
+                {sheetComments.map((cm: any) => {
+                  // Delete gated to the commenter (by member name) or an admin --
+                  // same owner/admin model as highlights. Anonymous comments
+                  // (no member identified when posted) can only be admin-removed.
+                  const canDelete = !!onDeleteComment && (adminMode || (memberName != null && cm.commenter_name === memberName));
+                  return (
+                    <div key={cm.id} className="hl-comment">
+                      <div className="hl-comment-body">
+                        <div className="hl-comment-name">{cm.commenter_name}</div>
+                        <div className="hl-comment-text">{cm.text}</div>
+                      </div>
+                      {canDelete && (
+                        <button
+                          className="hl-comment-del"
+                          aria-label="Delete comment"
+                          onClick={() => { if (window.confirm("Delete this comment?")) onDeleteComment(cm); }}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               <div className="hl-sheet-composer">
                 <input

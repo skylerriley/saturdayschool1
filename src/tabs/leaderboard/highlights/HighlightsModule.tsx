@@ -513,6 +513,18 @@ export function HighlightsModule({ event, course, courses, signups, golfers, eve
               reportWriteError("Comment")(e);
             }
           }}
+          onDeleteComment={(comment: any) => {
+            // Optimistic remove. The viewer already gated this to the commenter or
+            // an admin (owner/admin model, matching highlights). A DELETE grant on
+            // highlight_comments (20260725) makes the row deletion succeed; a
+            // still-pending temp row (never persisted) is just dropped locally.
+            setComments((prev) => prev.filter((c: any) => c.id !== comment.id));
+            supabase.from("highlight_comments").delete({ id: comment.id }).catch((e: any) => {
+              // Put it back if the server rejects the delete, so the UI stays truthful.
+              setComments((prev) => (prev.some((c: any) => c.id === comment.id) ? prev : [...prev, comment]));
+              reportWriteError("Delete comment")(e);
+            });
+          }}
         />
       )}
 
