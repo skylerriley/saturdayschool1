@@ -1727,8 +1727,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                           <div className="drawer-shell">
                             <div className="drawer-tiles">
                               <div className="drawer-tile">
-                                <div className="drawer-tile-value">{g?.current_handicap_index?.toFixed(1)??"--"}</div>
-                                <div className="drawer-tile-label">HCP</div>
+                                <div className="drawer-tile-value">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&playerCourse?calcPlayingHandicap(g.current_handicap_index,playerCourse.tee_slope,playerCourse.tee_rating,playerCourse.par):"--")}</div>
+                                <div className="drawer-tile-label">Course HCP</div>
                               </div>
                               <div className="drawer-tile">
                                 <div className="drawer-tile-value">{playerCourse?.tee_box_name??"--"}</div>
@@ -1943,17 +1943,19 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                           :null;
                         return(
                           <div key={hNum} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-                            <div style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.04em"}}>{hNum}</div>
+                            <div style={{fontSize:9,fontWeight:isRevealed?800:700,color:isRevealed?"var(--green-600)":"var(--text-muted)",letterSpacing:"0.04em",transition:"color 0.15s"}}>{hNum}</div>
                             <div
                               onClick={()=>setRevealedHole(isRevealed?null:hNum)}
                               style={{
                                 width:"100%",aspectRatio:"1",borderRadius:5,cursor:isGold?"pointer":"default",
-                                background:isGold?"var(--gold-400)":isTied?"var(--surface2)":"transparent",
-                                border:isGold?"none":isPending?"2px dashed #e05050":isTied?"2px solid var(--border)":"2px solid transparent",
+                                background:isRevealed?"var(--green-600)":isGold?"var(--gold-400)":isTied?"var(--surface2)":"transparent",
+                                border:isRevealed?"2px solid var(--green-600)":isGold?"none":isPending?"2px dashed #e05050":isTied?"2px solid var(--border)":"2px solid transparent",
                                 display:"flex",alignItems:"center",justifyContent:"center",
                                 WebkitTapHighlightColor:"transparent",
                                 position:"relative",
-                                transition:"transform 0.1s",
+                                transform:isRevealed?"scale(1.12)":"scale(1)",
+                                transition:"transform 0.15s ease, background 0.15s ease",
+                                zIndex:isRevealed?2:1,
                                 boxShadow:isGold?SKIN_SQUARE_BEZEL:undefined,
                               }}
                             />
@@ -2502,7 +2504,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                       const isRevealed=weeklySkinsRevealedHole===hNum;
                       return(
                         <div key={hNum} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-                          <div style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.04em"}}>{hNum}</div>
+                          <div style={{fontSize:9,fontWeight:isRevealed?800:700,color:isRevealed?"var(--green-600)":"var(--text-muted)",letterSpacing:"0.04em",transition:"color 0.15s"}}>{hNum}</div>
                           <div
                             onClick={(e:any)=>{
                               e.stopPropagation();
@@ -2512,11 +2514,14 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                             }}
                             style={{
                               width:"100%",aspectRatio:"1",borderRadius:5,cursor:isGold?"pointer":"default",
-                              background:isGold?"var(--gold-400)":isTied?"var(--surface2)":"transparent",
-                              border:isGold?"none":isPending?"2px dashed #e05050":isTied?"2px solid var(--border)":"2px solid transparent",
+                              background:isRevealed?"var(--green-600)":isGold?"var(--gold-400)":isTied?"var(--surface2)":"transparent",
+                              border:isRevealed?"2px solid var(--green-600)":isGold?"none":isPending?"2px dashed #e05050":isTied?"2px solid var(--border)":"2px solid transparent",
                               display:"flex",alignItems:"center",justifyContent:"center",
                               WebkitTapHighlightColor:"transparent",
-                              transition:"transform 0.1s",
+                              position:"relative",
+                              transform:isRevealed?"scale(1.12)":"scale(1)",
+                              transition:"transform 0.15s ease, background 0.15s ease",
+                              zIndex:isRevealed?2:1,
                               boxShadow:isGold?SKIN_SQUARE_BEZEL:undefined,
                             }}
                           />
