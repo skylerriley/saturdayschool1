@@ -105,7 +105,7 @@ function PushNotificationButton(){
   );
 }
 
-export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,events=[],leaderboard=[],holeScores=[],signups=[],onNavigateSeason,onNavigateTop15,onNavigateLastRound,onNavigateRsvp,onNavigateGroup,onNavigateH2H,onNavigateAnalytics}:any){
+export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,events=[],leaderboard=[],holeScores=[],signups=[],adminMode=false,previewMode=false,onTogglePreview,onNavigateSeason,onNavigateTop15,onNavigateLastRound,onNavigateRsvp,onNavigateGroup,onNavigateH2H,onNavigateAnalytics}:any){
   const [changelogOpen,setChangelogOpen]=useState(false);
   const memberGolfer=memberGolferId!=null?golfers.find((g:any)=>g.golfer_id===memberGolferId):null;
   // Default to Profile when an identity is set — that's the personal landing spot
@@ -238,6 +238,41 @@ export function SettingsTab({golfers=[],memberGolferId=null,onChangeMember,event
       )}
 
       {subTab==="settings"&&(<>
+      {adminMode&&(
+        <div className="card" style={{padding:20,marginBottom:16,position:"relative",boxShadow:BEZEL_OUTER_SHADOW,border:previewMode?"1px solid #b98bff":undefined,background:previewMode?"linear-gradient(180deg,#f7f0ff,var(--surface))":undefined}}>
+          <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:15,fontWeight:700,marginBottom:4,display:"flex",alignItems:"center",gap:8}}>
+                🧪 Preview Mode
+                {previewMode&&<span style={{fontSize:10,fontWeight:800,letterSpacing:"0.04em",color:"#fff",background:"#5b2b8a",borderRadius:6,padding:"2px 6px"}}>ON</span>}
+              </div>
+              <p style={{fontSize:13,color:"var(--text-muted)",margin:0,lineHeight:1.6}}>
+                Injects a dummy in-progress + upcoming event so you can view and test the Live leaderboard, Upcoming board, and hole-by-hole Score Entry. Admin-only — no real event is created, nothing is saved to the database, and regular members never see any of it.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={previewMode}
+              onClick={()=>onTogglePreview&&onTogglePreview(!previewMode)}
+              style={{
+                flexShrink:0,width:52,height:30,borderRadius:15,border:"none",cursor:"pointer",
+                background:previewMode?"#5b2b8a":"var(--border-md)",position:"relative",transition:"background 0.2s",padding:0,
+              }}
+            >
+              <span style={{
+                position:"absolute",top:3,left:previewMode?25:3,width:24,height:24,borderRadius:"50%",
+                background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.3)",transition:"left 0.2s",
+              }}/>
+            </button>
+          </div>
+          {previewMode&&(
+            <div style={{marginTop:12,fontSize:12,color:"#5b2b8a",fontWeight:600,lineHeight:1.5}}>
+              Go to Leaderboard for the Live / Upcoming pills, or Scoring to enter dummy scores. Turn this off when you're done.
+            </div>
+          )}
+        </div>
+      )}
       <div className="card" style={{padding:20,marginBottom:16,position:"relative",boxShadow:BEZEL_OUTER_SHADOW}}>
         <div style={bezelRimOverlay("var(--radius-lg)","light")}/>
         <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>Your Profile</div>

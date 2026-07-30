@@ -65,6 +65,7 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
   // Leaderboard running-total write. The outbox dedupes PATCHes to the same
   // row, so offline only the latest total is kept and replayed.
   const queueLbTotalWrite=useCallback((summary_id:number,body:any)=>{
+    if(!(summary_id>0))return; // negative = preview-mode dummy row, never persist
     supabase.from("event_leaderboard").update(body,{summary_id}).catch(reportWriteError("Score total save"));
   },[]);
 
@@ -204,8 +205,8 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
     const name=g?`${g.first_name} ${g.last_name}`:`Golfer ${idx+1}`;
     if(!window.confirm(`Delete ${name}'s scores for this event? This cannot be undone.`))return;
     const realSid=scorer.summaryId;
-    if(realSid&&realSid<1e12){
-      // Remove hole scores + leaderboard row from DB
+    if(realSid&&realSid>0&&realSid<1e12){
+      // Remove hole scores + leaderboard row from DB (skip negative preview ids)
       try{await supabase.from("hole_scores").delete({summary_id:realSid});}catch{}
       try{await supabase.from("event_leaderboard").delete({summary_id:realSid});}catch{}
       setHoleScores((hs:any)=>hs.filter((h:any)=>h.summary_id!==realSid));
@@ -1280,6 +1281,9 @@ export function ScoreEntryTab({golfers,courses,events,signups,setSignups,leaderb
                   setScoreEventId("");
                   setScorers([emptyScorer()]);
                   showSuccess("Event finalized and marked Completed!");
+                  // Preview-mode dummy events (negative id) live only in memory —
+                  // never fire server recap generation or the history rebuild for them.
+                  if(selEvent.event_id<0)return;
                   // Fire-and-forget: generate AI recap server-side after event is finalized.
                   // Does not block or affect the UI -- failure is silent to golfers.
                   fetch(`${SUPABASE_URL}/functions/v1/generate-event-recap`,{

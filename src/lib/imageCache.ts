@@ -47,6 +47,41 @@ export function prefetchImages(urls: (string | null | undefined)[]) {
 }
 
 /**
+ * Resolve once every URL in the batch has decoded (or failed) — or when
+ * `maxWaitMs` elapses, so a slow/broken image can never block a UI reveal
+ * forever. null/undefined URLs count as already-satisfied. Resolves
+ * immediately (synchronously-ish) when everything is already cached.
+ */
+export function waitForImages(
+  urls: (string | null | undefined)[],
+  maxWaitMs = 4000
+): Promise<void> {
+  const pending = urls.filter((u): u is string => !!u && !loadedUrls.has(u));
+  if (pending.length === 0) return Promise.resolve();
+
+  // Kick off decodes for anything not already in flight.
+  prefetchImages(pending);
+
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.clearInterval(poll);
+      window.clearTimeout(timer);
+      resolve();
+    };
+    // Poll the cache — prefetchImages resolves into loadedUrls; errored URLs
+    // drop out of `prefetching`, so "no longer pending and no longer in flight"
+    // means settled either way.
+    const poll = window.setInterval(() => {
+      if (pending.every((u) => loadedUrls.has(u) || !prefetching.has(u))) finish();
+    }, 60);
+    const timer = window.setTimeout(finish, maxWaitMs);
+  });
+}
+
+/**
  * Hook for an image that fades in on first decode but appears instantly on
  * revisits. Returns whether it should be treated as already-loaded plus an
  * onLoad handler to attach to the <img>.

@@ -471,7 +471,6 @@ export function PreEventOddsModule({ golfers, leaderboard, events, signups, cour
           50%       { opacity: 1; }
         }
       `}</style>
-      <div className="card-title" style={{ marginBottom: 10 }}>Event Odds</div>
 
       {/* Odds view nav — rendered on dark background. Dark cards get their
           raised "bezel" look from a subtle top→bottom surface gradient (lighter

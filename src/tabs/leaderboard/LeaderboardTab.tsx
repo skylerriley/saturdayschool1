@@ -12,7 +12,8 @@ import { WindParticles } from "../../components/weather/WindParticles";
 import { WeatherModal } from "../../components/weather/WeatherModal";
 import { UpcomingCourseCard } from "./UpcomingCourseCard";
 import { ensureShimmer } from "../../components/weather/WeatherSkeleton";
-import { useCachedImage, prefetchImages } from "../../lib/imageCache";
+import { useCachedImage, prefetchImages, waitForImages } from "../../lib/imageCache";
+import { SLoader } from "../../components/common/SLoader";
 import { FieldStrengthMeter } from "./FieldStrengthMeter";
 import { BEZEL_OUTER_SHADOW, BEZEL_PILL_SHADOW, BEZEL_SUBTAB_RAISED, bezelRimOverlay, SKIN_SQUARE_BEZEL } from "./bezelStyles";
 import { UpcomingPlayerDrawer } from "./UpcomingPlayerDrawer";
@@ -201,24 +202,54 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
   const eventNumMap:Record<number,number>={};
   oldestFirst.forEach((ev:any,i:number)=>{eventNumMap[ev.event_id]=i+1;});
 
+  // Hole photo URL for a given event card (same cycle-by-event-number rule as
+  // the card itself). Shared by the prefetch + the initial-reveal gate.
+  const cardImgUrl=(ev:any):string|null=>{
+    const holeNum=(((eventNumMap[ev.event_id]||1)-1)%18)+1;
+    const rec=(holeImages||[]).find((img:any)=>img.course_name===(ev.course_name||"")&&img.hole_number===holeNum&&img.public_url&&isArtisticView(img));
+    return rec?rec.public_url:null;
+  };
+
+  // Reveal gate: keep the feed blank (just the animated S loader) until the
+  // FIRST page of cards' photos have decoded, then reveal everything at once so
+  // there's no per-card pop-in. A safety timeout in waitForImages guarantees the
+  // reveal even if a photo is missing/slow. Subsequent pages (infinite scroll)
+  // are NOT gated — they fade in per-card as before.
+  //
+  // Demo hook: add #slowfeed to the URL to force a minimum loader duration
+  // (#slowfeed=2500 for 2.5s; bare flag = 2000ms) so the S loader is visible
+  // even when every photo is already cached. Uses the hash (not a query param)
+  // because the PWA start_url normalization strips the query string. No-op
+  // without the flag.
+  const [ready,setReady]=useState(false);
   useEffect(()=>{
-    if(!sentinelRef.current||!hasMore)return;
+    let cancelled=false;
+    setReady(false);
+    const firstPageUrls=allEvents.slice(0,FEED_PAGE_INIT).map(cardImgUrl);
+    const m=/slowfeed(?:=(\d+))?/.exec(window.location.hash);
+    const forcedMin=m?(parseInt(m[1],10)||2000):0;
+    Promise.all([
+      waitForImages(firstPageUrls),
+      forcedMin>0?new Promise(r=>window.setTimeout(r,forcedMin)):Promise.resolve(),
+    ]).then(()=>{ if(!cancelled)setReady(true); });
+    return()=>{ cancelled=true; };
+    // Re-gate when the season's event set changes (season switch / initial load).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[seasonEvents,holeImages]);
+
+  useEffect(()=>{
+    if(!ready||!sentinelRef.current||!hasMore)return;
     const obs=new IntersectionObserver((entries)=>{
       if(entries[0]?.isIntersecting)setVisibleCount(prev=>prev+FEED_PAGE_MORE);
     },{threshold:0.1});
     obs.observe(sentinelRef.current);
     return()=>obs.disconnect();
-  },[hasMore,visibleCount]);
+  },[ready,hasMore,visibleCount]);
 
   // Warm the image cache for every shown card's hole photo so cards fade in
   // once (or appear instantly on revisit) instead of re-shimmering on scroll.
   useEffect(()=>{
-    const urls=shown.map((ev:any)=>{
-      const holeNum=(((eventNumMap[ev.event_id]||1)-1)%18)+1;
-      const rec=(holeImages||[]).find((img:any)=>img.course_name===(ev.course_name||"")&&img.hole_number===holeNum&&img.public_url&&isArtisticView(img));
-      return rec?rec.public_url:null;
-    });
-    prefetchImages(urls);
+    prefetchImages(shown.map(cardImgUrl));
   },[visibleCount,holeImages,seasonEvents]);
 
   if(allEvents.length===0){
@@ -226,6 +257,16 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
       <div className="empty-state">
         <div className="empty-text">No events yet this season</div>
         <div className="empty-sub">Completed events will appear here</div>
+      </div>
+    );
+  }
+
+  // Staging: blank content + centered animated S until the first page's photos
+  // are ready. Min-height keeps the tab from collapsing so the loader stays put.
+  if(!ready){
+    return(
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"52vh"}}>
+        <SLoader size={92}/>
       </div>
     );
   }
@@ -246,6 +287,67 @@ function LeaderboardFeed({seasonEvents,golfers,leaderboard,holeScores,holeImages
         />
       ))}
       {hasMore&&<div ref={sentinelRef} style={{height:2}}/>}
+    </div>
+  );
+}
+
+// ── InkSubNav ─────────────────────────────────────────────────────────────────
+// Upper-case text tabs with an animated ink underline. Mirrors the
+// Analytics > By Golfer sub-nav (GolferSubNav in GolferHistoryChart.tsx) so the
+// two navigation styles stay identical across the app.
+function InkSubNav({tabs,view,setView}:{tabs:{id:string;label:string}[];view:string;setView:(v:string)=>void}){
+  const btnRefs=useRef<(HTMLButtonElement|null)[]>([]);
+  const [inkStyle,setInkStyle]=useState<{left:number;width:number}|null>(null);
+
+  useLayoutEffect(()=>{
+    const idx=tabs.findIndex(t=>t.id===view);
+    const el=btnRefs.current[idx];
+    if(!el)return;
+    const parent=el.parentElement;
+    if(!parent)return;
+    const parentRect=parent.getBoundingClientRect();
+    const elRect=el.getBoundingClientRect();
+    setInkStyle({left:elRect.left-parentRect.left,width:elRect.width});
+  },[view,tabs]);
+
+  return(
+    <div style={{position:"relative",display:"flex",gap:20,marginBottom:16,paddingBottom:0}}>
+      {tabs.map((t,i)=>(
+        <button
+          key={t.id}
+          ref={el=>{btnRefs.current[i]=el;}}
+          onClick={()=>setView(t.id)}
+          style={{
+            background:"none",border:"none",cursor:"pointer",
+            padding:"0 4px 12px",
+            fontSize:13,fontWeight:700,
+            color:view===t.id?"var(--text-primary)":"var(--text-muted)",
+            WebkitTapHighlightColor:"transparent",
+            transition:"color 0.2s",
+            letterSpacing:"0.07em",
+            textTransform:"uppercase",
+          }}
+        >
+          {t.label}
+        </button>
+      ))}
+      {/* Track line */}
+      <div style={{
+        position:"absolute",bottom:0,left:0,right:0,
+        height:1,background:"var(--border)",
+      }}/>
+      {/* Ink indicator */}
+      {inkStyle&&(
+        <div style={{
+          position:"absolute",bottom:0,
+          left:inkStyle.left,
+          width:inkStyle.width,
+          height:2,
+          background:"var(--green-700)",
+          borderRadius:2,
+          transition:"left 0.28s cubic-bezier(0.4,0,0.2,1), width 0.28s cubic-bezier(0.4,0,0.2,1)",
+        }}/>
+      )}
     </div>
   );
 }
@@ -346,6 +448,11 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
   const [upcomingWeatherOpen,setUpcomingWeatherOpen]=useState(false);
   const [liveSkinsRevealedHole,setLiveSkinsRevealedHole]=useState<number|null>(null);
   const [weeklySkinsRevealedHole,setWeeklySkinsRevealedHole]=useState<number|null>(null);
+
+  // Ink sub-nav state within the Live / Upcoming views (leaderboard + skins vs
+  // groups vs odds). Section names only — the outer subTab is unchanged.
+  const [liveSection,setLiveSection]=useState<"leaderboard"|"groups"|"odds">("leaderboard");
+  const [upcomingSection,setUpcomingSection]=useState<"field"|"odds">("field");
 
   // Feed overlay state: which event's full detail is open
   const [feedOverlayEvent,setFeedOverlayEvent]=useState<any|null>(null);
@@ -1590,6 +1697,237 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
         const showWeatherModal=liveWeatherOpen;
         const setShowWeatherModal=setLiveWeatherOpen;
 
+        // ── Shared live-leaderboard row renderer ──────────────────────────────
+        // Used by BOTH the LEADERBOARD section (reorder-animated, absolutely
+        // positioned) and the GROUPS section (static within each tee-time card),
+        // so the row layout, fonts, and the tap-to-expand scorecard drawer stay
+        // identical between the two. `animatable` drives the position-flip trail
+        // + absolute layout that only the flat leaderboard needs.
+        const renderLiveRow=(row:any,i:number,total:number,animatable:boolean)=>{
+          const g=golfers.find((x:any)=>x.golfer_id===row.golfer_id);
+          const isExp=liveExpandedId===row.golfer_id;
+          const rankColor=row.pos===1?"var(--gold-500)":row.pos===2?"var(--text-secondary)":row.pos===3?"var(--earth-400,#9c7c65)":"var(--text-muted)";
+          const posLabel=(row.tied?"T":"")+row.pos;
+          const signup=signups.find((s:any)=>s.event_id===liveEvent.event_id&&s.golfer_id===row.golfer_id);
+          const playerCourse=signup?.tee_box_course_id
+            ?courses.find((c:any)=>c.course_id===signup.tee_box_course_id)
+            :liveCourse;
+          const pars:number[]=playerCourse?.hole_pars||[];
+          const front=row.hs.filter((h:any)=>h.hole_number<=9);
+          const back=row.hs.filter((h:any)=>h.hole_number>9);
+
+          const trailDir=animatable?liveTrail[row.golfer_id]:undefined;
+          const isFlipping=animatable&&!!livePosFlip[row.golfer_id];
+          const flipFromLabel=isFlipping?(row.tied?"T":"")+livePosFlipFromRef.current[row.golfer_id]:null;
+
+          return(
+            <div
+              key={row.golfer_id}
+              ref={el=>{if(animatable)liveRowRefs.current[row.golfer_id]=el;}}
+              className={`live-row-wrap${trailDir==="up"?" trail-up":trailDir==="down"?" trail-down":""}${i===total-1?" last":""}`}
+              style={animatable?{position:"absolute",left:0,right:0,top:i*(liveRowH as number)}:{position:"relative"}}
+            >
+              <div className={`lb-live-row${row.golfer_id===memberGolferId?" me-row":""}`} onClick={()=>setLiveExpandedId(isExp?null:row.golfer_id)}>
+                <div className="pos-flip" style={{fontSize:18,fontWeight:700,color:rankColor}}>
+                  {isFlipping?(
+                    <>
+                      <span className="pos-flip-face out">{flipFromLabel}</span>
+                      <span className="pos-flip-face in">{posLabel}</span>
+                    </>
+                  ):posLabel}
+                </div>
+                <div>
+                  <div style={{fontSize:18,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}{row.isOnFire&&<span style={{marginLeft:5,fontSize:16}} title="On fire -- 2+ consecutive holes of 3+ pts">🔥</span>}</div>
+                </div>
+                <div style={{fontSize:20,fontWeight:700,color:"var(--green-700)",textAlign:"right"}}>{row.total_stableford_points||"--"}</div>
+                <div style={{fontSize:18,fontWeight:600,color:row.thru===18?"var(--green-600)":"var(--text-muted)",textAlign:"right"}}>
+                  {row.thru===18?"F":row.thru||"--"}
+                </div>
+              </div>
+
+              {isExp&&(()=>{
+                const sk2=(hNum:number)=>liveSkinHoleWinners[hNum]===row.golfer_id;
+                const f9cells=Array.from({length:9},(_,i)=>row.hs.find((h:any)=>h.hole_number===i+1)||null);
+                const b9cells=Array.from({length:9},(_,i)=>row.hs.find((h:any)=>h.hole_number===i+10)||null);
+                const f9gross=f9cells.reduce((s:number,h:any)=>s+(h?.gross_score||0),0);
+                const b9gross=b9cells.reduce((s:number,h:any)=>s+(h?.gross_score||0),0);
+                const f9pts=f9cells.reduce((s:number,h:any)=>s+(h?.stableford_points||0),0);
+                const b9pts=b9cells.reduce((s:number,h:any)=>s+(h?.stableford_points||0),0);
+                const totGross=(f9gross+b9gross)||"";
+                const totPts=f9pts+b9pts;
+                const hasF9=front.length>0;
+                const hasB9=back.length>0;
+                return(
+                <div className="lb-detail">
+                  <div className="drawer-shell">
+                    <div className="drawer-tiles">
+                      <div className="drawer-tile">
+                        <div className="drawer-tile-value">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&playerCourse?calcPlayingHandicap(g.current_handicap_index,playerCourse.tee_slope,playerCourse.tee_rating,playerCourse.par):"--")}</div>
+                        <div className="drawer-tile-label">Course HCP</div>
+                      </div>
+                      <div className="drawer-tile">
+                        <div className="drawer-tile-value">{playerCourse?.tee_box_name??"--"}</div>
+                        <div className="drawer-tile-label">Tees</div>
+                      </div>
+                      <div className="drawer-tile">
+                        <div className="drawer-tile-value">{row.hs.length>0?(f9gross+b9gross)||"--":"--"}</div>
+                        <div className="drawer-tile-label">Gross*</div>
+                      </div>
+                      <div className="drawer-tile">
+                        <div className={`drawer-tile-value${(liveSkinPayoutsLocal[row.golfer_id]||0)>0?" val-gold":""}`}>
+                          {(()=>{const s=liveSkinPayoutsLocal[row.golfer_id]||0;return s>0?`$${s.toFixed(0)}`:"--";})()}
+                        </div>
+                        <div className="drawer-tile-label">Skins</div>
+                      </div>
+                    </div>
+                  {row.hs.length>0&&playerCourse?(
+                    <div>
+                      <div style={{fontSize:14,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textAlign:"center",textTransform:"uppercase",marginBottom:4}}>
+                        Scorecard · {playerCourse.tee_box_name} tees
+                      </div>
+                      {(()=>{
+                        return(
+                          <div style={{overflowX:"auto",margin:8,paddingLeft:2,paddingRight:2}}>
+                            <table className="scorecard-table" style={{minWidth:0,width:"100%"}}>
+                              <colgroup>
+                                <col style={{width:"10%"}}/>
+                                {Array.from({length:9},(_,i)=><col key={i} style={{width:"7%"}}/>)}
+                                <col style={{width:"7%"}}/>
+                                <col style={{width:"7%"}}/>
+                              </colgroup>
+
+                              {/* ── FRONT NINE ── */}
+                              <thead>
+                                <tr>
+                                  <th className="label-col" style={{textTransform:"uppercase"}}>HOLE</th>
+                                  {[1,2,3,4,5,6,7,8,9].map(hNum=>{
+                                    const wonSkin=sk2(hNum);
+                                    return<th key={hNum} style={wonSkin?{background:"var(--gold-100,#fef3cd)",color:"var(--gold-700)"}:{}}>{hNum}{wonSkin?" 💰":""}</th>;
+                                  })}
+                                  <th className="total-col">OUT</th>
+                                  <th className="total-col" style={{background:"var(--surface2)",color:"transparent",userSelect:"none"}}>TOT</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr>
+                                  <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>PAR</td>
+                                  {f9cells.map((_:any,i:number)=>{
+                                    const hNum=i+1;
+                                    return<td key={i} style={{color:"var(--text-muted)",fontSize:13,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{})}}>{pars[i]||"-"}</td>;
+                                  })}
+                                  <td className="total-col">{pars.slice(0,9).reduce((a:number,b:number)=>a+b,0)||""}</td>
+                                  <td className="total-col" style={{background:"var(--surface2)"}}></td>
+                                </tr>
+                                <tr>
+                                  <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>SCORE</td>
+                                  {f9cells.map((h:any,i:number)=>{
+                                    const hNum=i+1;
+                                    return<td key={i} style={sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{}}>{h?<ScoreSymbolLive gross={h.gross_score} par={pars[i]||4}/>:<span style={{color:"var(--border)"}}>·</span>}</td>;
+                                  })}
+                                  <td className="total-col">{hasF9?f9gross||"":""}</td>
+                                  <td className="total-col" style={{background:"var(--surface2)"}}></td>
+                                </tr>
+                                <tr>
+                                  <td className="label-col" style={{textTransform:"uppercase",color:"var(--text-muted)",fontSize:12}}>PTS</td>
+                                  {f9cells.map((h:any,i:number)=>{
+                                    const hNum=i+1;
+                                    const p=h?.stableford_points;
+                                    return<td key={i} style={{fontSize:15,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)",fontWeight:700,color:"var(--gold-700)"}:{color:"var(--text-muted)"})}}>{h!=null?p:<span style={{color:"var(--border)"}}>·</span>}</td>;
+                                  })}
+                                  <td className="total-col" style={{color:"var(--green-700)"}}>{hasF9?f9pts||"":""}</td>
+                                  <td className="total-col" style={{background:"var(--surface2)"}}></td>
+                                </tr>
+                              </tbody>
+
+                              {/* ── BACK NINE ── */}
+                              <tbody>
+                                <tr style={{borderTop:"2px solid var(--border-md)"}}>
+                                  <th className="label-col" style={{textTransform:"uppercase",background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px 5px 8px",textAlign:"left",whiteSpace:"nowrap"}}>HOLE</th>
+                                  {[10,11,12,13,14,15,16,17,18].map(hNum=>{
+                                    const wonSkin=sk2(hNum);
+                                    return<th key={hNum} style={{background:wonSkin?"var(--gold-100,#fef3cd)":"var(--green-900)",color:wonSkin?"var(--gold-700)":"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px",textAlign:"center"}}>{hNum}{wonSkin?" 💰":""}</th>;
+                                  })}
+                                  <th className="total-col" style={{background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px"}}>IN</th>
+                                  <th className="total-col" style={{background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px"}}>TOT</th>
+                                </tr>
+                                <tr>
+                                  <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>PAR</td>
+                                  {b9cells.map((_:any,i:number)=>{
+                                    const hNum=i+10;
+                                    return<td key={i} style={{color:"var(--text-muted)",fontSize:14,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{})}}>{pars[9+i]||"-"}</td>;
+                                  })}
+                                  <td className="total-col">{pars.slice(9,18).reduce((a:number,b:number)=>a+b,0)||""}</td>
+                                  <td className="total-col">{pars.reduce((a:number,b:number)=>a+b,0)||""}</td>
+                                </tr>
+                                <tr>
+                                  <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>SCORE</td>
+                                  {b9cells.map((h:any,i:number)=>{
+                                    const hNum=i+10;
+                                    return<td key={i} style={sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{}}>{h?<ScoreSymbolLive gross={h.gross_score} par={pars[9+i]||4}/>:<span style={{color:"var(--border)"}}>·</span>}</td>;
+                                  })}
+                                  <td className="total-col">{hasB9?b9gross||"":""}</td>
+                                  <td className="total-col">{hasF9&&hasB9?totGross:""}</td>
+                                </tr>
+                                <tr>
+                                  <td className="label-col" style={{textTransform:"uppercase",color:"var(--text-muted)",fontSize:12}}>PTS</td>
+                                  {b9cells.map((h:any,i:number)=>{
+                                    const hNum=i+10;
+                                    const p=h?.stableford_points;
+                                    return<td key={i} style={{fontSize:15,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)",fontWeight:700,color:"var(--gold-700)"}:{color:"var(--text-muted)"})}}>{h!=null?p:<span style={{color:"var(--border)"}}>·</span>}</td>;
+                                  })}
+                                  <td className="total-col" style={{color:"var(--green-700)"}}>{hasB9?b9pts||"":""}</td>
+                                  <td className="total-col" style={{color:"var(--green-700)",fontWeight:700}}>{hasF9&&hasB9?totPts:""}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ):(
+                    <div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",padding:"8px 9px"}}>No hole-by-hole data yet</div>
+                  )}
+                  {(()=>{
+                    if(row.hs.length===0||row.thru>=18)return null;
+                    const nextHole=row.hs[row.hs.length-1].hole_number+1;
+                    if(nextHole>18)return null;
+                    const completedSummaryIds=new Set(
+                      leaderboardCompleted
+                        .filter((r:any)=>r.golfer_id===row.golfer_id)
+                        .map((r:any)=>r.summary_id)
+                    );
+                    const summaryDateMap:Record<number,string>={};
+                    leaderboardCompleted.filter((r:any)=>r.golfer_id===row.golfer_id).forEach((r:any)=>{
+                      const ev=events.find((e:any)=>e.event_id===r.event_id);
+                      if(ev)summaryDateMap[r.summary_id]=ev.date||"";
+                    });
+                    const holeHistory=holeScores.filter((h:any)=>
+                      completedSummaryIds.has(h.summary_id)&&
+                      h.hole_number===nextHole&&
+                      h.stableford_points!=null
+                    ).sort((a:any,b:any)=>(summaryDateMap[b.summary_id]||"").localeCompare(summaryDateMap[a.summary_id]||"")).slice(0,4);
+                    if(holeHistory.length<2)return null;
+                    const avg=holeHistory.reduce((s:number,h:any)=>s+h.stableford_points,0)/holeHistory.length;
+                    const firstName=g?.first_name||"Player";
+                    return(
+                      <div className="drawer-card" style={{margin:"10px 9px 0"}}>
+                        <div className="drawer-card-body">
+                          <div className="drawer-card-section-label" style={{marginBottom:6,textAlign:"left"}}>HOLE {nextHole} INSIGHT</div>
+                          <p style={{margin:0,fontSize:13,lineHeight:1.55,color:"var(--text-primary)",textAlign:"left"}}>
+                            {firstName} has averaged <strong>{avg.toFixed(1)} pts</strong> on Hole {nextHole} over his last {holeHistory.length} round{holeHistory.length===1?"":"s"}.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  </div>{/* end drawer-shell */}
+                </div>
+                );
+              })()}
+            </div>
+          );
+        };
+
         return(
           <div>
             <WindParticles windDeg={liveWxData?.current?.windDeg} windSpeed={liveWxData?.current?.wind}/>
@@ -1645,6 +1983,13 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               );
             })()}
 
+            <InkSubNav
+              tabs={[{id:"leaderboard",label:"Leaderboard"},{id:"groups",label:"Groups"},{id:"odds",label:"Live Odds"}]}
+              view={liveSection}
+              setView={(v)=>setLiveSection(v as typeof liveSection)}
+            />
+
+            {liveSection==="leaderboard"&&<>
             {liveRows.length===0&&(
               <div className="empty-state">
                 <div className="empty-text">No scores entered yet</div>
@@ -1667,231 +2012,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   const liveAnimatable=liveExpandedId==null&&liveRowH!=null;
                   return(
                 <div style={{position:"relative",minHeight:liveAnimatable?finalRows.length*(liveRowH as number):undefined}}>
-                {finalRows.map((row:any,i:number)=>{
-                  const g=golfers.find((x:any)=>x.golfer_id===row.golfer_id);
-                  const isExp=liveExpandedId===row.golfer_id;
-                  const rankColor=row.pos===1?"var(--gold-500)":row.pos===2?"var(--text-secondary)":row.pos===3?"var(--earth-400,#9c7c65)":"var(--text-muted)";
-                  const posLabel=(row.tied?"T":"")+row.pos;
-                  const signup=signups.find((s:any)=>s.event_id===liveEvent.event_id&&s.golfer_id===row.golfer_id);
-                  const playerCourse=signup?.tee_box_course_id
-                    ?courses.find((c:any)=>c.course_id===signup.tee_box_course_id)
-                    :liveCourse;
-                  const pars:number[]=playerCourse?.hole_pars||[];
-                  const front=row.hs.filter((h:any)=>h.hole_number<=9);
-                  const back=row.hs.filter((h:any)=>h.hole_number>9);
-
-                  const trailDir=liveTrail[row.golfer_id];
-                  const isFlipping=!!livePosFlip[row.golfer_id];
-                  const flipFromLabel=isFlipping?(row.tied?"T":"")+livePosFlipFromRef.current[row.golfer_id]:null;
-
-                  return(
-                    <div
-                      key={row.golfer_id}
-                      ref={el=>{liveRowRefs.current[row.golfer_id]=el;}}
-                      className={`live-row-wrap${trailDir==="up"?" trail-up":trailDir==="down"?" trail-down":""}${i===finalRows.length-1?" last":""}`}
-                      style={liveAnimatable?{position:"absolute",left:0,right:0,top:i*(liveRowH as number)}:{position:"relative"}}
-                    >
-                      <div className={`lb-live-row${row.golfer_id===memberGolferId?" me-row":""}`} onClick={()=>setLiveExpandedId(isExp?null:row.golfer_id)}>
-                        <div className="pos-flip" style={{fontSize:18,fontWeight:700,color:rankColor}}>
-                          {isFlipping?(
-                            <>
-                              <span className="pos-flip-face out">{flipFromLabel}</span>
-                              <span className="pos-flip-face in">{posLabel}</span>
-                            </>
-                          ):posLabel}
-                        </div>
-                        <div>
-                          <div style={{fontSize:18,textAlign:"left",marginLeft:5,fontWeight:600}}>{g?g.first_name+" "+g.last_name:"Unknown"}{row.isOnFire&&<span style={{marginLeft:5,fontSize:16}} title="On fire -- 2+ consecutive holes of 3+ pts">🔥</span>}</div>
-                          
-                        </div>
-                        <div style={{fontSize:20,fontWeight:700,color:"var(--green-700)",textAlign:"right"}}>{row.total_stableford_points||"--"}</div>
-                        <div style={{fontSize:18,fontWeight:600,color:row.thru===18?"var(--green-600)":"var(--text-muted)",textAlign:"right"}}>
-                          {row.thru===18?"F":row.thru||"--"}
-                        </div>
-                      </div>
-
-                      {isExp&&(()=>{
-                        const sk2=(hNum:number)=>liveSkinHoleWinners[hNum]===row.golfer_id;
-                        const f9cells=Array.from({length:9},(_,i)=>row.hs.find((h:any)=>h.hole_number===i+1)||null);
-                        const b9cells=Array.from({length:9},(_,i)=>row.hs.find((h:any)=>h.hole_number===i+10)||null);
-                        const f9gross=f9cells.reduce((s:number,h:any)=>s+(h?.gross_score||0),0);
-                        const b9gross=b9cells.reduce((s:number,h:any)=>s+(h?.gross_score||0),0);
-                        const f9pts=f9cells.reduce((s:number,h:any)=>s+(h?.stableford_points||0),0);
-                        const b9pts=b9cells.reduce((s:number,h:any)=>s+(h?.stableford_points||0),0);
-                        const totGross=(f9gross+b9gross)||"";
-                        const totPts=f9pts+b9pts;
-                        const hasF9=front.length>0;
-                        const hasB9=back.length>0;
-                        return(
-                        <div className="lb-detail">
-                          <div className="drawer-shell">
-                            <div className="drawer-tiles">
-                              <div className="drawer-tile">
-                                <div className="drawer-tile-value">{signup?.playing_handicap!=null?signup.playing_handicap:(g&&playerCourse?calcPlayingHandicap(g.current_handicap_index,playerCourse.tee_slope,playerCourse.tee_rating,playerCourse.par):"--")}</div>
-                                <div className="drawer-tile-label">Course HCP</div>
-                              </div>
-                              <div className="drawer-tile">
-                                <div className="drawer-tile-value">{playerCourse?.tee_box_name??"--"}</div>
-                                <div className="drawer-tile-label">Tees</div>
-                              </div>
-                              <div className="drawer-tile">
-                                <div className="drawer-tile-value">{row.hs.length>0?(f9gross+b9gross)||"--":"--"}</div>
-                                <div className="drawer-tile-label">Gross*</div>
-                              </div>
-                              <div className="drawer-tile">
-                                <div className={`drawer-tile-value${(liveSkinPayoutsLocal[row.golfer_id]||0)>0?" val-gold":""}`}>
-                                  {(()=>{const s=liveSkinPayoutsLocal[row.golfer_id]||0;return s>0?`$${s.toFixed(0)}`:"--";})()}
-                                </div>
-                                <div className="drawer-tile-label">Skins</div>
-                              </div>
-                            </div>
-                          {row.hs.length>0&&playerCourse?(
-                            <div>
-                              <div style={{fontSize:14,fontWeight:700,color:"var(--text-muted)",letterSpacing:"0.06em",textAlign:"center",textTransform:"uppercase",marginBottom:4}}>
-                                Scorecard · {playerCourse.tee_box_name} tees
-                              </div>
-                              {(()=>{
-                                return(
-                                  <div style={{overflowX:"auto",margin:8,paddingLeft:2,paddingRight:2}}>
-                                    <table className="scorecard-table" style={{minWidth:0,width:"100%"}}>
-                                      <colgroup>
-                                        <col style={{width:"10%"}}/>
-                                        {Array.from({length:9},(_,i)=><col key={i} style={{width:"7%"}}/>)}
-                                        <col style={{width:"7%"}}/>
-                                        <col style={{width:"7%"}}/>
-                                      </colgroup>
-
-                                      {/* ── FRONT NINE ── */}
-                                      <thead>
-                                        <tr>
-                                          <th className="label-col" style={{textTransform:"uppercase"}}>HOLE</th>
-                                          {[1,2,3,4,5,6,7,8,9].map(hNum=>{
-                                            const wonSkin=sk2(hNum);
-                                            return<th key={hNum} style={wonSkin?{background:"var(--gold-100,#fef3cd)",color:"var(--gold-700)"}:{}}>{hNum}{wonSkin?" 💰":""}</th>;
-                                          })}
-                                          <th className="total-col">OUT</th>
-                                          <th className="total-col" style={{background:"var(--surface2)",color:"transparent",userSelect:"none"}}>TOT</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        <tr>
-                                          <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>PAR</td>
-                                          {f9cells.map((_:any,i:number)=>{
-                                            const hNum=i+1;
-                                            return<td key={i} style={{color:"var(--text-muted)",fontSize:13,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{})}}>{pars[i]||"-"}</td>;
-                                          })}
-                                          <td className="total-col">{pars.slice(0,9).reduce((a:number,b:number)=>a+b,0)||""}</td>
-                                          <td className="total-col" style={{background:"var(--surface2)"}}></td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>SCORE</td>
-                                          {f9cells.map((h:any,i:number)=>{
-                                            const hNum=i+1;
-                                            return<td key={i} style={sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{}}>{h?<ScoreSymbolLive gross={h.gross_score} par={pars[i]||4}/>:<span style={{color:"var(--border)"}}>·</span>}</td>;
-                                          })}
-                                          <td className="total-col">{hasF9?f9gross||"":""}</td>
-                                          <td className="total-col" style={{background:"var(--surface2)"}}></td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col" style={{textTransform:"uppercase",color:"var(--text-muted)",fontSize:12}}>PTS</td>
-                                          {f9cells.map((h:any,i:number)=>{
-                                            const hNum=i+1;
-                                            const p=h?.stableford_points;
-                                            return<td key={i} style={{fontSize:15,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)",fontWeight:700,color:"var(--gold-700)"}:{color:"var(--text-muted)"})}}>{h!=null?p:<span style={{color:"var(--border)"}}>·</span>}</td>;
-                                          })}
-                                          <td className="total-col" style={{color:"var(--green-700)"}}>{hasF9?f9pts||"":""}</td>
-                                          <td className="total-col" style={{background:"var(--surface2)"}}></td>
-                                        </tr>
-                                      </tbody>
-
-                                      {/* ── BACK NINE ── */}
-                                      <tbody>
-                                        <tr style={{borderTop:"2px solid var(--border-md)"}}>
-                                          <th className="label-col" style={{textTransform:"uppercase",background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px 5px 8px",textAlign:"left",whiteSpace:"nowrap"}}>HOLE</th>
-                                          {[10,11,12,13,14,15,16,17,18].map(hNum=>{
-                                            const wonSkin=sk2(hNum);
-                                            return<th key={hNum} style={{background:wonSkin?"var(--gold-100,#fef3cd)":"var(--green-900)",color:wonSkin?"var(--gold-700)":"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px",textAlign:"center"}}>{hNum}{wonSkin?" 💰":""}</th>;
-                                          })}
-                                          <th className="total-col" style={{background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px"}}>IN</th>
-                                          <th className="total-col" style={{background:"var(--green-900)",color:"var(--gold-300)",fontWeight:700,fontSize:11,padding:"5px 3px"}}>TOT</th>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>PAR</td>
-                                          {b9cells.map((_:any,i:number)=>{
-                                            const hNum=i+10;
-                                            return<td key={i} style={{color:"var(--text-muted)",fontSize:14,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{})}}>{pars[9+i]||"-"}</td>;
-                                          })}
-                                          <td className="total-col">{pars.slice(9,18).reduce((a:number,b:number)=>a+b,0)||""}</td>
-                                          <td className="total-col">{pars.reduce((a:number,b:number)=>a+b,0)||""}</td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col" style={{textTransform:"uppercase",fontSize:12}}>SCORE</td>
-                                          {b9cells.map((h:any,i:number)=>{
-                                            const hNum=i+10;
-                                            return<td key={i} style={sk2(hNum)?{background:"var(--gold-50,#fffbeb)"}:{}}>{h?<ScoreSymbolLive gross={h.gross_score} par={pars[9+i]||4}/>:<span style={{color:"var(--border)"}}>·</span>}</td>;
-                                          })}
-                                          <td className="total-col">{hasB9?b9gross||"":""}</td>
-                                          <td className="total-col">{hasF9&&hasB9?totGross:""}</td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col" style={{textTransform:"uppercase",color:"var(--text-muted)",fontSize:12}}>PTS</td>
-                                          {b9cells.map((h:any,i:number)=>{
-                                            const hNum=i+10;
-                                            const p=h?.stableford_points;
-                                            return<td key={i} style={{fontSize:15,...(sk2(hNum)?{background:"var(--gold-50,#fffbeb)",fontWeight:700,color:"var(--gold-700)"}:{color:"var(--text-muted)"})}}>{h!=null?p:<span style={{color:"var(--border)"}}>·</span>}</td>;
-                                          })}
-                                          <td className="total-col" style={{color:"var(--green-700)"}}>{hasB9?b9pts||"":""}</td>
-                                          <td className="total-col" style={{color:"var(--green-700)",fontWeight:700}}>{hasF9&&hasB9?totPts:""}</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          ):(
-                            <div style={{fontSize:13,color:"var(--text-muted)",fontStyle:"italic",padding:"8px 9px"}}>No hole-by-hole data yet</div>
-                          )}
-                          {(()=>{
-                            if(row.hs.length===0||row.thru>=18)return null;
-                            const nextHole=row.hs[row.hs.length-1].hole_number+1;
-                            if(nextHole>18)return null;
-                            const completedSummaryIds=new Set(
-                              leaderboardCompleted
-                                .filter((r:any)=>r.golfer_id===row.golfer_id)
-                                .map((r:any)=>r.summary_id)
-                            );
-                            const summaryDateMap:Record<number,string>={};
-                            leaderboardCompleted.filter((r:any)=>r.golfer_id===row.golfer_id).forEach((r:any)=>{
-                              const ev=events.find((e:any)=>e.event_id===r.event_id);
-                              if(ev)summaryDateMap[r.summary_id]=ev.date||"";
-                            });
-                            const holeHistory=holeScores.filter((h:any)=>
-                              completedSummaryIds.has(h.summary_id)&&
-                              h.hole_number===nextHole&&
-                              h.stableford_points!=null
-                            ).sort((a:any,b:any)=>(summaryDateMap[b.summary_id]||"").localeCompare(summaryDateMap[a.summary_id]||"")).slice(0,4);
-                            if(holeHistory.length<2)return null;
-                            const avg=holeHistory.reduce((s:number,h:any)=>s+h.stableford_points,0)/holeHistory.length;
-                            const firstName=g?.first_name||"Player";
-                            return(
-                              <div className="drawer-card" style={{margin:"10px 9px 0"}}>
-                                <div className="drawer-card-body">
-                                  <div className="drawer-card-section-label" style={{marginBottom:6,textAlign:"left"}}>HOLE {nextHole} INSIGHT</div>
-                                  <p style={{margin:0,fontSize:13,lineHeight:1.55,color:"var(--text-primary)",textAlign:"left"}}>
-                                    {firstName} has averaged <strong>{avg.toFixed(1)} pts</strong> on Hole {nextHole} over his last {holeHistory.length} round{holeHistory.length===1?"":"s"}.
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                          </div>{/* end drawer-shell */}
-                        </div>
-                        );
-                      })()}
-                    </div>
-                  );
-                })}
+                {finalRows.map((row:any,i:number)=>renderLiveRow(row,i,finalRows.length,liveAnimatable))}
                 </div>
                   );
                 })()}
@@ -2000,10 +2121,58 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                 </div>
               );
             })()}
+            </>}
+
+            {/* ── GROUPS: live leaderboard organized by tee-time groupings ── */}
+            {liveSection==="groups"&&(()=>{
+              // Group scored golfers by their assigned tee time; players without a
+              // pairing fall into an "Unpaired" bucket at the end. Within a group,
+              // keep the leaderboard order (finalRows is already points-sorted).
+              const groupsMap:Record<string,any[]>={};
+              finalRows.forEach((row:any)=>{
+                const su=signups.find((s:any)=>s.event_id===liveEvent.event_id&&s.golfer_id===row.golfer_id);
+                const key=su?.assigned_tee_time?String(su.assigned_tee_time):"__unpaired__";
+                (groupsMap[key]||(groupsMap[key]=[])).push(row);
+              });
+              const teeOrder=(liveEvent.tee_times||[]).map((t:any)=>String(t));
+              const groupKeys=Object.keys(groupsMap).sort((a:any,b:any)=>{
+                if(a==="__unpaired__")return 1;
+                if(b==="__unpaired__")return -1;
+                const ai=teeOrder.indexOf(a),bi=teeOrder.indexOf(b);
+                return (ai===-1?999:ai)-(bi===-1?999:bi);
+              });
+              if(!finalRows.length)return(
+                <div className="empty-state"><div className="empty-text">No scores entered yet</div></div>
+              );
+              return(
+                <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                  {groupKeys.map((key)=>{
+                    const gRows=groupsMap[key];
+                    const label=key==="__unpaired__"?"Unpaired":String(key).slice(0,5);
+                    return(
+                      <div key={key} style={{borderRadius:"var(--radius-md)",boxShadow:BEZEL_OUTER_SHADOW}}>
+                      <div style={{position:"relative",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",overflow:"hidden"}}>
+                        <div style={bezelRimOverlay("var(--radius-md)","light")}/>
+                        <div style={{display:"grid",gridTemplateColumns:"44px 1fr 56px 52px",padding:"8px 12px",background:"var(--green-900)",alignItems:"center"}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase"}}>POS</div>
+                          <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textAlign:"left",marginLeft:5,textTransform:"uppercase"}}>{label}</div>
+                          <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"right"}}>PTS</div>
+                          <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"right"}}>THRU</div>
+                        </div>
+                        {gRows.map((row:any,gi:number)=>renderLiveRow(row,gi,gRows.length,false))}
+                      </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* ── Live odds board ── */}
-            {(()=>{
-              if(!eventOdds?.length)return null;
+            {liveSection==="odds"&&(()=>{
+              if(!eventOdds?.length)return(
+                <div className="empty-state"><div className="empty-text">Odds not available yet</div></div>
+              );
               // Latest-per-golfer odds map, prefer live over pre_round
               const oddsMap:Record<number,any>={};
               eventOdds.forEach((o:any)=>{
@@ -2025,17 +2194,18 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                   return{golfer_id:o.golfer_id,g,o,odds};
                 })
                 .sort((a:any,b:any)=>b.o.win_probability-a.o.win_probability);
-              if(!oddsRows.length)return null;
+              if(!oddsRows.length)return(
+                <div className="empty-state"><div className="empty-text">Odds not available yet</div></div>
+              );
               void oddsLastUpdated;
               return(
-                <div style={{marginTop:14}}>
-                  <div className="card-title" style={{marginBottom:6}}>Live Odds</div>
+                <div>
                   {/* Odds board — same 4-col grid as OddsTab */}
                   <div style={{borderRadius:"var(--radius-md)",boxShadow:BEZEL_PILL_SHADOW,marginBottom:4}}>
                   <div style={{position:"relative",background:"linear-gradient(180deg,var(--green-800),var(--green-900))",borderRadius:"var(--radius-md)",overflow:"hidden"}}>
                     <div style={bezelRimOverlay("var(--radius-md)","pill")}/>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 60px 65px 60px",padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
-                      <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase"}}>Golfer</div>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"left"}}>Golfer</div>
                       <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"center"}}>Proj</div>
                       <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"center"}}>Win %</div>
                       <div style={{fontSize:11,fontWeight:700,color:"var(--gold-300)",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"right"}}>Odds</div>
@@ -2045,12 +2215,12 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
                       const isLate=!posMap[r.golfer_id];
                       return(
                         <div key={r.golfer_id} style={{display:"grid",gridTemplateColumns:"1fr 60px 65px 60px",padding:"11px 12px",borderBottom:"1px solid rgba(255,255,255,0.06)",background:isFav?"rgba(196,120,0,0.12)":"transparent",alignItems:"center"}}>
-                          <div>
-                            <div style={{fontSize:15,fontWeight:isFav?700:500,color:isFav?"var(--gold-300)":"rgba(255,255,255,0.88)"}}>
+                          <div style={{textAlign:"left"}}>
+                            <div style={{fontSize:15,fontWeight:isFav?700:500,color:isFav?"var(--gold-300)":"rgba(255,255,255,0.88)",textAlign:"left"}}>
                               {r.g?r.g.first_name+" "+r.g.last_name:"Unknown"}{isFav?" 🏆":""}
-                              
+
                             </div>
-                            <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:1,alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                            <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:1,textAlign:"left",alignItems:"center",gap:4,flexWrap:"wrap"}}>
                               {r.o.heater_active&&<span style={{fontSize:10,fontWeight:700,background:"var(--gold-100)",color:"var(--gold-800)",border:"1px solid var(--gold-300)",borderRadius:10,padding:"1px 6px"}}>🔥 {(r.o.heater_magnitude??0).toFixed(1)}σ</span>}
                               {r.o.projected_final_low!=null&&r.o.projected_final_high!=null&&<span style={{color:"rgba(255,255,255,0.35)"}}>{"  "}{r.o.projected_final_low}–{r.o.projected_final_high} pts</span>}
                             </div>
@@ -2104,6 +2274,13 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             <UpcomingCourseCard event={nextEvent} courses={courses} holeImages={holeImages} onClick={()=>setUpcomingWeatherOpen(true)} fieldCount={upEntries.length} firstTeeTime={(nextEvent.tee_times||[]).slice().sort()[0]}/>
             <FieldStrengthMeter upEntries={upEntries} golfers={golfers} leaderboard={leaderboardCompleted} events={events} season={selSeason}/>
 
+            <InkSubNav
+              tabs={[{id:"field",label:pairingsSet?"Tee Times":"Field"},{id:"odds",label:"Odds"}]}
+              view={upcomingSection}
+              setView={(v)=>setUpcomingSection(v as typeof upcomingSection)}
+            />
+
+            {upcomingSection==="field"&&<>
             {rows.length===0&&(
               <div className="empty-state"><div className="empty-text">No RSVPs yet</div></div>
             )}
@@ -2151,9 +2328,12 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               </div>
               </div>
             )}
+            </>}
 
-            <PreEventOddsModule golfers={golfers} leaderboard={leaderboard} events={events} signups={signups} courses={courses} holeScores={holeScores}
-              event={nextEvent} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={onTriggerOdds}/>
+            {upcomingSection==="odds"&&(
+              <PreEventOddsModule golfers={golfers} leaderboard={leaderboard} events={events} signups={signups} courses={courses} holeScores={holeScores}
+                event={nextEvent} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={onTriggerOdds}/>
+            )}
           </div>
         );
       })()}

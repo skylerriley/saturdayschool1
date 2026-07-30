@@ -5,6 +5,7 @@ import { calcPlayingHandicap, calcHoleNetScore, calcStablefordPoints, calcHoleSc
 import { golferName, scrollMainTop, formatDate, uniqueCourseNames, teeBoxesForCourse } from "./lib/formatters";
 import { fuzzyMatchCourseName } from "./lib/courseNameUtils";
 import { markImageLoaded } from "./lib/imageCache";
+import { isPreviewId, buildPreviewEvents, buildPreviewSignups, buildPreviewLeaderboard, buildPreviewHoleScores, PREVIEW_COURSE_NAME } from "./lib/previewFixtures";
 
 // Weather utilities, hooks, and components
 import { wmoToDesc, degToCompass } from "./components/weather/weatherUtils";
@@ -2101,6 +2102,29 @@ export default function App(){
   // Persisted in localStorage (not sessionStorage) so the unlock survives a
   // force-quit of the installed PWA; cleared only by explicit logout.
   const [adminMode,setAdminMode]=useState(()=>{try{return localStorage.getItem("ss_admin")==="1";}catch{return false;}});
+  // ── Preview Mode (admin-only) ───────────────────────────────
+  // Injects a synthetic In-Progress + Pairings-Set event (plus golfers/signups/
+  // leaderboard/hole-scores from src/lib/previewFixtures) into the arrays passed
+  // ONLY to LeaderboardTab / RSVPTab / ScoreEntryTab, so an admin can see and
+  // drive the Live board, the Upcoming board, and hole-by-hole Score Entry with
+  // no real event and zero DB writes. Meaningful only while adminMode is true.
+  // Live edits (typing scores) land in previewOverlay* state below; base state
+  // and Supabase are never touched. Persisted so it survives a reload.
+  const [previewMode,setPreviewModeRaw]=useState(()=>{try{return localStorage.getItem("ss_preview")==="1";}catch{return false;}});
+  const setPreviewMode=useCallback((on:boolean)=>{
+    setPreviewModeRaw(on);
+    try{on?localStorage.setItem("ss_preview","1"):localStorage.removeItem("ss_preview");}catch{}
+    if(!on){setPreviewLeaderboardOv([]);setPreviewHoleScoresOv([]);setPreviewSignupsOv([]);setPreviewEventStatusOv({});}
+  },[]);
+  // In-memory overlays holding preview edits made during the session. They start
+  // from the fixtures and diverge as the admin enters scores. Cleared when
+  // preview mode is switched off or on logout.
+  const [previewLeaderboardOv,setPreviewLeaderboardOv]=useState<any[]>([]);
+  const [previewHoleScoresOv,setPreviewHoleScoresOv]=useState<any[]>([]);
+  const [previewSignupsOv,setPreviewSignupsOv]=useState<any[]>([]);
+  // event_id → overridden status (e.g. a preview Pairings-Set event flipped to
+  // In-Progress once the admin submits its first score).
+  const [previewEventStatusOv,setPreviewEventStatusOv]=useState<Record<number,string>>({});
 
   // ── Member identity (personalization only, no auth) ─────────
   // Which league member is using this device — drives the header greeting
@@ -3133,6 +3157,126 @@ export default function App(){
     });
   },[dbUpsertCharity,dbUpdateCharity,guardInsert]);
 
+  // ── Preview Mode: merged views + write interception ─────────
+  // When (adminMode && previewMode) the fixtures + any live preview edits are
+  // merged into the arrays handed to LeaderboardTab / RSVPTab / ScoreEntryTab.
+  // Only those three tabs get the *View arrays — Admin / Analytics / Settings
+  // keep the raw base state so preview data never leaks into DB-editing surfaces
+  // or season stats.
+  const previewActive=adminMode&&previewMode;
+
+  // Pars for the preview course (drives hole-score fixture Stableford estimates).
+  const previewCoursePars=useMemo(()=>{
+    const row=courses.find((c:any)=>c.course_name===PREVIEW_COURSE_NAME&&Array.isArray(c.hole_pars)&&c.hole_pars.length===18);
+    return row?row.hole_pars:null;
+  },[courses]);
+
+  // Base fixtures (stable per session while preview is on).
+  const previewBase=useMemo(()=>{
+    if(!previewActive)return null;
+    return {
+      events:buildPreviewEvents(),
+      signups:buildPreviewSignups(),
+      leaderboard:buildPreviewLeaderboard(),
+      holeScores:buildPreviewHoleScores(previewCoursePars),
+    };
+  },[previewActive,previewCoursePars]);
+
+  // Merge fixture rows with any session overlay edits (overlay wins by id).
+  const mergeById=(fixtures:any[],overlay:any[],idKey:string)=>{
+    const ov=new Map(overlay.map((r:any)=>[r[idKey],r]));
+    const out=fixtures.map((f:any)=>ov.has(f[idKey])?ov.get(f[idKey]):f);
+    overlay.forEach((r:any)=>{ if(!fixtures.find((f:any)=>f[idKey]===r[idKey]))out.push(r); });
+    return out;
+  };
+
+  const eventsView=useMemo(()=>{
+    if(!previewActive||!previewBase)return events;
+    const pe=previewBase.events.map((e:any)=>previewEventStatusOv[e.event_id]?{...e,status:previewEventStatusOv[e.event_id]}:e);
+    return [...events,...pe];
+  },[previewActive,previewBase,events,previewEventStatusOv]);
+
+  const signupsView=useMemo(()=>{
+    if(!previewActive||!previewBase)return signups;
+    return [...signups,...mergeById(previewBase.signups,previewSignupsOv,"signup_id")];
+  },[previewActive,previewBase,signups,previewSignupsOv]);
+
+  const leaderboardView=useMemo(()=>{
+    if(!previewActive||!previewBase)return leaderboard;
+    return [...leaderboard,...mergeById(previewBase.leaderboard,previewLeaderboardOv,"summary_id")];
+  },[previewActive,previewBase,leaderboard,previewLeaderboardOv]);
+
+  const holeScoresView=useMemo(()=>{
+    if(!previewActive||!previewBase)return holeScores;
+    return [...holeScores,...mergeById(previewBase.holeScores,previewHoleScoresOv,"score_id")];
+  },[previewActive,previewBase,holeScores,previewHoleScoresOv]);
+
+  // Preview-aware setter wrappers. ScoreEntryTab/RSVPTab call these exactly like
+  // the DB setters, passing an updater that runs against the MERGED view. We run
+  // it against the view, then split the result: preview rows (negative id) land
+  // in the session overlay (no DB), everything else flows to the real DB setter.
+  const applyView=(updater:any,view:any[])=>typeof updater==="function"?updater(view):updater;
+
+  const setEventsPV=useCallback((updater:any)=>{
+    if(!previewActive){setEventsDB(updater);return;}
+    const next=applyView(updater,eventsView);
+    // Capture preview event status flips (Pairings Set → In-Progress on submit).
+    const statusOv:Record<number,string>={};
+    next.forEach((e:any)=>{ if(isPreviewId(e.event_id))statusOv[e.event_id]=e.status; });
+    if(Object.keys(statusOv).length)setPreviewEventStatusOv(prev=>({...prev,...statusOv}));
+    // Forward only real (non-preview) events to the DB setter, and only if any
+    // real event actually changed — otherwise leave base events untouched.
+    const realNext=next.filter((e:any)=>!isPreviewId(e.event_id));
+    const changedReal=realNext.some((n:any)=>{
+      const old=events.find((o:any)=>o.event_id===n.event_id);
+      return !old||JSON.stringify(old)!==JSON.stringify(n);
+    })||events.some((o:any)=>!realNext.find((n:any)=>n.event_id===o.event_id));
+    if(changedReal)setEventsDB(()=>realNext);
+  },[previewActive,eventsView,events,setEventsDB]);
+
+  const setSignupsPV=useCallback((updater:any)=>{
+    if(!previewActive){setSignupsDB(updater);return;}
+    const next=applyView(updater,signupsView);
+    const prevRows=next.filter((r:any)=>isPreviewId(r.signup_id)||isPreviewId(r.event_id));
+    setPreviewSignupsOv(prevRows);
+    setSignupsDB((_prev:any[])=>next.filter((r:any)=>!isPreviewId(r.signup_id)&&!isPreviewId(r.event_id)));
+  },[previewActive,signupsView,setSignupsDB]);
+
+  const setLeaderboardPV=useCallback((updater:any)=>{
+    if(!previewActive){setLeaderboardDB(updater);return;}
+    const next=applyView(updater,leaderboardView);
+    setPreviewLeaderboardOv(next.filter((r:any)=>isPreviewId(r.summary_id)||isPreviewId(r.event_id)));
+    setLeaderboardDB((_prev:any[])=>next.filter((r:any)=>!isPreviewId(r.summary_id)&&!isPreviewId(r.event_id)));
+  },[previewActive,leaderboardView,setLeaderboardDB]);
+
+  // Pure-local leaderboard setter (ScoreEntryTab's setLeaderboardLocal): never
+  // writes to DB. In preview mode preview rows go to the overlay; otherwise it's
+  // the plain base setState.
+  const setLeaderboardLocalPV=useCallback((updater:any)=>{
+    if(!previewActive){setLeaderboard(updater);return;}
+    const next=applyView(updater,leaderboardView);
+    setPreviewLeaderboardOv(next.filter((r:any)=>isPreviewId(r.summary_id)||isPreviewId(r.event_id)));
+    setLeaderboard((_prev:any[])=>next.filter((r:any)=>!isPreviewId(r.summary_id)&&!isPreviewId(r.event_id)));
+  },[previewActive,leaderboardView]);
+
+  const setHoleScoresPV=useCallback((updater:any)=>{
+    if(!previewActive){setHoleScoresDB(updater);return;}
+    const next=applyView(updater,holeScoresView);
+    setPreviewHoleScoresOv(next.filter((r:any)=>isPreviewId(r.score_id)||isPreviewId(r.summary_id)));
+    setHoleScoresDB((_prev:any[])=>next.filter((r:any)=>!isPreviewId(r.score_id)&&!isPreviewId(r.summary_id)));
+  },[previewActive,holeScoresView,setHoleScoresDB]);
+
+  // Per-hole live upsert/delete: swallow preview rows (overlay already updated by
+  // setHoleScoresPV), forward real rows to Supabase.
+  const dbUpsertHoleScorePV=useCallback((row:any)=>{
+    if(previewActive&&(isPreviewId(row.score_id)||isPreviewId(row.summary_id)))return;
+    dbUpsertHoleScore(row);
+  },[previewActive,dbUpsertHoleScore]);
+  const dbDeleteHoleScorePV=useCallback((summary_id:number,hole_number:number)=>{
+    if(previewActive&&isPreviewId(summary_id))return;
+    dbDeleteHoleScore(summary_id,hole_number);
+  },[previewActive,dbDeleteHoleScore]);
+
   // -- loading / error screens ---------------------------------
 
   // Determine slide direction from the tab's position in the bar (spatial geography).
@@ -3292,6 +3436,7 @@ export default function App(){
           onProfileClick={()=>{
             if(adminMode){
               setAdminMode(false);
+              setPreviewMode(false); // never leave preview data on for a non-admin
               try{localStorage.removeItem("ss_admin");}catch{}
               try{sessionStorage.removeItem("ss_admin");}catch{} // legacy key
               setActiveTab(t=>t==="admin"?"leaderboard":t);
@@ -3335,6 +3480,20 @@ export default function App(){
               :`Syncing ${pendingSync} change${pendingSync>1?"s":""}…`}
           </div>
         )}
+        {/* Preview Mode banner: a persistent reminder that dummy live/upcoming/
+            score-entry data is being shown to this admin device only. */}
+        {previewActive&&(
+          <div style={{
+            position:"absolute",top:"calc(env(safe-area-inset-top,0px) + 58px)",left:"50%",transform:"translateX(-50%)",
+            zIndex:301,display:"flex",alignItems:"center",gap:6,
+            background:"#5b2b8a",color:"#f3e6ff",borderRadius:14,padding:"5px 12px",
+            fontSize:12,fontWeight:700,letterSpacing:"0.02em",
+            boxShadow:"0 2px 10px rgba(0,0,0,0.3)",cursor:"pointer",whiteSpace:"nowrap",
+          }} onClick={()=>{setActiveTab("settings");scrollToTop(50);}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:"#c79bff",display:"inline-block"}}/>
+            Preview Mode — dummy data (admin only) · tap to exit
+          </div>
+        )}
         {activeTab==="leaderboard"&&<EventAlertBanner events={events} signups={signups} holeImages={holeImages} memberGolferId={memberGolferId} mainRef={mainRef} onNavigateToSignup={()=>{setActiveTab("rsvp");scrollToTop(50);}}/>}
         <main
           className="main-content"
@@ -3343,12 +3502,12 @@ export default function App(){
           {successMsg&&<div className="success-banner"><span>✓</span>{successMsg}</div>}
           {errorMsg&&<div className="error-banner"><span>⚠</span>{errorMsg}</div>}
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
-          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} memberGolferId={memberGolferId} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} initialOpenEventId={lbOpenEventId} onOpenEventConsumed={()=>setLbOpenEventId(0)} initialScrollToMe={lbScrollToMe} onScrollToMeConsumed={()=>setLbScrollToMe(false)} initialScrollToGroup={lbScrollToGroup} onScrollToGroupConsumed={()=>setLbScrollToGroup(false)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setAnalyticsBackTarget("leaderboard");setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
-          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab} needsIdentify={canPromptIdentity} onRequestIdentify={()=>setRsvpIdentifyPrompt(true)}/>}
-          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={events} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} setLeaderboardLocal={setLeaderboard} holeScores={holeScores} setHoleScores={setHoleScoresDB} setEvents={setEventsDB} dbUpsertHoleScore={dbUpsertHoleScore} dbDeleteHoleScore={dbDeleteHoleScore} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg} memberGolferId={memberGolferId}/>}
+          {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={eventsView} leaderboard={leaderboardView} holeScores={holeScoresView} signups={signupsView} adminMode={adminMode} memberGolferId={memberGolferId} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} initialOpenEventId={lbOpenEventId} onOpenEventConsumed={()=>setLbOpenEventId(0)} initialScrollToMe={lbScrollToMe} onScrollToMeConsumed={()=>setLbScrollToMe(false)} initialScrollToGroup={lbScrollToGroup} onScrollToGroupConsumed={()=>setLbScrollToGroup(false)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setAnalyticsBackTarget("leaderboard");setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
+          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={eventsView} setEvents={setEventsPV} signups={signupsView} setSignups={setSignupsPV} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab} needsIdentify={canPromptIdentity} onRequestIdentify={()=>setRsvpIdentifyPrompt(true)}/>}
+          {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={eventsView} signups={signupsView} setSignups={setSignupsPV} leaderboard={leaderboardView} setLeaderboard={setLeaderboardPV} setLeaderboardLocal={setLeaderboardLocalPV} holeScores={holeScoresView} setHoleScores={setHoleScoresPV} setEvents={setEventsPV} dbUpsertHoleScore={dbUpsertHoleScorePV} dbDeleteHoleScore={dbDeleteHoleScorePV} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg} memberGolferId={memberGolferId}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} initialH2H={analyticsInitialH2H} onInitialH2HConsumed={()=>setAnalyticsInitialH2H(null)} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab(analyticsBackTarget);setAnalyticsBackTarget("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
-          {activeTab==="settings"&&<SettingsTab golfers={golfers} memberGolferId={memberGolferId} onChangeMember={chooseMember} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} onNavigateSeason={()=>goLeaderboardSub("season")} onNavigateTop15={()=>goLeaderboardSub("top15")} onNavigateLastRound={goLastRound} onNavigateRsvp={goRsvpFromProfile} onNavigateGroup={goUpcomingGroup} onNavigateH2H={goH2H} onNavigateAnalytics={goMoreStats}/>}
+          {activeTab==="settings"&&<SettingsTab golfers={golfers} memberGolferId={memberGolferId} onChangeMember={chooseMember} events={events} leaderboard={leaderboard} holeScores={holeScores} signups={signups} adminMode={adminMode} previewMode={previewMode} onTogglePreview={setPreviewMode} onNavigateSeason={()=>goLeaderboardSub("season")} onNavigateTop15={()=>goLeaderboardSub("top15")} onNavigateLastRound={goLastRound} onNavigateRsvp={goRsvpFromProfile} onNavigateGroup={goUpcomingGroup} onNavigateH2H={goH2H} onNavigateAnalytics={goMoreStats}/>}
           </div>
         </main>
 

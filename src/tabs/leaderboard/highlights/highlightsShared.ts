@@ -1,5 +1,5 @@
 // Shared non-component exports for the highlights feature (kept out of the
-// component files so react-refresh stays happy).
+// component files so react-refresh stays happy<div class="app-shell">).
 import type { DataBeat } from "../../../lib/recapEngine";
 
 // Feature flag: 'admin' => only admin-unlocked devices see the module;
