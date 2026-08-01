@@ -161,7 +161,11 @@ export function SubTabPanel({tabs,value,onChange,renderTab,children}:{tabs:{id:s
       ref={containerRef}
       className={`sub-pane${bounce?` sub-bounce-${bounce}`:""}`}
       data-dir={entranceDir}
-      style={{position:"relative",overflowX:isActive?"hidden":"visible"}}
+      /* overflowX "clip" not "hidden": "hidden" creates a scroll container,
+         which becomes the containing block for any position:sticky descendant
+         (that broke the Hole Stats sticky header). "clip" clips identically
+         without establishing one. See the .sub-pane rule in App.tsx. */
+      style={{position:"relative",overflowX:isActive?"clip":"visible",overflowY:"visible"}}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}

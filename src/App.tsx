@@ -272,7 +272,14 @@ const CSS = `
   @keyframes paneFromLeft{from{opacity:0;transform:translate3d(-24px,0,0);}to{opacity:1;transform:none;}}
 
   /* Sub-tab content transitions — tighter than top-level (feels nested) */
-  .sub-pane{will-change:opacity;overflow:hidden;}
+  /* overflow-x:clip, NOT hidden. Both clip the swipe/slide animation, but
+     'hidden' makes this a scroll container, which then becomes the containing
+     block for any position:sticky descendant. That silently broke the sticky
+     header on the Hole Stats table (it stuck to this pane and scrolled away
+     with it instead of freezing against .main-content). 'clip' clips without
+     creating a scroll container, so sticky still resolves to the real
+     scroller. overflow-y must stay visible for the same reason. */
+  .sub-pane{will-change:opacity;overflow-x:clip;overflow-y:visible;}
   .sub-pane[data-dir^="right"]{animation:subPaneFromRight 0.30s cubic-bezier(0.22,1,0.36,1);}
   .sub-pane[data-dir^="left"]{animation:subPaneFromLeft 0.30s cubic-bezier(0.22,1,0.36,1);}
   @keyframes subPaneFromRight{from{opacity:0;transform:translate3d(18px,0,0);}to{opacity:1;transform:none;}}
