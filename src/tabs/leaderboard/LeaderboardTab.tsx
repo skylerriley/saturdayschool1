@@ -22,6 +22,7 @@ import { WinProbabilityChart } from "../../WinProbabilityChart";
 import { HighlightsModule } from "./highlights/HighlightsModule";
 import { highlightsEnabled, isArtisticView, hoursSinceEvent, withinPostRoundWindow, HIGHLIGHTS_WINDOW_HOURS, WEEKLY_DETAIL_WINDOW_HOURS } from "./highlights/highlightsShared";
 import { hasHoleByHoleData } from "../../lib/buildBeatsInput";
+import { buildCourseSeasonStats } from "../../lib/courseSeasonStats";
 import { uploadCourseAsset } from "../../lib/r2Upload";
 
 ensureShimmer();
@@ -299,68 +300,97 @@ function InkSubNav({tabs,view,setView}:{tabs:{id:string;label:string}[];view:str
   const btnRefs=useRef<(HTMLButtonElement|null)[]>([]);
   const [inkStyle,setInkStyle]=useState<{left:number;width:number}|null>(null);
 
+  const scrollerRef=useRef<HTMLDivElement|null>(null);
+  const innerRef=useRef<HTMLDivElement|null>(null);
+
   useLayoutEffect(()=>{
     const idx=tabs.findIndex(t=>t.id===view);
     const el=btnRefs.current[idx];
-    if(!el)return;
-    const parent=el.parentElement;
-    if(!parent)return;
-    const parentRect=parent.getBoundingClientRect();
+    const inner=innerRef.current;
+    const scroller=scrollerRef.current;
+    if(!el||!inner||!scroller)return;
+    // Measure against the INNER wrapper (the full-content-width box), not the
+    // scroller viewport -- the ink is positioned inside that wrapper, so it
+    // then tracks its button at any scroll offset.
+    const innerRect=inner.getBoundingClientRect();
     const elRect=el.getBoundingClientRect();
-    setInkStyle({left:elRect.left-parentRect.left,width:elRect.width});
+    setInkStyle({left:elRect.left-innerRect.left,width:elRect.width});
+    // Keep the active tab reachable when the row overflows -- selecting a tab
+    // that sits off-screen (or restoring one) should bring it into view.
+    if(scroller.scrollWidth>scroller.clientWidth){
+      const left=el.offsetLeft-(scroller.clientWidth-el.offsetWidth)/2;
+      scroller.scrollTo({left:Math.max(0,left),behavior:"smooth"});
+    }
   },[view,tabs]);
 
+  // Horizontally scrollable: at 4 items ("Live Odds" + "Course") the row is
+  // 404px against a 380px phone viewport. `nowrap` stops the labels wrapping
+  // mid-item ("Live" over "Odds"); the scroller makes the overflow reachable.
+  //
+  // The inner wrapper is load-bearing, NOT decorative nesting: the underline
+  // track and the ink both need to span//address the full CONTENT width. An
+  // absolutely positioned child (or ::after) resolves width:100% against the
+  // padding box -- measured at 380px against 404px of content -- so the track
+  // stopped short and the ink drifted on scroll. A width:max-content wrapper
+  // establishes a containing block that IS the content width, which both then
+  // resolve against correctly. Verified in-browser at 380px.
   return(
-    <div style={{position:"relative",display:"flex",gap:20,marginBottom:16,paddingBottom:0}}>
-      {tabs.map((t,i)=>(
-        <button
-          key={t.id}
-          ref={el=>{btnRefs.current[i]=el;}}
-          onClick={()=>setView(t.id)}
-          style={{
-            background:"none",border:"none",cursor:"pointer",
-            padding:"0 4px 12px",
-            fontSize:13,fontWeight:700,
-            color:view===t.id?"var(--text-primary)":"var(--text-muted)",
-            WebkitTapHighlightColor:"transparent",
-            transition:"color 0.2s",
-            letterSpacing:"0.07em",
-            textTransform:"uppercase",
-          }}
-        >
-          {t.label}
-        </button>
-      ))}
-      {/* Track line */}
-      <div style={{
-        position:"absolute",bottom:0,left:0,right:0,
-        height:1,background:"var(--border)",
-      }}/>
-      {/* Ink indicator */}
-      {inkStyle&&(
-        <div style={{
-          position:"absolute",bottom:0,
-          left:inkStyle.left,
-          width:inkStyle.width,
-          height:2,
-          background:"var(--green-700)",
-          borderRadius:2,
-          transition:"left 0.28s cubic-bezier(0.4,0,0.2,1), width 0.28s cubic-bezier(0.4,0,0.2,1)",
-        }}/>
-      )}
+    <div ref={scrollerRef} className="ink-subnav"
+      style={{position:"relative",marginBottom:16,overflowX:"auto",overflowY:"hidden",WebkitOverflowScrolling:"touch",scrollbarWidth:"none",overscrollBehaviorX:"contain"} as any}>
+      <div ref={innerRef} style={{position:"relative",width:"max-content",minWidth:"100%"}}>
+        <div style={{display:"flex",gap:20}}>
+          {tabs.map((t,i)=>(
+            <button
+              key={t.id}
+              ref={el=>{btnRefs.current[i]=el;}}
+              onClick={()=>setView(t.id)}
+              style={{
+                background:"none",border:"none",cursor:"pointer",
+                padding:"0 4px 12px",
+                fontSize:13,fontWeight:700,
+                color:view===t.id?"var(--text-primary)":"var(--text-muted)",
+                WebkitTapHighlightColor:"transparent",
+                transition:"color 0.2s",
+                letterSpacing:"0.07em",
+                textTransform:"uppercase",
+                whiteSpace:"nowrap",
+                flexShrink:0,
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {/* Track line -- normal-flow child of the max-content wrapper, so
+            width:100% is the full scrollable width. */}
+        <div style={{position:"absolute",bottom:0,left:0,width:"100%",height:1,background:"var(--border)"}}/>
+        {/* Ink indicator */}
+        {inkStyle&&(
+          <div style={{
+            position:"absolute",bottom:0,
+            left:inkStyle.left,
+            width:inkStyle.width,
+            height:2,
+            background:"var(--green-700)",
+            borderRadius:2,
+            transition:"left 0.28s cubic-bezier(0.4,0,0.2,1), width 0.28s cubic-bezier(0.4,0,0.2,1)",
+          }}/>
+        )}
+      </div>
     </div>
   );
 }
 
 export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,signups,adminMode,memberGolferId,eventImages,setEventImages,holeImages,setHoleImages,showSuccess,eventOdds,oddsLoading,oddsLastUpdated,onTriggerOdds,refreshLiveData,initialSubTab,restoreSubTab,onSubTabChange,initialFeedOpen,initialOpenEventId,onOpenEventConsumed,initialScrollToMe,onScrollToMeConsumed,initialScrollToGroup,onScrollToGroupConsumed,onNavigateToAnalyticsGolfer}:any){
-  // ── Golden Hour Mode ──────────────────────────────────────────────────
-  // Fri/Sat 4-8pm PST: the leaderboard drifts toward amber-tinted greens and
-  // warmer whites. Friday afternoon = anticipation; Saturday evening = the
-  // 19th-hole moment after most groups have finished. Checked once a minute
-  // (cheap) and derived from America/Los_Angeles wall-clock time so it's
-  // correct regardless of the device's local timezone.
+  // ── Golden Hour Mode (DISABLED) ───────────────────────────────────────
+  // Fri/Sat 4-8pm PST used to drift the leaderboard toward amber-tinted greens
+  // and warmer whites. Turned off -- the `.golden-hour` CSS in App.tsx is left
+  // in place, it just never gets applied. To re-enable, flip this flag back to
+  // the time-based check (see git history for the Intl-based implementation).
+  const GOLDEN_HOUR_ENABLED=false;
   const [isGoldenHour,setIsGoldenHour]=useState(false);
   useEffect(()=>{
+    if(!GOLDEN_HOUR_ENABLED){setIsGoldenHour(false);return;}
     const check=()=>{
       const parts=new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",weekday:"short",hour:"numeric",hour12:false}).formatToParts(new Date());
       const weekday=parts.find(p=>p.type==="weekday")?.value;
@@ -451,8 +481,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
   // Ink sub-nav state within the Live / Upcoming views (leaderboard + skins vs
   // groups vs odds). Section names only — the outer subTab is unchanged.
-  const [liveSection,setLiveSection]=useState<"leaderboard"|"groups"|"odds">("leaderboard");
-  const [upcomingSection,setUpcomingSection]=useState<"field"|"odds">("field");
+  const [liveSection,setLiveSection]=useState<"leaderboard"|"groups"|"odds"|"course">("leaderboard");
+  const [upcomingSection,setUpcomingSection]=useState<"field"|"odds"|"course">("field");
 
   // Feed overlay state: which event's full detail is open
   const [feedOverlayEvent,setFeedOverlayEvent]=useState<any|null>(null);
@@ -804,6 +834,61 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
     const diffDays=Math.round((evDate.getTime()-today.getTime())/86400000);
     return diffDays<=2&&diffDays>=0;
   })();
+
+  // ── Season-to-date course stats for the Live / Upcoming "Course" section ──
+  // Same layout as the weekly event detail's Course Overview / Hole Stats, but
+  // averaged over every COMPLETED event at this course this season instead of a
+  // single round. The current event is excluded by construction (it is
+  // In-Progress or Upcoming, never Completed), so a live round's partial front
+  // nine can never skew the baseline it is being compared against.
+  //
+  // Card-back rows are limited to the golfers in THIS event's field, so the
+  // flip reads "how do the guys I'm playing with handle this hole".
+  const liveCourseSeason=useMemo(()=>{
+    if(!liveEvent)return null;
+    const fieldIds=dedupeLeaderboard(leaderboard.filter((r:any)=>r.event_id===liveEvent.event_id))
+      .map((r:any)=>r.golfer_id);
+    return buildCourseSeasonStats({
+      courseName:liveEvent.course_name,
+      season:liveEvent.season,
+      events,leaderboard,holeScores,signups,courses,golfers,
+      fieldGolferIds:fieldIds,
+    });
+  },[liveEvent?.event_id,liveEvent?.course_name,events,leaderboard,holeScores,signups,courses,golfers]);
+
+  const upcomingCourseSeason=useMemo(()=>{
+    if(!nextEvent)return null;
+    const fieldIds=signups
+      .filter((s:any)=>s.event_id===nextEvent.event_id&&s.attending==="Yes")
+      .map((s:any)=>s.golfer_id);
+    return buildCourseSeasonStats({
+      courseName:nextEvent.course_name,
+      season:nextEvent.season,
+      events,leaderboard,holeScores,signups,courses,golfers,
+      fieldGolferIds:fieldIds,
+    });
+  },[nextEvent?.event_id,nextEvent?.course_name,events,leaderboard,holeScores,signups,courses,golfers]);
+
+  // Shared renderer so the Live and Upcoming Course sections cannot drift.
+  const renderCourseSeasonSection=(stats:any,courseName:string)=>{
+    return(
+      <CourseStatsModule
+        seasonMode
+        emptyMessage={`📊 No completed rounds at ${courseName||"this course"} yet this season — course stats will appear once one is played`}
+        holeStats={stats?.holeStats||[]}
+        rankMap={stats?.rankMap||{}}
+        playerHoleData={stats?.playerHoleData||{}}
+        holeImages={holeImages}
+        setHoleImages={setHoleImages}
+        courseName={courseName}
+        courseId={stats?.courseId||0}
+        adminMode={adminMode}
+        showSuccess={showSuccess}
+        hasYards={stats?.hasYards}
+        holeCount={stats?.holeStats?.length||0}
+      />
+    );
+  };
 
   // Auto-switch to LIVE tab when an in-progress event appears
   useEffect(()=>{
@@ -1984,7 +2069,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             })()}
 
             <InkSubNav
-              tabs={[{id:"leaderboard",label:"Leaderboard"},{id:"groups",label:"Groups"},{id:"odds",label:"Live Odds"}]}
+              tabs={[{id:"leaderboard",label:"Leaderboard"},{id:"groups",label:"Groups"},{id:"odds",label:"Live Odds"},{id:"course",label:"Course"}]}
               view={liveSection}
               setView={(v)=>setLiveSection(v as typeof liveSection)}
             />
@@ -2242,9 +2327,13 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               );
             })()}
 
+            {liveSection==="course"&&renderCourseSeasonSection(liveCourseSeason,liveEvent.course_name)}
+
+            {liveSection!=="course"&&(
             <div style={{fontSize:12,color:"var(--text-muted)",marginTop:10,textAlign:"center",paddingBottom:4}}>
               Updates as scores are entered · pull to refresh for latest
             </div>
+            )}
           </div>
         );
       })()}
@@ -2275,7 +2364,7 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
             <FieldStrengthMeter upEntries={upEntries} golfers={golfers} leaderboard={leaderboardCompleted} events={events} season={selSeason}/>
 
             <InkSubNav
-              tabs={[{id:"field",label:pairingsSet?"Tee Times":"Field"},{id:"odds",label:"Odds"}]}
+              tabs={[{id:"field",label:pairingsSet?"Tee Times":"Field"},{id:"odds",label:"Odds"},{id:"course",label:"Course"}]}
               view={upcomingSection}
               setView={(v)=>setUpcomingSection(v as typeof upcomingSection)}
             />
@@ -2334,6 +2423,8 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
               <PreEventOddsModule golfers={golfers} leaderboard={leaderboard} events={events} signups={signups} courses={courses} holeScores={holeScores}
                 event={nextEvent} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={onTriggerOdds}/>
             )}
+
+            {upcomingSection==="course"&&renderCourseSeasonSection(upcomingCourseSeason,nextEvent.course_name)}
           </div>
         );
       })()}
@@ -3077,7 +3168,13 @@ export function LeaderboardTab({golfers,courses,events,leaderboard,holeScores,si
 
 
 // ── Course Stats Module ──────────────────────────────────────────────────────
-export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,setHoleImages,courseName,courseId,adminMode,showSuccess,hasYards,holeCount}:any){
+// `seasonMode` switches the module from ONE event's field to season-to-date
+// averages for the course (Live / Upcoming "Course" section). Same layout and
+// same math shape; only the card back differs — per-event it lists what each
+// golfer actually scored on the hole, per-season it lists each golfer's average
+// points there. Season mode also drops the Course Overview / Hole Stats toggle
+// and stacks both sections, table first.
+export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,setHoleImages,courseName,courseId,adminMode,showSuccess,hasYards,holeCount,seasonMode,emptyMessage}:any){
   const [view,setView]=useState<"course"|"stats">("course");
   const [uploadingHole,setUploadingHole]=useState<number|null>(null);
   const [flippedHole,setFlippedHole]=useState<number|null>(null);
@@ -3146,7 +3243,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
     return(
       <div style={{position:"relative",marginTop:16,padding:"18px 16px",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",textAlign:"center",color:"var(--text-muted)",fontSize:14,boxShadow:BEZEL_OUTER_SHADOW}}>
         <div style={bezelRimOverlay("var(--radius-md)","light")}/>
-        📊 Course stats will appear after hole-by-hole scores are entered
+        {emptyMessage||"📊 Course stats will appear after hole-by-hole scores are entered"}
       </div>
     );
   }
@@ -3230,17 +3327,30 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
     ...(front.length>0&&back.length>0?[totalRow(holeStats,"TOT")]:[]),
   ];
 
+  // Season mode (Live/Upcoming "Course" section) drops the toggle and stacks
+  // both sections in one scroll: hole stats table first, then the hole cards.
+  // The per-event view keeps the toggle -- it lives inside an already-long
+  // event detail page where two stacked modules would bury what follows.
+  const showStats=seasonMode||view==="stats";
+  const showCards=seasonMode||view==="course";
+  const statsTable=<HoleStatsTable allRows={allRows} hasYards={hasYards} fmtPlusMinus={fmtPlusMinus} pmColor={pmColor}/>;
+
   return(
     <div style={{paddingBottom:100,marginTop:20}}>
-      {/* Toggle */}
-      <ToggleGroup
-        options={[{value:"course",label:"Course Overview"},{value:"stats",label:"Hole Stats"}]}
-        value={view}
-        onChange={setView}
-      />
+      {!seasonMode&&(
+        <ToggleGroup
+          options={[{value:"course",label:"Course Overview"},{value:"stats",label:"Hole Stats"}]}
+          value={view}
+          onChange={setView}
+        />
+      )}
+
+      {/* ── Hole Stats table ── (season mode renders it above the cards; see
+          showStats/showCards above) */}
+      {seasonMode&&showStats&&statsTable}
 
       {/* ── Course cards view ── */}
-      {view==="course"&&(
+      {showCards&&(
         <FlickCarousel count={holeStats.length}>
           <div style={{display:"flex",gap:12,paddingLeft:2,paddingRight:2,width:"max-content"}}>
             {holeStats.map((h:any)=>{
@@ -3311,7 +3421,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
                     </div>
                   )}
                   {/* Tap hint */}
-                  <div style={{position:"absolute",bottom:3,right:100,zIndex:2,fontSize:10,color:"rgba(255,255,255,0.55)",fontWeight:600,letterSpacing:"0.05em"}}>TAP FOR SCORES ⟳</div>
+                  <div style={{position:"absolute",bottom:3,right:100,zIndex:2,fontSize:10,color:"rgba(255,255,255,0.55)",fontWeight:600,letterSpacing:"0.05em"}}>{seasonMode?"TAP FOR AVGS ⟳":"TAP FOR SCORES ⟳"}</div>
                   </div>
                   {/* ── BACK ── */}
                   <div className="hcard-back" style={is3D
@@ -3324,13 +3434,23 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
                       </div>
                       <div style={{display:"flex",gap:16,marginTop:8,fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase"}}>
                         <span style={{flex:1,textAlign:"left"}}>Player</span>
-                        <span style={{width:30,textAlign:"center"}}>Gross</span>
-                        <span style={{width:30,textAlign:"center"}}>Pts</span>
+                        <span style={{width:30,textAlign:"center"}}>{seasonMode?"Rnds":"Gross"}</span>
+                        <span style={{width:30,textAlign:"center"}}>{seasonMode?"Avg":"Pts"}</span>
                       </div>
                     </div>
-                    <div style={{flex:1,minHeight:0,flexDirection:"column",justifyContent:"center",padding:"2px 16px"}}>
+                    {/* Season mode can list a whole field (20+), so the body
+                        scrolls; the per-event list is short and stays static. */}
+                    <div style={{flex:1,minHeight:0,flexDirection:"column",justifyContent:"center",padding:"2px 16px",overflowY:seasonMode?"auto":undefined,WebkitOverflowScrolling:"touch",overscrollBehavior:"contain"}}>
                       {players.length===0
-                        ?<div style={{color:"rgba(255,255,255,0.4)",fontSize:13,textAlign:"center"}}>No scores recorded</div>
+                        ?<div style={{color:"rgba(255,255,255,0.4)",fontSize:13,textAlign:"center"}}>{seasonMode?"No rounds recorded here yet":"No scores recorded"}</div>
+                        :seasonMode
+                        ?players.map((p:any,i:number)=>(
+                          <div key={p.golfer_id} style={{display:"flex",alignItems:"center",gap:16,padding:"5px 0",borderBottom:i<players.length-1?"1px solid rgba(255,255,255,0.08)":"none"}}>
+                            <span style={{flex:1,fontSize:15,fontWeight:600,color:"white",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                            <span style={{width:30,fontSize:14,textAlign:"center",color:"rgba(255,255,255,0.55)",fontWeight:600}}>{p.rounds}</span>
+                            <span style={{width:30,fontSize:15,textAlign:"center",fontWeight:800,color:p.avgPts>=2?"#68d391":"#fc8181"}}>{p.avgPts.toFixed(1)}</span>
+                          </div>
+                        ))
                         :players.map((p:any,i:number)=>(
                           <div key={p.golfer_id} style={{display:"flex",alignItems:"center",gap:16,padding:"5px 0",borderBottom:i<players.length-1?"1px solid rgba(255,255,255,0.08)":"none",background:p.isSkinWinner?"rgba(212,168,67,0.15)":"transparent",borderRadius:p.isSkinWinner?6:0,marginLeft:p.isSkinWinner?-8:0,marginRight:p.isSkinWinner?-8:0,paddingLeft:p.isSkinWinner?8:0,paddingRight:p.isSkinWinner?8:0}}>
                             <span style={{flex:1,fontSize:15,fontWeight:p.isSkinWinner?800:600,color:p.isSkinWinner?"var(--gold-300,#d4a843)":"white",display:"flex",alignItems:"center",gap:6,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
@@ -3354,42 +3474,136 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
         </FlickCarousel>
       )}
 
-      {/* ── Hole Stats table ── */}
-      {view==="stats"&&(
-        <div style={{position:"relative",borderRadius:"var(--radius-md)",marginTop:23,marginBottom:20,border:"1px solid var(--border)",boxShadow:BEZEL_OUTER_SHADOW,overflow:"hidden"}}>
-        <div style={{...bezelRimOverlay("var(--radius-md)","light"),zIndex:20}}/>
-        <div style={{overflowX:"auto",overflowY:"auto",maxHeight:500,WebkitOverflowScrolling:"touch",borderRadius:"var(--radius-md)",overscrollBehavior:"none"}}>
-          <table style={{borderCollapse:"collapse",fontSize:13,width:"100%",minWidth:520,background:"var(--surface)"}}>
-            <colgroup>
-              <col style={{width:52,minWidth:52}}/>
-              <col style={{width:44,minWidth:44}}/>
-            </colgroup>
+      {/* Per-event mode keeps the toggle, so the table renders here instead. */}
+      {!seasonMode&&showStats&&statsTable}
+
+      {/* Lightbox for hole image */}
+    </div>
+  );
+}
+
+// Extracted so season mode can render the table ABOVE the cards and per-event
+// mode below the toggle, without duplicating the markup.
+function HoleStatsTable({allRows,hasYards,fmtPlusMinus,pmColor}:any){
+  // Sticky-column geometry. HOLE and PAR are frozen against horizontal scroll;
+  // PAR's `left` MUST equal HOLE's rendered width or a sliver of the scrolled
+  // columns shows through the seam between them. `border-collapse:collapse`
+  // makes that width hard to predict (adjacent cells share one border), so we
+  // use border-collapse:separate + border-spacing:0 and drive both the column
+  // width and the offset from one constant.
+  const HOLE_W=52, PAR_W=44;
+
+  // The header freezes against .main-content (the app's vertical scroller), so
+  // it must clear the sticky sub-tab pill row floating above it. Measured at
+  // runtime, not hardcoded -- the row's height varies with font metrics and the
+  // safe-area inset.
+  const [stickyTop,setStickyTop]=useState(0);
+  useLayoutEffect(()=>{
+    const measure=()=>{
+      const pills=document.querySelector(".tab-sub") as HTMLElement|null;
+      setStickyTop(pills?Math.max(0,Math.round(pills.getBoundingClientRect().height)-4):0);
+    };
+    measure();
+    window.addEventListener("resize",measure);
+    return()=>window.removeEventListener("resize",measure);
+  },[]);
+
+  // SPLIT HEADER. A single <table> inside one horizontal scroller cannot do
+  // both jobs: any scroll container between a sticky element and the vertical
+  // scroller becomes its containing block, so the thead would freeze against
+  // the (already scrolled past) table box instead of the viewport. Verified in
+  // a browser -- overflow-y visible/clip/hidden/auto ALL fail identically.
+  // So the header gets its own non-scrolling sticky strip and the body keeps
+  // the horizontal scroller; the two are kept in lockstep by mirroring
+  // scrollLeft. table-layout:fixed + a shared colgroup keeps the columns
+  // aligned between the two tables.
+  const headScrollRef=useRef<HTMLDivElement|null>(null);
+  const bodyScrollRef=useRef<HTMLDivElement|null>(null);
+  const onBodyScroll=()=>{
+    const h=headScrollRef.current,b=bodyScrollRef.current;
+    if(h&&b&&h.scrollLeft!==b.scrollLeft)h.scrollLeft=b.scrollLeft;
+  };
+
+  // Frozen-column paint order. A sticky cell and its static siblings live in
+  // ONE stacking context, so a scrolled cell that merely OVERLAPS the frozen
+  // strip (e.g. "+/−" spanning x[84,131] while the strip ends at 109) paints
+  // its text right through the seam unless the frozen cells outrank it. z:5
+  // beats the siblings' `auto`, and the cells carry an opaque row background
+  // so nothing shows behind them.
+  const FROZEN_Z=5;
+
+  const headings=["HOLE","PAR","SI",hasYards?"YDS":null,"AVG PTS","+/−","EAGLE","BIRDIE","PAR","BOGEY","DBL+"].filter(Boolean);
+  // One colgroup definition shared by both tables -- the guarantee that the
+  // frozen header columns line up with the body columns underneath.
+  const colGroup=(
+    <colgroup>
+      <col style={{width:HOLE_W}}/>
+      <col style={{width:PAR_W}}/>
+      {headings.slice(2).map((_:any,i:number)=><col key={i}/>)}
+    </colgroup>
+  );
+  const tableStyle={borderCollapse:"separate",borderSpacing:0,fontSize:13,width:"100%",minWidth:520,tableLayout:"fixed",background:"var(--surface)"} as const;
+
+  return(
+        <div style={{position:"relative",borderRadius:"var(--radius-md)",marginTop:23,marginBottom:20,border:"1px solid var(--border)",boxShadow:BEZEL_OUTER_SHADOW}}>
+        <div style={{...bezelRimOverlay("var(--radius-md)","light"),zIndex:20,pointerEvents:"none"}}/>
+
+        {/* ── Frozen header strip ── sticks below the sub-tab pills. Not
+            scrollable itself; its scrollLeft mirrors the body's. */}
+        <div ref={headScrollRef} style={{position:"sticky",top:stickyTop,zIndex:15,overflow:"hidden",borderRadius:"var(--radius-md) var(--radius-md) 0 0"}}>
+          <table style={tableStyle}>
+            {colGroup}
             <thead>
               <tr style={{background:"var(--green-900)"}}>
-                {["HOLE","PAR","SI",hasYards?"YDS":null,"AVG PTS","+/−","EAGLE","BIRDIE","PAR","BOGEY","DBL+"].filter(Boolean).map((h:any,i:number)=>(
-                  <th key={i} style={{color:"var(--gold-300,#d4a843)",fontWeight:700,padding:"7px 8px",textAlign:i===0?"left":"center",fontSize:11,letterSpacing:"0.06em",whiteSpace:"nowrap",borderBottom:"2px solid var(--gold-300,#d4a843)",position:"sticky",top:0,zIndex:i<2?12:10,background:"var(--green-900)",...(i===0?{left:0}:i===1?{left:52,boxShadow:"2px 0 0 0 rgba(212,168,67,0.3)"}:{})}}>{h}</th>
+                {headings.map((h:any,i:number)=>(
+                  // The first two cells ALSO freeze horizontally, so the
+                  // HOLE/PAR corner holds on both axes at once.
+                  <th key={i} style={{color:"var(--gold-300,#d4a843)",fontWeight:700,padding:"7px 8px",textAlign:i===0?"left":"center",fontSize:11,letterSpacing:"0.06em",whiteSpace:"nowrap",borderBottom:"2px solid var(--gold-300,#d4a843)",zIndex:i<2?12:11,background:"var(--green-900)",...(i===0?{position:"sticky",left:0}:i===1?{position:"sticky",left:HOLE_W,borderRight:"1px solid rgba(212,168,67,0.45)",boxShadow:"6px 0 6px -4px rgba(0,0,0,0.30)"}:{})}}>{h}</th>
                 ))}
               </tr>
             </thead>
+          </table>
+        </div>
+
+        {/* ── Body ── FULL HEIGHT (no maxHeight/overflow-y): the page scrolls
+            it, so there is no nested vertical scroller. X only. */}
+        <div ref={bodyScrollRef} onScroll={onBodyScroll} style={{overflowX:"auto",WebkitOverflowScrolling:"touch",borderRadius:"0 0 var(--radius-md) var(--radius-md)",overscrollBehaviorX:"contain"}}>
+          <table style={tableStyle}>
+            {colGroup}
             <tbody>
               {allRows.map((h:any,idx:number)=>{
                 const isTotal=h.hole==="OUT"||h.hole==="IN"||h.hole==="TOT";
                 const pm=h.plusMinus;
                 const avgPts=typeof h.avgPts==="number"?h.avgPts.toFixed(2):h.avgPts;
                 const rowBg=isTotal?"var(--green-50,#f0f7f0)":idx%2===0?"var(--surface)":"var(--surface2)";
+                // border-collapse is `separate` (see the sticky-column note
+                // above), so the row separator lives on the CELLS -- a
+                // borderBottom on <tr> would not paint.
+                const cell={padding:"8px 8px",borderBottom:"1px solid var(--border)"} as const;
                 return(
-                  <tr key={idx} style={{background:rowBg,borderBottom:"1px solid var(--border)"}}>
-                    <td style={{padding:"8px 8px",fontWeight:isTotal?700:600,fontSize:isTotal?13:14,color:isTotal?"var(--green-800)":"var(--text-primary)",whiteSpace:"nowrap",position:"sticky",left:0,zIndex:2,background:rowBg}}>{h.hole}</td>
-                    <td style={{padding:"8px 8px",textAlign:"center",fontWeight:isTotal?700:400,position:"sticky",left:52,zIndex:2,background:rowBg,boxShadow:"2px 0 0 0 var(--border)"}}>{h.par}</td>
-                    <td style={{padding:"8px 8px",textAlign:"center",color:"var(--text-secondary)"}}>{isTotal?"—":h.strokeIndex>0?h.strokeIndex:"—"}</td>
-                    {hasYards&&<td style={{padding:"8px 8px",textAlign:"center",color:"var(--text-secondary)"}}>{h.yards>0?h.yards:"—"}</td>}
-                    <td style={{padding:"8px 8px",textAlign:"center",fontWeight:isTotal?700:500}}>{avgPts}</td>
-                    <td style={{padding:"8px 8px",textAlign:"center",fontWeight:700,color:typeof pm==="number"?pmColor(pm):"var(--text-primary)"}}>{typeof pm==="number"?fmtPlusMinus(pm):pm}</td>
-                    <td style={{padding:"8px 8px",textAlign:"center",color:h.eagles>0?"var(--gold-600,#b8860b)":"var(--text-muted)",fontWeight:h.eagles>0?700:400}}>{h.eagles||0}</td>
-                    <td style={{padding:"8px 8px",textAlign:"center",color:h.birdies>0?"var(--green-700)":"var(--text-muted)",fontWeight:h.birdies>0?700:400}}>{h.birdies||0}</td>
-                    <td style={{padding:"8px 8px",textAlign:"center",color:"var(--text-secondary)"}}>{h.pars||0}</td>
-                    <td style={{padding:"8px 8px",textAlign:"center",color:h.bogeys>0?"var(--red-500,#e53e3e)":"var(--text-muted)"}}>{h.bogeys||0}</td>
-                    <td style={{padding:"8px 8px",textAlign:"center",color:h.dblPlus>0?"var(--red-700,#c53030)":"var(--text-muted)",fontWeight:h.dblPlus>0?700:400}}>{h.dblPlus||0}</td>
+                  <tr key={idx} style={{background:rowBg}}>
+                    {/* z-index must OUTRANK the later cells in this row: a
+                        sticky cell and its static siblings share one stacking
+                        context, so at z:2 vs the siblings' `auto` the scrolled
+                        columns painted OVER the frozen ones (visible as digits
+                        bleeding through HOLE/PAR). 5 > 0, so they stay on top. */}
+                    <td style={{...cell,fontWeight:isTotal?700:600,fontSize:isTotal?13:14,color:isTotal?"var(--green-800)":"var(--text-primary)",whiteSpace:"nowrap",position:"sticky",left:0,zIndex:5,background:rowBg}}>{h.hole}</td>
+                    {/* Right edge of the frozen strip. Whichever column happens
+                        to straddle this boundary at the current scrollLeft gets
+                        bisected by it -- unavoidable with frozen columns. A
+                        solid rule plus an outward drop shadow makes that read
+                        as content passing UNDER a raised strip (the standard
+                        frozen-column affordance) rather than a clipped number. */}
+                    <td style={{...cell,textAlign:"center",fontWeight:isTotal?700:400,position:"sticky",left:HOLE_W,zIndex:5,background:rowBg,borderRight:"1px solid var(--border-md,rgba(74,55,40,0.25))",boxShadow:"6px 0 6px -4px rgba(28,20,16,0.18)"}}>{h.par}</td>
+                    <td style={{...cell,textAlign:"center",color:"var(--text-secondary)"}}>{isTotal?"—":h.strokeIndex>0?h.strokeIndex:"—"}</td>
+                    {hasYards&&<td style={{...cell,textAlign:"center",color:"var(--text-secondary)"}}>{h.yards>0?h.yards:"—"}</td>}
+                    <td style={{...cell,textAlign:"center",fontWeight:isTotal?700:500}}>{avgPts}</td>
+                    <td style={{...cell,textAlign:"center",fontWeight:700,color:typeof pm==="number"?pmColor(pm):"var(--text-primary)"}}>{typeof pm==="number"?fmtPlusMinus(pm):pm}</td>
+                    <td style={{...cell,textAlign:"center",color:h.eagles>0?"var(--gold-600,#b8860b)":"var(--text-muted)",fontWeight:h.eagles>0?700:400}}>{h.eagles||0}</td>
+                    <td style={{...cell,textAlign:"center",color:h.birdies>0?"var(--green-700)":"var(--text-muted)",fontWeight:h.birdies>0?700:400}}>{h.birdies||0}</td>
+                    <td style={{...cell,textAlign:"center",color:"var(--text-secondary)"}}>{h.pars||0}</td>
+                    <td style={{...cell,textAlign:"center",color:h.bogeys>0?"var(--red-500,#e53e3e)":"var(--text-muted)"}}>{h.bogeys||0}</td>
+                    <td style={{...cell,textAlign:"center",color:h.dblPlus>0?"var(--red-700,#c53030)":"var(--text-muted)",fontWeight:h.dblPlus>0?700:400}}>{h.dblPlus||0}</td>
                   </tr>
                 );
               })}
@@ -3397,10 +3611,6 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
           </table>
         </div>
         </div>
-      )}
-
-      {/* Lightbox for hole image */}
-    </div>
   );
 }
 

@@ -1222,6 +1222,12 @@ const CSS = `
   .tab-sub-btn.active{background:var(--green-800);color:white;box-shadow:0 1px 1px rgba(0,0,0,0.04),0 4px 8px -2px rgba(0,0,0,0.10),0 8px 16px -6px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.28),inset 0 -1px 0 rgba(255,255,255,0.10);}
   @media (hover:hover){.tab-sub-btn:not(.active):hover{background:var(--green-100);color:var(--green-800);}}
   .tab-sub-btn:active{transform:scale(0.94);}
+  /* InkSubNav (section nav inside Live / Upcoming). Scrolls horizontally once
+     the labels overflow -- at 4 tabs ("Live Odds" + "Course") they no longer
+     fit a 380px phone. Track/ink width handling lives in the component (see
+     the inner max-content wrapper there); this only hides the scrollbar,
+     which an inline style cannot express. */
+  .ink-subnav::-webkit-scrollbar{display:none;}
   .tab-sub-btn.active{animation:subBtnPress 0.34s cubic-bezier(0.34,1.16,0.5,1);}
   @keyframes subBtnPress{0%{transform:scale(0.92);}55%{transform:scale(1.03);}100%{transform:scale(1);}}
   @media (prefers-reduced-motion:reduce){.tab-sub-btn.active{animation:none;}}
