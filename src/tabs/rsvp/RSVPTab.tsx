@@ -256,7 +256,7 @@ const GLASS_PICKER_SURFACE:React.CSSProperties={
   boxShadow:"0 1px 2px rgba(28,20,16,0.06),0 6px 16px rgba(28,20,16,0.08),inset 0 1px 0 rgba(255,255,255,0.6)",
 };
 
-export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,showSuccess,showError,adminMode,memberGolferId,scrollToTop,dbUpsertGolfer,setGolfers,initialSubTab,needsIdentify,onRequestIdentify}:any){
+export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,showSuccess,showError,adminMode,memberGolferId,scrollToTop,dbUpsertGolfer,setGolfers,initialSubTab,needsIdentify,canPromptIdentify,onRequestIdentify}:any){
   const upcomingEvents=[...events].filter((e:any)=>e.status!=="Completed").sort((a:any,b:any)=>new Date(a.date).getTime()-new Date(b.date).getTime());
   const [selEventId,setSelEventId]=useState<number>(upcomingEvents[0]?.event_id||0);
   const [subTab,setSubTab]=useState(()=>{
@@ -346,10 +346,11 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
   // (event summary + read-only field), but the moment they scroll the interactive
   // sign-up area into view we ask who they are. The sentinel sits just above the
   // "Member Sign Ups" list; when it enters the viewport we fire onRequestIdentify
-  // once. Re-armed whenever identity is still needed (e.g. after "Just browsing").
+  // once. Gated on canPromptIdentify, not needsIdentify: after "Just browsing"
+  // the page stays read-only (needsIdentify) but we stop asking again.
   const foldSentinelRef=useRef<HTMLDivElement>(null);
   useEffect(()=>{
-    if(!needsIdentify||!onRequestIdentify)return;
+    if(!canPromptIdentify||!onRequestIdentify)return;
     const el=foldSentinelRef.current;
     if(!el||typeof IntersectionObserver==="undefined")return;
     // Only prompt once the sentinel has genuinely scrolled INTO view after
@@ -364,7 +365,7 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
     },{rootMargin:"0px 0px -25% 0px"});
     io.observe(el);
     return ()=>io.disconnect();
-  },[needsIdentify,onRequestIdentify,subTab,selEventId]);
+  },[canPromptIdentify,onRequestIdentify,subTab,selEventId]);
 
   const yesCount=eventSignups.filter((s:any)=>s.attending==="Yes").length;
   const noCount=eventSignups.filter((s:any)=>s.attending==="No").length;
@@ -694,11 +695,25 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
         <>
           {/* Fold sentinel — scrolling this into view prompts an unidentified
               visitor to say who they are before they interact below. */}
-          {needsIdentify&&<div ref={foldSentinelRef} aria-hidden="true" style={{height:1,width:"100%"}}/>}
+          {canPromptIdentify&&<div ref={foldSentinelRef} aria-hidden="true" style={{height:1,width:"100%"}}/>}
           <div className="card-title" style={{marginBottom:4}}>Member Sign Ups</div>
-          <div className="early-tee-hint">
-            Swipe name left <svg width="16" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}><line x1="15" y1="7" x2="1" y2="7" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><polyline points="7,1 1,7 7,13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg> for an early tee time 
-          </div>
+          {/* An unidentified visitor sees the field but can't touch it. Without
+              this line the greyed controls read as broken, and "Just browsing"
+              would be a dead end — so offer the picker back on demand. */}
+          {needsIdentify&&!adminMode?(
+            <div className="early-tee-hint" style={{flexWrap:"wrap"}}>
+              Viewing only —{" "}
+              <button
+                onClick={()=>onRequestIdentify&&onRequestIdentify()}
+                style={{background:"none",border:"none",padding:0,font:"inherit",color:"var(--gold-700)",fontWeight:700,textDecoration:"underline",cursor:"pointer"}}
+              >pick your name</button>{" "}
+              to sign up or add a guest
+            </div>
+          ):(
+            <div className="early-tee-hint">
+              Swipe name left <svg width="16" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}><line x1="15" y1="7" x2="1" y2="7" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><polyline points="7,1 1,7 7,13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg> for an early tee time
+            </div>
+          )}
           {[...eventSignups.filter((s:any)=>!s.is_guest_entry)]
           .sort((a:any,b:any)=>{
             // Signed-in member (and their nested guests) float to the top so
@@ -737,6 +752,11 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
           })}
 
           <hr className="divider"/>
+          {/* Add Guest is inert for an unidentified visitor — a guest row needs a
+              sponsoring member, and we don't know who they are. Greyed + pointer-
+              events off (the submit button is separately `disabled` so keyboard
+              users can't reach past the wash either). Admins are never gated. */}
+          <div style={needsIdentify&&!adminMode?{opacity:0.55,pointerEvents:"none",userSelect:"none"}:undefined} aria-disabled={needsIdentify&&!adminMode||undefined}>
           <div className="card-title" style={{marginBottom:10}}>Add Guest</div>
 
           {/* ── Quick-pick: reuse the permanent Guest 1/2/3 placeholders ── */}
@@ -877,13 +897,14 @@ export function RSVPTab({golfers,courses,events,setEvents,signups,setSignups,sho
             };
             const hasStrongUnpicked=guestSelectedId===null&&query.length>=2&&
               namedGuests.some((g:any)=>fuzzyScore(query,`${g.first_name} ${g.last_name}`)>=0.65);
-            const canSubmit=query&&guestSponsor&&!hasStrongUnpicked&&!guestSaving;
+            const canSubmit=query&&guestSponsor&&!hasStrongUnpicked&&!guestSaving&&(adminMode||!needsIdentify);
             return(
               <button className="btn btn-gold btn-full" disabled={!canSubmit} onClick={addGuest}>
                 {guestSaving?"Adding…":guestSelectedId!==null?"+ Add Guest to Event (existing record)":"+ Add Guest to Event"}
               </button>
             );
           })()}
+          </div>
 
           {adminMode && (
   <>

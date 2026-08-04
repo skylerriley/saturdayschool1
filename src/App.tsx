@@ -2164,6 +2164,11 @@ export default function App(){
   // Sign-up page: unidentified visitors scrolling past the fold trip this, which
   // opens the "Who are you?" picker (see canPromptIdentity / RSVPTab).
   const [rsvpIdentifyPrompt,setRsvpIdentifyPrompt]=useState(false);
+  // "Just browsing" from the Sign Up picker: the visitor stays on the Sign Up
+  // page in read-only mode (In/Out greyed, Add Guest disabled) instead of being
+  // kicked to the leaderboard. This flag only stops the scroll sentinel from
+  // re-prompting them — it deliberately does NOT relax the read-only gating.
+  const [rsvpBrowseOnly,setRsvpBrowseOnly]=useState(false);
   // Deep link: open a specific completed event's detail overlay on the weekly feed
   const [lbOpenEventId,setLbOpenEventId]=useState<number>(0);
   // Deep link: scroll the season/top15 board to the member's own row
@@ -3435,8 +3440,17 @@ export default function App(){
   // moment they scroll past the fold to sign up / add a guest, RSVPTab fires
   // this and we ask who they are. Reuses the same picker; dismissing just closes
   // it so they can keep browsing. Only meaningful while the picker can show.
-  const canPromptIdentity=memberGolferId==null&&!adminMode&&!loading&&splashDone&&memberList.length>0&&!showPinModal;
-  const showMemberPicker=softMemberPrompt||(rsvpIdentifyPrompt&&canPromptIdentity);
+  //
+  // needsIdentity vs canPromptIdentity: the FIRST gates the Sign Up page's
+  // controls (still read-only after "Just browsing" — no identity, no writes),
+  // the SECOND gates re-opening the picker (suppressed once they've said
+  // they're just browsing, so scrolling doesn't nag them on every pass).
+  const needsIdentity=memberGolferId==null&&!adminMode&&!loading&&splashDone&&memberList.length>0&&!showPinModal;
+  const canPromptIdentity=needsIdentity&&!rsvpBrowseOnly;
+  // The picker opens on any live request (scroll sentinel OR the "pick your
+  // name" link a browse-only visitor can still tap), so it keys on
+  // needsIdentity — canPromptIdentity only decides whether we ASK unbidden.
+  const showMemberPicker=softMemberPrompt||(rsvpIdentifyPrompt&&needsIdentity);
 
   return(
     <>
@@ -3516,7 +3530,7 @@ export default function App(){
           {errorMsg&&<div className="error-banner"><span>⚠</span>{errorMsg}</div>}
           <div key={activeTab} className="tab-pane" data-dir={tabDir}>
           {activeTab==="leaderboard"&&<LeaderboardTab golfers={golfers} courses={courses} events={eventsView} leaderboard={leaderboardView} holeScores={holeScoresView} signups={signupsView} adminMode={adminMode} memberGolferId={memberGolferId} eventImages={eventImages} setEventImages={setEventImages} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} refreshLiveData={refreshLiveData} initialSubTab={initialSubTab} restoreSubTab={lbRestoreSubTab} onSubTabChange={(id:string)=>setLbRestoreSubTab(id)} initialFeedOpen={initialFeedOpen} initialOpenEventId={lbOpenEventId} onOpenEventConsumed={()=>setLbOpenEventId(0)} initialScrollToMe={lbScrollToMe} onScrollToMeConsumed={()=>setLbScrollToMe(false)} initialScrollToGroup={lbScrollToGroup} onScrollToGroupConsumed={()=>setLbScrollToGroup(false)} onNavigateToAnalyticsGolfer={(golferId:string,backLabel:string,fromSubTab:string)=>{setAnalyticsInitialGolfer(golferId);setAnalyticsBackLabel(backLabel);setAnalyticsBackTarget("leaderboard");setLbRestoreSubTab(fromSubTab);setActiveTab("analytics");scrollToTop(0);}}/>}
-          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={eventsView} setEvents={setEventsPV} signups={signupsView} setSignups={setSignupsPV} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab} needsIdentify={canPromptIdentity} onRequestIdentify={()=>setRsvpIdentifyPrompt(true)}/>}
+          {activeTab==="rsvp"&&<RSVPTab golfers={golfers} courses={courses} events={eventsView} setEvents={setEventsPV} signups={signupsView} setSignups={setSignupsPV} showSuccess={showSuccess} showError={showError} adminMode={adminMode} memberGolferId={memberGolferId} scrollToTop={scrollToTop} dbUpsertGolfer={dbUpsertGolfer} setGolfers={setGolfersDB} initialSubTab={initialSubTab} needsIdentify={needsIdentity} canPromptIdentify={canPromptIdentity} onRequestIdentify={()=>setRsvpIdentifyPrompt(true)}/>}
           {activeTab==="score"&&<ScoreEntryTab golfers={golfers} courses={courses} events={eventsView} signups={signupsView} setSignups={setSignupsPV} leaderboard={leaderboardView} setLeaderboard={setLeaderboardPV} setLeaderboardLocal={setLeaderboardLocalPV} holeScores={holeScoresView} setHoleScores={setHoleScoresPV} setEvents={setEventsPV} dbUpsertHoleScore={dbUpsertHoleScorePV} dbDeleteHoleScore={dbDeleteHoleScorePV} scoreMode={scoreMode} setScoreMode={setScoreMode} scoreEventId={scoreEventId} setScoreEventId={setScoreEventId} scorers={scorers} setScorers={setScorers} showSuccess={showSuccess} showScoreMsg={showScoreMsg} scoreMsg={scoreMsg} memberGolferId={memberGolferId}/>}
           {activeTab==="admin"&&adminMode&&<AdminTab golfers={golfers} setGolfers={setGolfersDB} courses={courses} setCourses={setCoursesDB} events={events} setEvents={setEventsDB} signups={signups} setSignups={setSignupsDB} leaderboard={leaderboard} setLeaderboard={setLeaderboardDB} holeScores={holeScores} setHoleScores={setHoleScoresDB} dbUpsertLeaderboard={dbUpsertLeaderboard} dbUpsertHoleScore={dbUpsertHoleScore} charityDonations={charityDonations} setCharityDonations={setCharityDB} holeImages={holeImages} setHoleImages={setHoleImages} showSuccess={showSuccess} scrollToTop={scrollToTop}/>}
           {activeTab==="analytics"&&<AnalyticsTab golfers={golfers} courses={courses} events={events} leaderboard={leaderboard} signups={signups} holeScores={holeScores} memberGolferId={memberGolferId} eventOdds={eventOdds} oddsLoading={oddsLoading} oddsLastUpdated={oddsLastUpdated} onTriggerOdds={triggerOdds} supabase={supabase} refreshLiveData={refreshLiveData} initialGolfer={analyticsInitialGolfer} onInitialGolferConsumed={()=>setAnalyticsInitialGolfer("")} initialH2H={analyticsInitialH2H} onInitialH2HConsumed={()=>setAnalyticsInitialH2H(null)} onBack={analyticsBackLabel?()=>{setAnalyticsBackLabel("");setActiveTab(analyticsBackTarget);setAnalyticsBackTarget("leaderboard");scrollToTop(0);}:undefined} backLabel={analyticsBackLabel} charityDonations={charityDonations}/>}
@@ -3618,16 +3632,27 @@ export default function App(){
 
         {/* First-run member picker — personalization only, no auth.
             Two entry paths: the soft first-run prompt (PWA/Settings) and the
-            Sign Up scroll prompt. On the scroll prompt "Just browsing" closes
-            the sheet and kicks the visitor back to the leaderboard (they can't
-            sign up without identifying); it does NOT set the permanent
-            ss_member_skip flag chooseMember(null) writes. */}
+            Sign Up scroll prompt. The scroll prompt keeps the visitor ON the
+            Sign Up page either way: picking a name unlocks their row in place
+            (no Welcome overlay — it would yank them away from the sign-up they
+            came to do), and "Just browsing" just closes the sheet, leaving the
+            page readable but inert (In/Out greyed, Add Guest disabled) and
+            flagging rsvpBrowseOnly so the sentinel stops re-asking. Neither
+            path sets the permanent ss_member_skip flag chooseMember(null)
+            writes, so the soft first-run prompt is still owed elsewhere. */}
         {showMemberPicker&&(()=>{
           const fromScrollPrompt=rsvpIdentifyPrompt&&!softMemberPrompt;
-          const pickMember=(id:number)=>{setRsvpIdentifyPrompt(false);chooseMember(id);setShowWelcome(true);};
+          const pickMember=(id:number)=>{
+            setRsvpIdentifyPrompt(false);
+            setRsvpBrowseOnly(false);
+            chooseMember(id);
+            // Stay on the Sign Up page when they identified from there — the
+            // welcome overlay is for the first-run/Settings entry point only.
+            if(!fromScrollPrompt)setShowWelcome(true);
+          };
           const dismissPicker=()=>{
             setRsvpIdentifyPrompt(false);
-            if(fromScrollPrompt){setActiveTab("leaderboard");}
+            if(fromScrollPrompt){setRsvpBrowseOnly(true);}
             else{chooseMember(null);}
           };
           return(
