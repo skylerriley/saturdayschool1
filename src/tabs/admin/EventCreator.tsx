@@ -9,6 +9,19 @@ import { SUPABASE_URL, SUPABASE_KEY } from "../../lib/supabaseClient";
 const RECAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const recapResentKey = (evId: number) => `ss_recap_resent_${evId}`;
 
+// Events finished more than 8 weeks ago are frozen — the season record is
+// settled by then and an accidental date/course edit would silently rewrite
+// past results (leaderboard rows key off the event).
+const EDIT_LOCK_MS = 8 * 7 * 24 * 60 * 60 * 1000;
+const isEditLocked = (ev: any) =>
+  ev.status === "Completed" && Date.now() - new Date(ev.date).getTime() > EDIT_LOCK_MS;
+
+// A Completed event is never deletable directly — it carries leaderboard rows
+// that feed season stats. Removing one is a two-step act: Reopen it (offered
+// only within 7 days of the round, see the Reopen button) which flips it to
+// In-Progress, then delete. Opening the edit form must NOT widen this.
+const canDeleteEvent = (ev: any) => ev.status !== "Completed" && !isEditLocked(ev);
+
 export function EventCreator({ courses, events, setEvents, signups, setSignups, leaderboard, setLeaderboard, golfers, showSuccess }: any) {
   const formTopRef = useRef<HTMLDivElement>(null);
   const [date, setDate] = useState("");
@@ -20,7 +33,10 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
 
   const resetForm = () => { setDate(""); setCourseName(""); setTeeTimes("08:00\n08:10\n08:20\n08:30"); setSeason(new Date().getFullYear()); setEditId(null); };
 
+  const editingEvent = editId === null ? null : events.find((e: any) => e.event_id === editId);
+
   const startEdit = (ev: any) => {
+    if (isEditLocked(ev)) return;
     setEditId(ev.event_id); setDate(ev.date); setCourseName(ev.course_name);
     setTeeTimes(ev.tee_times.join("\n")); setSeason(ev.season);
     setTimeout(() => scrollMainToEl(formTopRef.current), 50);
@@ -30,6 +46,7 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
     if (!date || !courseName) return;
     const tts = teeTimes.split("\n").map((t: string) => t.trim()).filter(Boolean);
     if (editId !== null) {
+      if (editingEvent && isEditLocked(editingEvent)) { showSuccess("This event is locked — finished more than 8 weeks ago."); resetForm(); return; }
       setEvents((p: any) => p.map((e: any) => e.event_id === editId ? { ...e, date, course_name: courseName, tee_times: tts, season } : e));
       showSuccess(`Event updated: ${formatDate(date)}`);
     } else {
@@ -119,6 +136,23 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
         <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSave} disabled={!date || !courseName}>{editId ? "Save Changes" : "Create Event"}</button>
         {editId && <button className="btn btn-outline" onClick={resetForm}>Cancel</button>}
       </div>
+      {/* Delete lives with the edit form too — the admin is already scrolled
+          here after tapping Edit, so they shouldn't have to hunt the list row.
+          Gated by the SAME rule as the list-row Del: editing never unlocks a
+          delete the list wouldn't have offered. Completed events show the
+          reopen-first hint instead. */}
+      {editingEvent && canDeleteEvent(editingEvent) && (
+        <button
+          className="btn btn-danger btn-full"
+          style={{ marginBottom: 16 }}
+          onClick={() => { const ev = editingEvent; deleteEvent(ev.event_id, ev.date); resetForm(); }}
+        >Delete This Event</button>
+      )}
+      {editingEvent && !canDeleteEvent(editingEvent) && (
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>
+          This event is Completed and can't be deleted directly. Reopen it first (available within 7 days of the round).
+        </div>
+      )}
       <hr className="divider" />
       <div className="card-title" style={{ marginBottom: 8 }}>Invitation Email</div>
       <a href={`mailto:?cc=${allEmails.join(",")}&subject=Saturday Golf Reminder&body=Hi all,%0D%0A%0D%0A Please make sure to sign up in the app for next Saturday's round.%0D%0A%0D%0A Sign up here: https://saturdayschool.vercel.app/?tab=rsvp`} className="btn btn-outline btn-full" style={{ textDecoration: "none", display: "flex", marginBottom: 20 }}>✉ Send Invitation</a>
@@ -136,13 +170,16 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
         const withinRecapWindow = ev.status === "Completed" && (Date.now() - new Date(ev.date).getTime() < RECAP_WINDOW_MS);
         const alreadyResent = recapResent[ev.event_id] || (typeof localStorage !== "undefined" && !!localStorage.getItem(recapResentKey(ev.event_id)));
         const isRunning = recapRunning === ev.event_id;
+        const locked = isEditLocked(ev);
+        const isEditing = editId === ev.event_id;
         return (
         <div key={ev.event_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 15 }}>{formatDate(ev.date)}</div>
             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{ev.course_name} · <span className={`pill ${ev.status === "Completed" ? "pill-green" : ev.status === "Upcoming" ? "pill-gold" : "pill-blue"}`} style={{ fontSize: 10 }}>{ev.status}</span></div>
           </div>
-          {ev.season === currentYear && <button className="btn btn-sm btn-outline" onClick={() => startEdit(ev)}>Edit</button>}
+          {ev.season === currentYear && !locked && <button className="btn btn-sm btn-outline" onClick={() => startEdit(ev)}>{isEditing ? "Editing…" : "Edit"}</button>}
+          {ev.season === currentYear && locked && <span style={{ fontSize: 11, color: "var(--text-muted)", padding: "4px 8px" }}>locked</span>}
           {ev.season === currentYear && ev.status === "Completed" && (Date.now() - new Date(ev.date).getTime() < 7 * 24 * 60 * 60 * 1000) && <button className="btn btn-sm btn-outline" style={{ color: "var(--gold-600)" }} onClick={() => reopenEvent(ev.event_id, ev.date)}>Reopen</button>}
           {ev.season === currentYear && withinRecapWindow && (
             <button
@@ -153,7 +190,7 @@ export function EventCreator({ courses, events, setEvents, signups, setSignups, 
               onClick={() => regenerateRecap(ev.event_id, ev.date)}
             >{isRunning ? "Regenerating…" : alreadyResent ? "Recap redone" : "Redo Recap"}</button>
           )}
-          {ev.season === currentYear && ev.status !== "Completed" && <button className="btn btn-sm btn-danger" onClick={() => deleteEvent(ev.event_id, ev.date)}>Del</button>}
+          {ev.season === currentYear && canDeleteEvent(ev) && <button className="btn btn-sm btn-danger" onClick={() => deleteEvent(ev.event_id, ev.date)}>Del</button>}
           {ev.season !== currentYear && <span style={{ fontSize: 11, color: "var(--text-muted)", padding: "4px 8px" }}>view only</span>}
         </div>
         );

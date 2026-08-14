@@ -4,9 +4,14 @@ import { PairingPanel } from "../../components/common/PairingPanel";
 import { GlassPicker } from "../../components/common";
 
 export function PairingDashboard({ golfers, courses, events, setEvents, signups, setSignups, showSuccess, showError, scrollToTop }: any) {
-  const [selEventId, setSelEventId] = useState<number>(
-    events.find((e: any) => e.status !== "Completed")?.event_id || 0
-  );
+  // Selectable events are the not-yet-completed ones, ordered by event DATE
+  // (soonest first) rather than the array's natural insert/id order — the
+  // nearest upcoming round is the one an admin almost always wants to pair.
+  const pairableEvents = [...events]
+    .filter((e: any) => e.status !== "Completed")
+    .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const [selEventId, setSelEventId] = useState<number>(pairableEvents[0]?.event_id || 0);
 
   const selEvent = events.find((e: any) => e.event_id === selEventId);
   const eventSignups = selEvent ? signups.filter((s: any) => s.event_id === selEvent.event_id && s.attending === "Yes") : [];
@@ -24,12 +29,10 @@ export function PairingDashboard({ golfers, courses, events, setEvents, signups,
           onChange={v => setSelEventId(v)}
           options={[
             { value: 0, label: "Select event…" },
-            ...events
-              .filter((e: any) => e.status !== "Completed")
-              .map((ev: any) => ({
-                value: ev.event_id,
-                label: eventPickerLabel(ev),
-              })),
+            ...pairableEvents.map((ev: any) => ({
+              value: ev.event_id,
+              label: eventPickerLabel(ev),
+            })),
           ]}
         />
       </div>

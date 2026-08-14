@@ -3241,7 +3241,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
   const totalHoles=holeStats.length;
   if(totalHoles===0){
     return(
-      <div style={{position:"relative",marginTop:16,padding:"18px 16px",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",textAlign:"center",color:"var(--text-muted)",fontSize:14,boxShadow:BEZEL_OUTER_SHADOW}}>
+      <div style={{position:"relative",marginTop:seasonMode?0:16,padding:"18px 16px",background:"var(--surface)",borderRadius:"var(--radius-md)",border:"1px solid var(--border)",textAlign:"center",color:"var(--text-muted)",fontSize:14,boxShadow:BEZEL_OUTER_SHADOW}}>
         <div style={bezelRimOverlay("var(--radius-md)","light")}/>
         {emptyMessage||"📊 Course stats will appear after hole-by-hole scores are entered"}
       </div>
@@ -3333,10 +3333,14 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
   // event detail page where two stacked modules would bury what follows.
   const showStats=seasonMode||view==="stats";
   const showCards=seasonMode||view==="course";
-  const statsTable=<HoleStatsTable allRows={allRows} hasYards={hasYards} fmtPlusMinus={fmtPlusMinus} pmColor={pmColor}/>;
+  const statsTable=<HoleStatsTable allRows={allRows} hasYards={hasYards} fmtPlusMinus={fmtPlusMinus} pmColor={pmColor} flushTop={seasonMode}/>;
 
+  // Season mode is a sub-tab body sitting directly under InkSubNav, whose own
+  // marginBottom is the entire gap the Field / Leaderboard sub-tabs get. Any
+  // marginTop here stacks on top of that and makes the Course table start
+  // lower than the others when toggling between pills, so it goes to 0.
   return(
-    <div style={{paddingBottom:100,marginTop:20}}>
+    <div style={{paddingBottom:100,marginTop:seasonMode?0:20}}>
       {!seasonMode&&(
         <ToggleGroup
           options={[{value:"course",label:"Course Overview"},{value:"stats",label:"Hole Stats"}]}
@@ -3484,7 +3488,7 @@ export function CourseStatsModule({holeStats,rankMap,playerHoleData,holeImages,s
 
 // Extracted so season mode can render the table ABOVE the cards and per-event
 // mode below the toggle, without duplicating the markup.
-function HoleStatsTable({allRows,hasYards,fmtPlusMinus,pmColor}:any){
+function HoleStatsTable({allRows,hasYards,fmtPlusMinus,pmColor,flushTop}:any){
   // Sticky-column geometry. HOLE and PAR are frozen against horizontal scroll;
   // PAR's `left` MUST equal HOLE's rendered width or a sliver of the scrolled
   // columns shows through the seam between them. `border-collapse:collapse`
@@ -3544,8 +3548,12 @@ function HoleStatsTable({allRows,hasYards,fmtPlusMinus,pmColor}:any){
   );
   const tableStyle={borderCollapse:"separate",borderSpacing:0,fontSize:13,width:"100%",minWidth:520,tableLayout:"fixed",background:"var(--surface)"} as const;
 
+  // `flushTop` (season mode / the Live+Upcoming "Course" sub-tab) drops the top
+  // margin so the table starts at the same y as the Field and Leaderboard
+  // sub-tabs' tables -- there the content butts straight up against InkSubNav's
+  // own marginBottom, with nothing added on top.
   return(
-        <div style={{position:"relative",borderRadius:"var(--radius-md)",marginTop:23,marginBottom:20,border:"1px solid var(--border)",boxShadow:BEZEL_OUTER_SHADOW}}>
+        <div style={{position:"relative",borderRadius:"var(--radius-md)",marginTop:flushTop?0:23,marginBottom:20,border:"1px solid var(--border)",boxShadow:BEZEL_OUTER_SHADOW}}>
         <div style={{...bezelRimOverlay("var(--radius-md)","light"),zIndex:20,pointerEvents:"none"}}/>
 
         {/* ── Frozen header strip ── sticks below the sub-tab pills. Not
@@ -3566,8 +3574,15 @@ function HoleStatsTable({allRows,hasYards,fmtPlusMinus,pmColor}:any){
         </div>
 
         {/* ── Body ── FULL HEIGHT (no maxHeight/overflow-y): the page scrolls
-            it, so there is no nested vertical scroller. X only. */}
-        <div ref={bodyScrollRef} onScroll={onBodyScroll} style={{overflowX:"auto",WebkitOverflowScrolling:"touch",borderRadius:"0 0 var(--radius-md) var(--radius-md)",overscrollBehaviorX:"contain"}}>
+            it, so there is no nested vertical scroller. X only.
+            overscrollBehaviorX is `none`, not `contain`: `contain` only stops
+            the scroll CHAINING to the page, it still lets this scroller
+            rubber-band past its own ends. That bounce drags the body out from
+            under the frozen header strip (the strip mirrors scrollLeft, which
+            never goes negative or past scrollWidth), so the columns visibly
+            desync at both edges. `none` kills the bounce and keeps them
+            locked. */}
+        <div ref={bodyScrollRef} onScroll={onBodyScroll} style={{overflowX:"auto",WebkitOverflowScrolling:"touch",borderRadius:"0 0 var(--radius-md) var(--radius-md)",overscrollBehaviorX:"none"}}>
           <table style={tableStyle}>
             {colGroup}
             <tbody>
