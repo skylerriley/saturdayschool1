@@ -317,10 +317,13 @@ serve(async (req) => {
     // ── Prune stale rows for golfers no longer in the field ───
     // upsert only ever writes rows for the CURRENT field, so a golfer who was
     // in the field on an earlier run (e.g. RSVP'd "Yes" then switched to "No")
-    // keeps a ghost row in this snapshot slot forever. That is exactly how an
-    // opted-out golfer (Gary Mayer, event 306) kept surfacing in live odds.
-    // Delete any row for this event+snapshot whose golfer is NOT in the field
-    // we just modelled. Scoped to snapshot_hole so we never touch other slots.
+    // keeps a ghost row forever. That is exactly how an opted-out golfer
+    // (Gary Mayer, event 306) kept surfacing in live odds.
+    //
+    // TWO prunes, deliberately different in scope:
+    //
+    // (1) CURRENT SLOT — delete anyone not in the field we just modelled.
+    //     Safe to be broad here because we just rewrote this slot in full.
     const keepIds = rows.map((r) => r.golfer_id);
     const { error: pruneErr } = await supabase
       .from("event_odds")
@@ -329,6 +332,35 @@ serve(async (req) => {
       .eq("snapshot_hole", snapshot_hole)
       .not("golfer_id", "in", `(${keepIds.join(",")})`);
     if (pruneErr) console.error("calculate-live-odds prune error:", pruneErr.message);
+
+    // (2) ALL OTHER SLOTS — delete only golfers who EXPLICITLY opted out
+    //     (attending="No") and never posted a score. Frozen snapshots (0/6/12)
+    //     are never rewritten, so slot-scoped pruning alone leaves ghosts there
+    //     permanently: event 355 kept Errol Kaplan in slot 0 (computed 5 days
+    //     early) and slot 6 (computed before his 9:28am scratch), which is what
+    //     fed him to Tony.AI as a pick.
+    //
+    //     Scoped to explicit "No" + no leaderboard row ON PURPOSE. A player who
+    //     actually teed off must keep their frozen snapshots — post-event
+    //     calibration measures model accuracy against them, so deleting those
+    //     would corrupt the calibration record. Absence from the current field
+    //     is NOT sufficient grounds to delete another slot's history.
+    const { data: optedOut } = await supabase
+      .from("event_signups").select("golfer_id")
+      .eq("event_id", event_id).eq("attending", "No");
+    const scoredIds = new Set((lbAll ?? []).map((r: any) => r.golfer_id as number));
+    const ghostIds = [...new Set(
+      (optedOut ?? []).map((s: any) => s.golfer_id as number).filter((gid: number) => !scoredIds.has(gid)),
+    )];
+    if (ghostIds.length) {
+      const { error: ghostErr } = await supabase
+        .from("event_odds")
+        .delete()
+        .eq("event_id", event_id)
+        .in("golfer_id", ghostIds);
+      if (ghostErr) console.error("calculate-live-odds ghost-prune error:", ghostErr.message);
+      else console.log(`calculate-live-odds pruned ghosts for event ${event_id}:`, ghostIds);
+    }
 
     return json({
       ok: true, event_id, snapshot_hole,

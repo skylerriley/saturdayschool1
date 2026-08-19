@@ -96,7 +96,34 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
     return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
     // en-CA locale produces YYYY-MM-DD format natively
   }, []);
-  const cacheKey = "field";
+
+  // ── Field fingerprint ────────────────────────────────────────────
+  // The cache key used to be the constant "field", so (event, date) alone
+  // decided whether Tony re-picked. A player scratching AFTER the pick was
+  // cached could therefore never dislodge it: event 355 kept "winner: Errol
+  // Kaplan" from 10:34Z even though Errol went attending="No" at 16:28Z.
+  //
+  // Hashing the confirmed field into the key means a dropout (or a late add)
+  // is a natural cache MISS, so Tony re-picks against the field that will
+  // actually tee off. Old rows keep their old key, which is the point: a pick
+  // stays on the record paired with the field it was made against, and we
+  // never silently rewrite history.
+  const fieldKey = useMemo(() => {
+    const ids = (signups ?? [])
+      .filter((s: any) => s.event_id === selEvent?.event_id && s.attending === "Yes")
+      .map((s: any) => s.golfer_id as number)
+      .sort((a: number, b: number) => a - b);
+    if (!ids.length) return "field";
+    // FNV-1a — short, stable, order-independent given the sort above.
+    let h = 0x811c9dc5;
+    const str = ids.join(",");
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return "field:" + h.toString(36);
+  }, [signups, selEvent?.event_id]);
+  const cacheKey = fieldKey;
 
   // Build a rich prompt using all available data — backend model data when
   // field is confirmed, client projections otherwise.
@@ -130,8 +157,11 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
   useEffect(() => {
     const loadRecord = async () => {
       try {
-        // Fetch all tony insights (field picks only)
-        const insightRows = await supabase.from("tony_insights").select("*", "&h2h_key=eq.field");
+        // Fetch all tony insights (field picks only).
+        // h2h_key is "field" for legacy rows and "field:<hash>" once the field
+        // fingerprint was introduced, so match on the prefix rather than equality
+        // — an eq.field filter would silently drop every new pick from the record.
+        const insightRows = await supabase.from("tony_insights").select("*", "&h2h_key=like.field*");
         if (!insightRows || !insightRows.length) { setRecord({ wins: 0, losses: 0, pushes: 0, rows: [] }); return; }
         // Map event date → event
         const evByDate: Record<string, any> = {};
@@ -157,43 +187,83 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
             const g = (golfers ?? []).find((gg: any) => gg.golfer_id === r.golfer_id);
             return g ? `${g.first_name} ${g.last_name}` : "";
           }).filter(Boolean);
+          // ── Scratches void a pick, they don't lose it ────────────────
+          // A golfer who RSVP'd out after Tony picked never teed off, so there
+          // was no bet to lose — the bookmaker convention is to void the wager,
+          // not grade it. Without this, a player who scratched is indistinguish-
+          // able from one who played badly: event 355 charged Tony two losses
+          // for Errol Kaplan, who withdrew ~6h after the pick was cached.
+          //
+          // "Scratched" = explicitly attending="No" AND no leaderboard row. The
+          // leaderboard check matters because someone can be marked "No" in the
+          // signups yet still post a score (a late walk-up); if they scored,
+          // the pick was live and grades normally.
+          const nameToGolfer = (name: string) => {
+            const [f, ...restN] = (name || "").trim().split(" ");
+            const l = restN.join(" ");
+            return (golfers ?? []).find((gg: any) => gg.first_name === f && gg.last_name === l);
+          };
+          const optedOut = new Set(
+            (signups ?? [])
+              .filter((s: any) => s.event_id === ev.event_id && s.attending === "No")
+              .map((s: any) => s.golfer_id as number),
+          );
+          const didScratch = (name: string) => {
+            const g = nameToGolfer(name);
+            if (!g) return false;
+            if (!optedOut.has(g.golfer_id)) return false;
+            return !evLb.some((r: any) => r.golfer_id === g.golfer_id);
+          };
+
           // Grade matchup pick: find which of the two scored more
-          let matchupResult: "W" | "L" | "P" | "N/A" = "N/A";
+          let matchupResult: "W" | "L" | "P" | "VOID" | "N/A" = "N/A";
           if (pick_.matchup && pick_.matchupOpponent) {
-            const findPts = (name: string) => {
-              const [fn, ...rest] = name.trim().split(" ");
-              const ln = rest.join(" ");
-              const g = (golfers ?? []).find((gg: any) => gg.first_name === fn && gg.last_name === ln);
-              if (!g) return null;
-              const r = evLb.find((lb: any) => lb.golfer_id === g.golfer_id);
-              return r?.total_stableford_points ?? null;
-            };
-            const ptsA = findPts(pick_.matchup);
-            const ptsB = findPts(pick_.matchupOpponent);
-            if (ptsA != null && ptsB != null) {
-              if (ptsA > ptsB) matchupResult = "W";
-              else if (ptsB > ptsA) matchupResult = "L";
-              else matchupResult = "P";
+            // Either side scratching voids the matchup — the h2h never happened.
+            if (didScratch(pick_.matchup) || didScratch(pick_.matchupOpponent)) {
+              matchupResult = "VOID";
+            } else {
+              const findPts = (name: string) => {
+                const g = nameToGolfer(name);
+                if (!g) return null;
+                const r = evLb.find((lb: any) => lb.golfer_id === g.golfer_id);
+                return r?.total_stableford_points ?? null;
+              };
+              const ptsA = findPts(pick_.matchup);
+              const ptsB = findPts(pick_.matchupOpponent);
+              if (ptsA != null && ptsB != null) {
+                if (ptsA > ptsB) matchupResult = "W";
+                else if (ptsB > ptsA) matchupResult = "L";
+                else matchupResult = "P";
+              }
             }
           }
           // Overall winner pick: W if correct, P if tied for win, L otherwise
           const pickedName = (pick_.winner || "").trim();
-          let winnerResult: "W" | "L" | "P" = "L";
-          if (winners.includes(pickedName)) winnerResult = winners.length > 1 ? "P" : "W";
+          let winnerResult: "W" | "L" | "P" | "VOID" = "L";
+          if (didScratch(pickedName)) winnerResult = "VOID";
+          else if (winners.includes(pickedName)) winnerResult = winners.length > 1 ? "P" : "W";
+          // VOID counts toward NOTHING — not the wins, not the losses, and not
+          // the denominator. A pushed bet is a bet that happened and tied; a
+          // void bet never ran, so folding it into pushes would still dilute
+          // the win% it has no claim on.
           if (winnerResult === "W") wins++;
           else if (winnerResult === "P") pushes++;
-          else losses++;
+          else if (winnerResult === "L") losses++;
           // H2H matchup pick: also counts toward overall W/L/P tally
           if (matchupResult === "W") wins++;
           else if (matchupResult === "P") pushes++;
           else if (matchupResult === "L") losses++;
-          // (matchupResult==="N/A" means one player couldn't be found — skip)
+          // (matchupResult "N/A" = a player couldn't be found; "VOID" = scratched)
+
+          // A pick whose BOTH legs are void leaves no trace worth showing.
+          if (winnerResult === "VOID" && (matchupResult === "VOID" || matchupResult === "N/A")) continue;
           // Compute picked winner's actual finish position (ties share the same position)
           const [fn, ...rest] = pickedName.split(" ");
           const ln = rest.join(" ");
           const pickedGolfer = (golfers ?? []).find((gg: any) => gg.first_name === fn && gg.last_name === ln);
           let pickedFinish = "–";
-          if (pickedGolfer) {
+          if (winnerResult === "VOID") pickedFinish = "DNP";
+          else if (pickedGolfer) {
             const pickedLbRow = evLb.find((r: any) => r.golfer_id === pickedGolfer.golfer_id);
             if (pickedLbRow) {
               // Finish position = number of players with strictly more points + 1
@@ -224,7 +294,7 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
     };
     if (!hideRecord && leaderboard && events && golfers) loadRecord();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leaderboard, events, golfers]);
+  }, [leaderboard, events, golfers, signups]);
 
   useEffect(() => {
     // Only fire Tony when the field is confirmed AND backend odds are loaded.
@@ -425,7 +495,11 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
             </thead>
             <tbody>
               {record.rows.map((row: any, i: number) => {
-                const wColor = (r: "W" | "L" | "P" | "N/A") => r === "W" ? "var(--green-700)" : r === "L" ? "var(--red-600)" : r === "P" ? "var(--text-muted)" : "var(--text-muted)";
+                const wColor = (r: "W" | "L" | "P" | "VOID" | "N/A") => r === "W" ? "var(--green-700)" : r === "L" ? "var(--red-600)" : "var(--text-muted)";
+                // VOID renders as a muted "VOID" chip — a scratched pick is
+                // shown (so the history isn't silently missing an event) but is
+                // visibly not a result.
+                const wLabel = (r: "W" | "L" | "P" | "VOID" | "N/A") => r === "VOID" ? "VOID" : r;
                 return (
                   <tr key={i} style={{ borderBottom: "1px solid var(--border)", background: i % 2 === 1 ? "var(--surface2)" : "transparent" }}>
                     <td style={{ padding: "8px 10px", whiteSpace: "nowrap", color: "var(--text-muted)" }}>{formatDate(row.date)}</td>
@@ -437,7 +511,7 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
                       <span style={{ fontWeight: 700, fontSize: 15, color: row.winnerResult === "W" ? "var(--gold-300)" : row.winnerResult === "P" ? "var(--text-muted)" : "var(--text-secondary)" }}>{row.pickedFinish}</span>
                     </td>
                     <td style={{ padding: "8px 8px", textAlign: "center" }}>
-                      <span style={{ fontWeight: 800, fontSize: 14, color: wColor(row.winnerResult) }}>{row.winnerResult}</span>
+                      <span style={{ fontWeight: row.winnerResult === "VOID" ? 700 : 800, fontSize: row.winnerResult === "VOID" ? 11 : 14, letterSpacing: row.winnerResult === "VOID" ? "0.06em" : undefined, color: wColor(row.winnerResult) }}>{wLabel(row.winnerResult)}</span>
                     </td>
                     <td style={{ padding: "8px 8px" }}>
                       {row.matchupPick ? (
@@ -449,7 +523,7 @@ export function TonyInsight({ ranked, selEventId, selEvent, fieldConfirmed, hasB
                     </td>
                     <td style={{ padding: "8px 8px", textAlign: "center" }}>
                       {row.matchupResult !== "N/A" ? (
-                        <span style={{ fontWeight: 800, fontSize: 14, color: wColor(row.matchupResult) }}>{row.matchupResult}</span>
+                        <span style={{ fontWeight: row.matchupResult === "VOID" ? 700 : 800, fontSize: row.matchupResult === "VOID" ? 11 : 14, letterSpacing: row.matchupResult === "VOID" ? "0.06em" : undefined, color: wColor(row.matchupResult) }}>{wLabel(row.matchupResult)}</span>
                       ) : <span style={{ color: "var(--text-muted)" }}>–</span>}
                     </td>
                   </tr>
